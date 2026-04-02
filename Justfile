@@ -1,6 +1,3 @@
-# Database migration commands
-
-# Generate a new migration based on schema changes
 make_migration name:
     atlas migrate diff {{name}} --env dev
 
@@ -9,6 +6,15 @@ migrate:
 
 migrate_status:
     atlas migrate status --env dev
+
+dev:
+    docker-compose up --build
+
+dev-d:
+    docker-compose up -d --build
+
+logs:
+    docker-compose logs -f api
 
 up:
     docker-compose up -d
