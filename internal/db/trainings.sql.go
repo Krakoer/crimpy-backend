@@ -12,16 +12,15 @@ import (
 )
 
 const createTraining = `-- name: CreateTraining :one
-INSERT INTO trainings (user_id, name, repeater_id, is_builtin, is_favorite, is_assessment)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, name, repeater_id, is_builtin, is_favorite, is_assessment
+INSERT INTO trainings (user_id, name, repeater_id, is_favorite, is_assessment)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, name, repeater_id, is_favorite, is_assessment
 `
 
 type CreateTrainingParams struct {
 	UserID       pgtype.UUID
 	Name         string
 	RepeaterID   pgtype.Int4
-	IsBuiltin    bool
 	IsFavorite   bool
 	IsAssessment bool
 }
@@ -31,7 +30,6 @@ func (q *Queries) CreateTraining(ctx context.Context, arg CreateTrainingParams) 
 		arg.UserID,
 		arg.Name,
 		arg.RepeaterID,
-		arg.IsBuiltin,
 		arg.IsFavorite,
 		arg.IsAssessment,
 	)
@@ -41,7 +39,6 @@ func (q *Queries) CreateTraining(ctx context.Context, arg CreateTrainingParams) 
 		&i.UserID,
 		&i.Name,
 		&i.RepeaterID,
-		&i.IsBuiltin,
 		&i.IsFavorite,
 		&i.IsAssessment,
 	)
@@ -58,7 +55,7 @@ func (q *Queries) DeleteTraining(ctx context.Context, id int32) error {
 }
 
 const getTraining = `-- name: GetTraining :one
-SELECT id, user_id, name, repeater_id, is_builtin, is_favorite, is_assessment FROM trainings WHERE id = $1
+SELECT id, user_id, name, repeater_id, is_favorite, is_assessment FROM trainings WHERE id = $1
 `
 
 func (q *Queries) GetTraining(ctx context.Context, id int32) (Training, error) {
@@ -69,7 +66,6 @@ func (q *Queries) GetTraining(ctx context.Context, id int32) (Training, error) {
 		&i.UserID,
 		&i.Name,
 		&i.RepeaterID,
-		&i.IsBuiltin,
 		&i.IsFavorite,
 		&i.IsAssessment,
 	)
@@ -77,7 +73,7 @@ func (q *Queries) GetTraining(ctx context.Context, id int32) (Training, error) {
 }
 
 const getUserFavoriteTrainings = `-- name: GetUserFavoriteTrainings :many
-SELECT id, user_id, name, repeater_id, is_builtin, is_favorite, is_assessment FROM trainings WHERE user_id = $1 AND is_favorite = true ORDER BY name
+SELECT id, user_id, name, repeater_id, is_favorite, is_assessment FROM trainings WHERE user_id = $1 AND is_favorite = true ORDER BY name
 `
 
 func (q *Queries) GetUserFavoriteTrainings(ctx context.Context, userID pgtype.UUID) ([]Training, error) {
@@ -94,7 +90,6 @@ func (q *Queries) GetUserFavoriteTrainings(ctx context.Context, userID pgtype.UU
 			&i.UserID,
 			&i.Name,
 			&i.RepeaterID,
-			&i.IsBuiltin,
 			&i.IsFavorite,
 			&i.IsAssessment,
 		); err != nil {
@@ -109,7 +104,7 @@ func (q *Queries) GetUserFavoriteTrainings(ctx context.Context, userID pgtype.UU
 }
 
 const getUserTrainings = `-- name: GetUserTrainings :many
-SELECT id, user_id, name, repeater_id, is_builtin, is_favorite, is_assessment FROM trainings WHERE user_id = $1 ORDER BY name
+SELECT id, user_id, name, repeater_id, is_favorite, is_assessment FROM trainings WHERE user_id = $1 ORDER BY name
 `
 
 func (q *Queries) GetUserTrainings(ctx context.Context, userID pgtype.UUID) ([]Training, error) {
@@ -126,7 +121,6 @@ func (q *Queries) GetUserTrainings(ctx context.Context, userID pgtype.UUID) ([]T
 			&i.UserID,
 			&i.Name,
 			&i.RepeaterID,
-			&i.IsBuiltin,
 			&i.IsFavorite,
 			&i.IsAssessment,
 		); err != nil {
@@ -144,7 +138,7 @@ const updateTraining = `-- name: UpdateTraining :one
 UPDATE trainings
 SET name = $2, is_favorite = $3
 WHERE id = $1
-RETURNING id, user_id, name, repeater_id, is_builtin, is_favorite, is_assessment
+RETURNING id, user_id, name, repeater_id, is_favorite, is_assessment
 `
 
 type UpdateTrainingParams struct {
@@ -161,7 +155,6 @@ func (q *Queries) UpdateTraining(ctx context.Context, arg UpdateTrainingParams) 
 		&i.UserID,
 		&i.Name,
 		&i.RepeaterID,
-		&i.IsBuiltin,
 		&i.IsFavorite,
 		&i.IsAssessment,
 	)

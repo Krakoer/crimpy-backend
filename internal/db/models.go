@@ -59,7 +59,6 @@ type Session struct {
 	Name              string
 	Notes             string
 	Date              pgtype.Timestamptz
-	DataPath          string
 	IsAssessment      bool
 	SessionType       int32
 	Duration          int32
@@ -76,7 +75,6 @@ type Training struct {
 	UserID       pgtype.UUID
 	Name         string
 	RepeaterID   pgtype.Int4
-	IsBuiltin    bool
 	IsFavorite   bool
 	IsAssessment bool
 }
@@ -87,5 +85,6 @@ type User struct {
 	Password  string
 	Firstname string
 	Lastname  string
+	IsAdmin   bool
 	CreatedAt pgtype.Timestamptz
 }

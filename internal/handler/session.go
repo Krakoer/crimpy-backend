@@ -21,19 +21,18 @@ func NewSessionHandler(queries *db.Queries) *SessionHandler {
 }
 
 type CreateSessionRequest struct {
-	Name              string  `json:"name"`
-	Notes             string  `json:"notes"`
-	DataPath          string  `json:"data_path"`
-	IsAssessment      bool    `json:"is_assessment"`
-	SessionType       int32   `json:"session_type"`
-	Duration          int32   `json:"duration"`
-	RepeaterSets      *int32  `json:"repeater_sets,omitempty"`
-	RepeaterReps      *int32  `json:"repeater_reps,omitempty"`
-	RepeaterWorkTime  *int32  `json:"repeater_work_time,omitempty"`
-	RepeaterRestTime  *int32  `json:"repeater_rest_time,omitempty"`
-	RepeaterSetRest   *int32  `json:"repeater_set_rest,omitempty"`
-	RepeaterSplitHand *bool   `json:"repeater_split_hand,omitempty"`
-	RepDatas          []RepDataRequest `json:"rep_datas,omitempty"`
+	Name              string              `json:"name"`
+	Notes             string              `json:"notes"`
+	IsAssessment      bool                `json:"is_assessment"`
+	SessionType       int32               `json:"session_type"`
+	Duration          int32               `json:"duration"`
+	RepeaterSets      *int32              `json:"repeater_sets,omitempty"`
+	RepeaterReps      *int32              `json:"repeater_reps,omitempty"`
+	RepeaterWorkTime  *int32              `json:"repeater_work_time,omitempty"`
+	RepeaterRestTime  *int32              `json:"repeater_rest_time,omitempty"`
+	RepeaterSetRest   *int32              `json:"repeater_set_rest,omitempty"`
+	RepeaterSplitHand *bool               `json:"repeater_split_hand,omitempty"`
+	RepDatas          []RepDataRequest    `json:"rep_datas,omitempty"`
 	Assessments       []AssessmentRequest `json:"assessments,omitempty"`
 }
 
@@ -72,8 +71,8 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	if req.Name == "" || req.DataPath == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name and data_path are required"})
+	if req.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
 	}
 
 	var userUUID pgtype.UUID
@@ -114,7 +113,6 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		UserID:            userUUID,
 		Name:              req.Name,
 		Notes:             req.Notes,
-		DataPath:          req.DataPath,
 		IsAssessment:      req.IsAssessment,
 		SessionType:       req.SessionType,
 		Duration:          req.Duration,

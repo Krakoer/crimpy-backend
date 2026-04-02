@@ -23,7 +23,6 @@ func NewTrainingHandler(queries *db.Queries) *TrainingHandler {
 type CreateTrainingRequest struct {
 	Name         string               `json:"name"`
 	RepeaterID   *int32               `json:"repeater_id,omitempty"`
-	IsBuiltin    bool                 `json:"is_builtin"`
 	IsFavorite   bool                 `json:"is_favorite"`
 	IsAssessment bool                 `json:"is_assessment"`
 	RepTemplates []RepTemplateRequest `json:"rep_templates,omitempty"`
@@ -76,7 +75,6 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		UserID:       userUUID,
 		Name:         req.Name,
 		RepeaterID:   repeaterID,
-		IsBuiltin:    req.IsBuiltin,
 		IsFavorite:   req.IsFavorite,
 		IsAssessment: req.IsAssessment,
 	})
