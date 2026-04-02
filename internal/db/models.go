@@ -8,6 +8,79 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Assessment struct {
+	ID           int32
+	Type         int32
+	RightValue   pgtype.Float4
+	LeftValue    pgtype.Float4
+	SessionID    int32
+	GripPosition pgtype.Int4
+}
+
+type RepData struct {
+	ID            int32
+	AverageWeight float32
+	SessionID     int32
+	IsRest        bool
+	RightHand     bool
+	Duration      int32
+	TargetWeight  float32
+	Index         int32
+	GripPosition  int32
+}
+
+type RepTemplate struct {
+	ID           int32
+	IsRest       bool
+	RightHand    bool
+	Duration     int32
+	TrainingID   int32
+	TargetWeight float32
+	Index        int32
+	GripPosition int32
+}
+
+type Repeater struct {
+	ID                int32
+	Sets              int32
+	Reps              int32
+	Worktime          int32
+	Resttime          int32
+	SetRest           int32
+	TargetWeightRight pgtype.Float4
+	TargetWeightLeft  pgtype.Float4
+	SplitHand         bool
+	GripPosition      int32
+}
+
+type Session struct {
+	ID                int32
+	UserID            pgtype.UUID
+	Name              string
+	Notes             string
+	Date              pgtype.Timestamptz
+	DataPath          string
+	IsAssessment      bool
+	SessionType       int32
+	Duration          int32
+	RepeaterSets      pgtype.Int4
+	RepeaterReps      pgtype.Int4
+	RepeaterWorkTime  pgtype.Int4
+	RepeaterRestTime  pgtype.Int4
+	RepeaterSetRest   pgtype.Int4
+	RepeaterSplitHand pgtype.Bool
+}
+
+type Training struct {
+	ID           int32
+	UserID       pgtype.UUID
+	Name         string
+	RepeaterID   pgtype.Int4
+	IsBuiltin    bool
+	IsFavorite   bool
+	IsAssessment bool
+}
+
 type User struct {
 	ID        pgtype.UUID
 	Email     string
