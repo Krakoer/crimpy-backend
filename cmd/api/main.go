@@ -6,6 +6,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/internal/middleware"
+	"crimpy/backend/internal/utils"
 	"log"
 	"os"
 
@@ -24,6 +25,11 @@ func main() {
 
 	// Create sqlc queries instance
 	queries := db.New(pool)
+
+	// Initialize admin account
+	if err := utils.InitializeAdminAccount(queries); err != nil {
+		log.Printf("Warning: Failed to initialize admin account: %v", err)
+	}
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(queries)
@@ -57,7 +63,6 @@ func main() {
 	// Training routes
 	api.Post("/trainings", trainingHandler.CreateTraining)
 	api.Get("/trainings", trainingHandler.GetTrainings)
-	api.Get("/trainings/favorites", trainingHandler.GetFavoriteTrainings)
 	api.Get("/trainings/:id", trainingHandler.GetTraining)
 	api.Put("/trainings/:id", trainingHandler.UpdateTraining)
 	api.Delete("/trainings/:id", trainingHandler.DeleteTraining)

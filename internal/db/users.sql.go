@@ -9,8 +9,39 @@ import (
 	"context"
 )
 
+const createAdminUser = `-- name: CreateAdminUser :one
+INSERT INTO users (email, firstname, lastname, password, is_admin) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, created_at
+`
+
+type CreateAdminUserParams struct {
+	Email     string
+	Firstname string
+	Lastname  string
+	Password  string
+}
+
+func (q *Queries) CreateAdminUser(ctx context.Context, arg CreateAdminUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createAdminUser,
+		arg.Email,
+		arg.Firstname,
+		arg.Lastname,
+		arg.Password,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Password,
+		&i.Firstname,
+		&i.Lastname,
+		&i.IsAdmin,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, created_at
+INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, created_at
 `
 
 type CreateUserParams struct {
@@ -35,13 +66,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Password,
 		&i.Firstname,
 		&i.Lastname,
+		&i.IsAdmin,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password, firstname, lastname, created_at FROM users WHERE email = $1
+SELECT id, email, password, firstname, lastname, is_admin, created_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -53,6 +85,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Password,
 		&i.Firstname,
 		&i.Lastname,
+		&i.IsAdmin,
 		&i.CreatedAt,
 	)
 	return i, err

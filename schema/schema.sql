@@ -4,6 +4,7 @@ CREATE TABLE "users" (
   "password"     TEXT        NOT NULL,
   "firstname"    TEXT        NOT NULL,
   "lastname"     TEXT        NOT NULL,
+  "is_admin"     BOOLEAN     NOT NULL DEFAULT false,
   "created_at"   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
