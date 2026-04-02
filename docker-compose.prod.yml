@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      retries: 5
+
+  migrate:
+    image: arigaio/atlas:latest
+    command: >
+      migrate apply
+      --url "${DATABASE_URL}"
+      --dir "file://migrations"
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: crimpy:latest
+    env_file: .env.prod
+    ports: ["3000:3000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: always
+
+volumes:
+  pgdata:
