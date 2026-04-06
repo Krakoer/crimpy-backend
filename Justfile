@@ -21,3 +21,10 @@ up:
 
 down:
     docker-compose down
+
+test:
+    DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret go test -v ./tests/...
+
+test-coverage:
+    DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret go test -coverprofile=coverage.out ./tests/...
+    go tool cover -html=coverage.out -o coverage.html
