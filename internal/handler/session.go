@@ -210,9 +210,10 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
-	// Verify ownership
+	// Verify ownership (skip for admin)
 	userID := middleware.GetUserID(c)
-	if session.UserID.String() != userID {
+	isAdmin := middleware.IsAdmin(c)
+	if !isAdmin && session.UserID.String() != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
@@ -239,14 +240,15 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// Verify ownership
+	// Verify ownership (skip for admin)
 	session, err := h.queries.GetSession(context.Background(), int32(id))
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
 	userID := middleware.GetUserID(c)
-	if session.UserID.String() != userID {
+	isAdmin := middleware.IsAdmin(c)
+	if !isAdmin && session.UserID.String() != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
@@ -271,14 +273,15 @@ func (h *SessionHandler) DeleteSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
 	}
 
-	// Verify ownership
+	// Verify ownership (skip for admin)
 	session, err := h.queries.GetSession(context.Background(), int32(id))
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
 	userID := middleware.GetUserID(c)
-	if session.UserID.String() != userID {
+	isAdmin := middleware.IsAdmin(c)
+	if !isAdmin && session.UserID.String() != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 

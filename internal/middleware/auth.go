@@ -36,6 +36,7 @@ func AuthMiddleware() fiber.Handler {
 		// Store user information in context
 		c.Locals("user_id", claims.UserID)
 		c.Locals("email", claims.Email)
+		c.Locals("is_admin", claims.IsAdmin)
 
 		return c.Next()
 	}
@@ -45,4 +46,10 @@ func AuthMiddleware() fiber.Handler {
 func GetUserID(c fiber.Ctx) string {
 	userID, _ := c.Locals("user_id").(string)
 	return userID
+}
+
+// IsAdmin checks if the current user is an admin
+func IsAdmin(c fiber.Ctx) bool {
+	isAdmin, _ := c.Locals("is_admin").(bool)
+	return isAdmin
 }

@@ -113,14 +113,12 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	// Validate required fields
 	if req.Email == "" || req.Password == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Email and password are required",
 		})
 	}
 
-	// Get user by email
 	user, err := h.queries.GetUserByEmail(context.Background(), req.Email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -133,15 +131,13 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	// Check password
 	if err := utils.CheckPassword(user.Password, req.Password); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid credentials",
 		})
 	}
 
-	// Generate JWT token
-	token, err := utils.GenerateJWT(user.ID.String(), user.Email)
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate token",

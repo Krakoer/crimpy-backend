@@ -138,9 +138,10 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
 	}
 
-	// Verify the training belongs to the authenticated user
+	// Verify the training belongs to the authenticated user (skip for admin)
 	userID := middleware.GetUserID(c)
-	if training.UserID.String() != userID {
+	isAdmin := middleware.IsAdmin(c)
+	if !isAdmin && training.UserID.String() != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
@@ -159,14 +160,15 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// Verify ownership
+	// Verify ownership (skip for admin)
 	training, err := h.queries.GetTraining(context.Background(), int32(id))
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
 	}
 
 	userID := middleware.GetUserID(c)
-	if training.UserID.String() != userID {
+	isAdmin := middleware.IsAdmin(c)
+	if !isAdmin && training.UserID.String() != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
@@ -190,14 +192,15 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	// Verify ownership
+	// Verify ownership (skip for admin)
 	training, err := h.queries.GetTraining(context.Background(), int32(id))
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
 	}
 
 	userID := middleware.GetUserID(c)
-	if training.UserID.String() != userID {
+	isAdmin := middleware.IsAdmin(c)
+	if !isAdmin && training.UserID.String() != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
