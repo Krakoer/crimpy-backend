@@ -58,8 +58,8 @@ Tests use the `testutil` package (`tests/testutil/setup.go`) which provides:
 
 
 # TODO
-- [ ] Linting
-- [ ] Unit tests
-- [ ] Password change route
-- [ ] Prebuilt superadmin
+- [ ] Linting - CI
+- [x] Unit tests
+- [x] Password change route
+- [x] Prebuilt superadmin
 - [ ] Put in prod

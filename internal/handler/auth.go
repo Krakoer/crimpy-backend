@@ -3,11 +3,13 @@ package handler
 import (
 	"context"
 	"crimpy/backend/internal/db"
+	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AuthHandler struct {
@@ -154,5 +156,105 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 			Lastname:  user.Lastname,
 			CreatedAt: user.CreatedAt.Time.String(),
 		},
+	})
+}
+
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+	UserID      string `json:"user_id"`
+}
+
+func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
+	var req ChangePasswordRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	currentUserID := middleware.GetUserID(c)
+	isAdmin := middleware.IsAdmin(c)
+
+	var targetUserID string
+	requireOldPassword := true
+
+	if req.UserID != "" && req.UserID != currentUserID {
+		if !isAdmin {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Only admins can change other users' passwords",
+			})
+		}
+		targetUserID = req.UserID
+		requireOldPassword = false
+	} else {
+		targetUserID = currentUserID
+	}
+
+	if req.NewPassword == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "New password is required",
+		})
+	}
+
+	if len(req.NewPassword) < 6 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "New password must be at least 6 characters",
+		})
+	}
+
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(targetUserID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid user ID",
+		})
+	}
+
+	user, err := h.queries.GetUserByID(context.Background(), userUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "User not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve user",
+		})
+	}
+
+	if requireOldPassword {
+		if req.OldPassword == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Old password is required",
+			})
+		}
+
+		if err := utils.CheckPassword(user.Password, req.OldPassword); err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid old password",
+			})
+		}
+	}
+
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process password",
+		})
+	}
+
+	err = h.queries.UpdateUserPassword(context.Background(), db.UpdateUserPasswordParams{
+		ID:       userUUID,
+		Password: hashedPassword,
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update password",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Password updated successfully",
 	})
 }

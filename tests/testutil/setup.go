@@ -95,9 +95,10 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 
 // SetupFiberApp creates a fiber app with routes for testing (used by handler tests)
 type HandlerConfig struct {
-	AuthHandler     interface {
+	AuthHandler interface {
 		Register(fiber.Ctx) error
 		Login(fiber.Ctx) error
+		ChangePassword(fiber.Ctx) error
 	}
 	TrainingHandler interface {
 		CreateTraining(fiber.Ctx) error
@@ -132,6 +133,10 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 
 	// Protected routes
 	api := app.Group("/api", middleware.AuthMiddleware())
+
+	if config.AuthHandler != nil {
+		api.Put("/auth/change-password", config.AuthHandler.ChangePassword)
+	}
 
 	if config.TrainingHandler != nil {
 		api.Post("/trainings", config.TrainingHandler.CreateTraining)
@@ -177,6 +182,34 @@ func CreateTestUser(t *testing.T, queries *db.Queries, email string) (string, st
 	})
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
+	if err != nil {
+		t.Fatalf("Failed to generate JWT: %v", err)
+	}
+
+	return user.ID.String(), token
+}
+
+// CreateTestAdminUser creates a test admin user and returns a JWT token
+func CreateTestAdminUser(t *testing.T, queries *db.Queries, email string) (string, string) {
+	t.Helper()
+
+	password := "password123"
+	hashedPassword, err := utils.HashPassword(password)
+	if err != nil {
+		t.Fatalf("Failed to hash password: %v", err)
+	}
+
+	user, err := queries.CreateAdminUser(context.Background(), db.CreateAdminUserParams{
+		Email:     email,
+		Password:  hashedPassword,
+		Firstname: "Admin",
+		Lastname:  "User",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test admin user: %v", err)
 	}
 
 	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)

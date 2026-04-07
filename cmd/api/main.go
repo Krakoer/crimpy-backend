@@ -60,6 +60,9 @@ func main() {
 	// Protected routes - require authentication
 	api := app.Group("/api", middleware.AuthMiddleware())
 
+	// Auth protected routes
+	api.Put("/auth/change-password", authHandler.ChangePassword)
+
 	// Training routes
 	api.Post("/trainings", trainingHandler.CreateTraining)
 	api.Get("/trainings", trainingHandler.GetTrainings)

@@ -363,3 +363,262 @@ func TestAuthHandler_Login_MissingFields(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthHandler_ChangePassword_Success(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	userID, token := testutil.CreateTestUser(t, queries, "changepass@test.com")
+
+	reqBody := map[string]interface{}{
+		"old_password": "password123",
+		"new_password": "newpassword456",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["message"] != "Password updated successfully" {
+		t.Errorf("Expected success message, got %v", response["message"])
+	}
+
+	_ = userID
+}
+
+func TestAuthHandler_ChangePassword_WrongOldPassword(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	_, token := testutil.CreateTestUser(t, queries, "wrongpass@test.com")
+
+	reqBody := map[string]interface{}{
+		"old_password": "wrongpassword",
+		"new_password": "newpassword456",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected status %d, got %d", fiber.StatusUnauthorized, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "Invalid old password" {
+		t.Errorf("Expected 'Invalid old password', got %v", response["error"])
+	}
+}
+
+func TestAuthHandler_ChangePassword_MissingOldPassword(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	_, token := testutil.CreateTestUser(t, queries, "missingold@test.com")
+
+	reqBody := map[string]interface{}{
+		"new_password": "newpassword456",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "Old password is required" {
+		t.Errorf("Expected 'Old password is required', got %v", response["error"])
+	}
+}
+
+func TestAuthHandler_ChangePassword_ShortPassword(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	_, token := testutil.CreateTestUser(t, queries, "shortpass@test.com")
+
+	reqBody := map[string]interface{}{
+		"old_password": "password123",
+		"new_password": "short",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "New password must be at least 6 characters" {
+		t.Errorf("Expected password length error, got %v", response["error"])
+	}
+}
+
+func TestAuthHandler_ChangePassword_AdminChangesOtherUserPassword(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "admin@test.com")
+	targetUserID, _ := testutil.CreateTestUser(t, queries, "targetuser@test.com")
+
+	reqBody := map[string]interface{}{
+		"user_id":      targetUserID,
+		"new_password": "adminsetnewpass",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["message"] != "Password updated successfully" {
+		t.Errorf("Expected success message, got %v", response["message"])
+	}
+}
+
+func TestAuthHandler_ChangePassword_NonAdminCannotChangeOtherUserPassword(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	_, userToken := testutil.CreateTestUser(t, queries, "normaluser@test.com")
+	targetUserID, _ := testutil.CreateTestUser(t, queries, "targetuser2@test.com")
+
+	reqBody := map[string]interface{}{
+		"user_id":      targetUserID,
+		"new_password": "trytochangeother",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", testutil.GetAuthHeader(userToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected status %d, got %d", fiber.StatusForbidden, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "Only admins can change other users' passwords" {
+		t.Errorf("Expected admin only error, got %v", response["error"])
+	}
+}
+
+func TestAuthHandler_ChangePassword_NoAuth(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"old_password": "password123",
+		"new_password": "newpassword456",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected status %d, got %d", fiber.StatusUnauthorized, resp.StatusCode)
+	}
+}

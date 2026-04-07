@@ -28,11 +28,11 @@ func TestSessionHandler_CreateSession_Success(t *testing.T) {
 	})
 
 	reqBody := map[string]interface{}{
-		"name":         "Test Session",
-		"notes":        "Some notes",
+		"name":          "Test Session",
+		"notes":         "Some notes",
 		"is_assessment": false,
-		"session_type": 1,
-		"duration":     3600,
+		"session_type":  1,
+		"duration":      3600,
 	}
 	body, _ := json.Marshal(reqBody)
 
