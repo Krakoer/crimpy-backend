@@ -1,2 +1,5 @@
 tmp/
 testdata/
+.env.prod
+coverage.out
+coverage.html

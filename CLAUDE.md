@@ -48,6 +48,14 @@ just test-coverage    # Generate HTML coverage report
 go test -v ./tests/... -run <TestName>   # Run specific test
 ```
 
+### Production Deployment
+```bash
+just prod-up          # Start production environment (builds and starts all services)
+just prod-down        # Stop production environment
+just prod-logs        # View production API logs
+just prod-restart     # Restart production API service
+```
+
 ### Code Quality
 ```bash
 go fmt ./...          # Format all Go files (required after editing)
@@ -126,6 +134,65 @@ Production (set via deployment):
 4. **After Editing Code:** Run `go fmt ./...`
 5. **Before Committing:** Run `just test` to ensure all tests pass
 6. **Viewing Logs:** Use `just logs` for debugging
+
+## Production Deployment
+
+This application is configured to work with **Traefik** as a reverse proxy. The API will be accessible at `api.portfolio-online.ovh`.
+
+### Prerequisites
+
+- VPS with Docker and Docker Compose installed
+- Traefik reverse proxy running with:
+  - External network named `proxy`
+  - Entry point named `websecure`
+  - Certificate resolver named `dnsResolver`
+
+### Deployment Steps
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd crimpy-backend
+   ```
+
+2. **Configure environment:**
+   ```bash
+   cp .env.prod.example .env.prod
+   nano .env.prod  # Edit with your production values
+   ```
+
+3. **Set secure credentials in .env.prod:**
+   - `DB_USER` and `DB_PASSWORD`: Database credentials
+   - `JWT_SECRET`: Generate with `openssl rand -base64 32`
+   - `DATABASE_URL`: Update with your DB_PASSWORD (keep `@db:5432` as hostname)
+   - `PORT`: Internal container port (default: 3000)
+
+4. **Launch the backend:**
+   ```bash
+   just prod-up
+   ```
+
+This command will:
+- Start PostgreSQL database with persistent storage in `./pgdata`
+- Run database migrations automatically via Atlas
+- Build and start the API server
+- Connect to Traefik's `proxy` network for external access
+- Configure automatic restarts on failure
+- Provision SSL certificate via Traefik
+
+### Traefik Configuration
+
+The production setup includes these Traefik labels:
+- `Host`: `api.portfolio-online.ovh`
+- `Entrypoint`: `websecure` (HTTPS)
+- `Certificate resolver`: `dnsResolver`
+
+To change the domain, edit the `traefik.http.routers.crimpy-api.rule` label in [docker-compose.prod.yml](docker-compose.prod.yml).
+
+**Important:**
+- Ensure `.env.prod` is never committed to version control (already in .gitignore)
+- The API container exposes port 3000 internally but is only accessible via Traefik
+- Database data persists in `./pgdata` directory
 
 ## Testing Notes
 
