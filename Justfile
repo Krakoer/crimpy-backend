@@ -8,31 +8,34 @@ migrate_status:
     atlas migrate status --env dev
 
 dev:
-    docker-compose up --build
+    docker compose up --build
 
 dev-d:
-    docker-compose up -d --build
+    docker compose up -d --build
 
 logs:
-    docker-compose logs -f api
+    docker compose logs -f api
 
 up:
-    docker-compose up -d
+    docker compose up -d
 
 down:
-    docker-compose down
+    docker compose down
 
 test:
     DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret go test -v ./tests/...
 
+swagger:
+    swag init -g cmd/api/main.go -o docs
+
 prod-up:
-    docker-compose -f docker-compose.prod.yml up -d --build
+    docker compose -f docker-compose.prod.yml up -d --build
 
 prod-down:
-    docker-compose -f docker-compose.prod.yml down
+    docker compose -f docker-compose.prod.yml down
 
 prod-logs:
-    docker-compose -f docker-compose.prod.yml logs -f api
+    docker compose -f docker-compose.prod.yml logs -f api
 
 prod-restart:
-    docker-compose -f docker-compose.prod.yml restart api
+    docker compose -f docker-compose.prod.yml restart api

@@ -48,6 +48,13 @@ just test-coverage    # Generate HTML coverage report
 go test -v ./tests/... -run <TestName>   # Run specific test
 ```
 
+### API Documentation
+```bash
+just swagger          # Regenerate Swagger/OpenAPI documentation
+```
+
+The API documentation is available at `/swagger/index.html` when the server is running. Documentation is auto-generated from code annotations using Swag.
+
 ### Production Deployment
 ```bash
 just prod-up          # Start production environment (builds and starts all services)
@@ -202,6 +209,54 @@ To change the domain, edit the `traefik.http.routers.crimpy-api.rule` label in [
 - User isolation tests verify users cannot access others' resources (returns 403)
 - Database is automatically cleaned after each test via deferred cleanup
 
+## API Documentation
+
+The API uses **Swagger/OpenAPI** for interactive documentation. Documentation is auto-generated from code annotations using [Swag](https://github.com/swaggo/swag).
+
+### Accessing Documentation
+
+When the server is running, visit:
+- **Local development:** `http://localhost:3000/swagger/index.html`
+- **Production:** `https://api.portfolio-online.ovh/swagger/index.html`
+
+### Adding Documentation for New Endpoints
+
+When creating new handlers, add Swagger annotations above the handler function:
+
+```go
+// HandlerName godoc
+// @Summary Brief description
+// @Description Detailed description
+// @Tags TagName
+// @Accept json
+// @Produce json
+// @Security BearerAuth  // Include for protected routes
+// @Param id path string true "Resource ID"
+// @Param request body RequestType true "Request body description"
+// @Success 200 {object} ResponseType "Success description"
+// @Failure 400 {object} map[string]string "Error description"
+// @Router /api/resource [post]
+func (h *Handler) HandlerName(c fiber.Ctx) error {
+    // handler implementation
+}
+```
+
+After adding annotations, regenerate docs with:
+```bash
+just swagger
+```
+
+### Generated Files
+
+The `docs/` directory contains auto-generated files:
+- `docs.go` - Go package for embedding docs
+- `swagger.json` - JSON format documentation
+- `swagger.yaml` - YAML format documentation
+
+**Important:** Commit the `docs/` directory to version control. Always run `just swagger` after modifying handler annotations.
+
 ## Interacting with the API
 
 Use Bruno CLI (`bru` command) for API testing. Bruno collection files are stored in `bruno/` directory. See `.claude/bruno.md` for details.
+
+Alternatively, use the Swagger UI at `/swagger/index.html` for interactive API testing with built-in authentication support.

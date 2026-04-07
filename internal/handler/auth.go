@@ -42,7 +42,18 @@ type UserResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// Register handles user registration
+// Register godoc
+// @Summary Register a new user
+// @Description Create a new user account with email and password
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body RegisterRequest true "Registration details"
+// @Success 201 {object} map[string]interface{} "User registered successfully"
+// @Failure 400 {object} map[string]string "Invalid request or validation error"
+// @Failure 409 {object} map[string]string "Email already registered"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/register [post]
 func (h *AuthHandler) Register(c fiber.Ctx) error {
 	var req RegisterRequest
 	if err := c.Bind().JSON(&req); err != nil {
@@ -106,7 +117,18 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 	})
 }
 
-// Login handles user login
+// Login godoc
+// @Summary Login user
+// @Description Authenticate user and return JWT token
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body LoginRequest true "Login credentials"
+// @Success 200 {object} map[string]interface{} "Login successful with token"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 401 {object} map[string]string "Invalid credentials"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/login [post]
 func (h *AuthHandler) Login(c fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.Bind().JSON(&req); err != nil {
@@ -165,6 +187,21 @@ type ChangePasswordRequest struct {
 	UserID      string `json:"user_id"`
 }
 
+// ChangePassword godoc
+// @Summary Change user password
+// @Description Change password for authenticated user or admin changing another user's password
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ChangePasswordRequest true "Password change details"
+// @Success 200 {object} map[string]string "Password updated successfully"
+// @Failure 400 {object} map[string]string "Invalid request or validation error"
+// @Failure 401 {object} map[string]string "Invalid old password"
+// @Failure 403 {object} map[string]string "Only admins can change other users' passwords"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/auth/change-password [put]
 func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 	var req ChangePasswordRequest
 	if err := c.Bind().JSON(&req); err != nil {

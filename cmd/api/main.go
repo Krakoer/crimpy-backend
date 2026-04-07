@@ -10,10 +10,34 @@ import (
 	"log"
 	"os"
 
+	_ "crimpy/backend/docs"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
+
+// @title Crimpy API
+// @version 1.0
+// @description Backend API for Crimpy climbing training application
+// @termsOfService https://api.portfolio-online.ovh/terms
+
+// @contact.name API Support
+// @contact.email support@crimpy.com
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host api.portfolio-online.ovh
+// @BasePath /
+// @schemes https
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
 	// Initialize database connection
@@ -52,6 +76,11 @@ func main() {
 	app.Get("/health", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+
+	// Swagger documentation
+	app.Get("/swagger/*", adaptor.HTTPHandler(httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	)))
 
 	// Auth routes (public)
 	app.Post("/auth/register", authHandler.Register)
