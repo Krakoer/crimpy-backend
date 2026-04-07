@@ -29,13 +29,13 @@ swagger:
     swag init -g cmd/api/main.go -o docs
 
 prod-up:
-    docker compose -f docker-compose.prod.yml up -d --build
+    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 
 prod-down:
-    docker compose -f docker-compose.prod.yml down
+    docker compose -f docker-compose.prod.yml --env-file .env.prod down
 
 prod-logs:
-    docker compose -f docker-compose.prod.yml logs -f api
+    docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f api
 
 prod-restart:
-    docker compose -f docker-compose.prod.yml restart api
+    docker compose -f docker-compose.prod.yml --env-file .env.prod restart api
