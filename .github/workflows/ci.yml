@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test and Format Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: crimpy
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install sqlc
+        run: |
+          wget https://github.com/sqlc-dev/sqlc/releases/download/v1.27.0/sqlc_1.27.0_linux_amd64.tar.gz
+          tar -xzf sqlc_1.27.0_linux_amd64.tar.gz
+          sudo mv sqlc /usr/local/bin/
+          sqlc version
+
+      - name: Install Atlas
+        run: |
+          curl -sSf https://atlasgo.sh | sh
+
+      - name: Generate sqlc code
+        run: sqlc generate
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgres://user:pass@localhost:5432/crimpy?sslmode=disable
+        run: |
+          atlas migrate apply --url "$DATABASE_URL" --dir "file://migrations"
+
+      - name: Check code formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "The following files are not formatted:"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgres://user:pass@localhost:5432/crimpy?sslmode=disable
+          JWT_SECRET: test_secret_for_ci
+        run: go test -v ./tests/...
