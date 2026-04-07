@@ -1,7 +1,6 @@
 package handler_test
 
 import (
-	"bytes"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
@@ -43,8 +42,7 @@ func TestRepeaterHandler_CreateRepeater_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/repeaters", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/repeaters", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -89,8 +87,7 @@ func TestRepeaterHandler_CreateRepeater_InvalidData(t *testing.T) {
 	})
 
 	// Invalid JSON
-	req, _ := http.NewRequest(http.MethodPost, "/api/repeaters", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewRequest(http.MethodPost, "/api/repeaters", nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -123,8 +120,7 @@ func TestRepeaterHandler_CreateRepeater_Unauthorized(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/repeaters", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/repeaters", body)
 	// No authorization header
 
 	resp, err := app.Test(req)
@@ -162,8 +158,7 @@ func TestRepeaterHandler_GetRepeater_Success(t *testing.T) {
 		"grip_position": 20,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/repeaters", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/repeaters", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -175,7 +170,7 @@ func TestRepeaterHandler_GetRepeater_Success(t *testing.T) {
 	repeaterID := int(createdRepeater["ID"].(float64))
 
 	// Get the repeater
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/repeaters/%d", repeaterID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/repeaters/%d", repeaterID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -214,7 +209,7 @@ func TestRepeaterHandler_GetRepeater_NotFound(t *testing.T) {
 	})
 
 	// Try to get a non-existent repeater
-	req, _ := http.NewRequest(http.MethodGet, "/api/repeaters/99999", nil)
+	req := testutil.NewRequest(http.MethodGet, "/api/repeaters/99999", nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -252,8 +247,7 @@ func TestRepeaterHandler_UpdateRepeater_Success(t *testing.T) {
 		"grip_position": 20,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/repeaters", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/repeaters", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -275,8 +269,7 @@ func TestRepeaterHandler_UpdateRepeater_Success(t *testing.T) {
 		"grip_position": 25,
 	}
 	body, _ = json.Marshal(updateBody)
-	req, _ = http.NewRequest(http.MethodPut, fmt.Sprintf("/api/repeaters/%d", repeaterID), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/repeaters/%d", repeaterID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -328,8 +321,7 @@ func TestRepeaterHandler_UpdateRepeater_NotFound(t *testing.T) {
 		"grip_position": 25,
 	}
 	body, _ := json.Marshal(updateBody)
-	req, _ := http.NewRequest(http.MethodPut, "/api/repeaters/99999", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/repeaters/99999", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -367,8 +359,7 @@ func TestRepeaterHandler_DeleteRepeater_Success(t *testing.T) {
 		"grip_position": 20,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/repeaters", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/repeaters", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -380,7 +371,7 @@ func TestRepeaterHandler_DeleteRepeater_Success(t *testing.T) {
 	repeaterID := int(createdRepeater["ID"].(float64))
 
 	// Delete the repeater
-	req, _ = http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/repeaters/%d", repeaterID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/repeaters/%d", repeaterID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -393,7 +384,7 @@ func TestRepeaterHandler_DeleteRepeater_Success(t *testing.T) {
 	}
 
 	// Try to get the deleted repeater
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/repeaters/%d", repeaterID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/repeaters/%d", repeaterID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -417,7 +408,7 @@ func TestRepeaterHandler_DeleteRepeater_NotFound(t *testing.T) {
 	})
 
 	// Try to delete a non-existent repeater
-	req, _ := http.NewRequest(http.MethodDelete, "/api/repeaters/99999", nil)
+	req := testutil.NewRequest(http.MethodDelete, "/api/repeaters/99999", nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)

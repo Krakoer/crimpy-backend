@@ -1,7 +1,6 @@
 package handler_test
 
 import (
-	"bytes"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
@@ -29,8 +28,7 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
 
 	// Execute request
 	resp, err := app.Test(req)
@@ -78,16 +76,14 @@ func TestAuthHandler_Register_DuplicateEmail(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req1, _ := http.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
-	req1.Header.Set("Content-Type", "application/json")
+	req1 := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
 	_, err := app.Test(req1)
 	if err != nil {
 		t.Fatalf("Failed to create first user: %v", err)
 	}
 
 	// Try to create second user with same email
-	req2, _ := http.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
-	req2.Header.Set("Content-Type", "application/json")
+	req2 := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
 	resp, err := app.Test(req2)
 	if err != nil {
 		t.Fatalf("Failed to execute request: %v", err)
@@ -153,8 +149,7 @@ func TestAuthHandler_Register_MissingFields(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			body, _ := json.Marshal(tc.reqBody)
-			req, _ := http.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
+			req := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
 
 			resp, err := app.Test(req)
 			if err != nil {
@@ -194,8 +189,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 		"lastname":  "Doe",
 	}
 	body, _ := json.Marshal(registerBody)
-	req, _ := http.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
 	_, err := app.Test(req)
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
@@ -207,8 +201,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 		"password": password,
 	}
 	body, _ = json.Marshal(loginBody)
-	req, _ = http.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req = testutil.NewJSONRequest(http.MethodPost, "/auth/login", body)
 
 	resp, err := app.Test(req)
 	if err != nil {
@@ -259,8 +252,7 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 		"lastname":  "Doe",
 	}
 	body, _ := json.Marshal(registerBody)
-	req, _ := http.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
 	_, err := app.Test(req)
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
@@ -290,8 +282,7 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 				"password": tc.password,
 			}
 			body, _ := json.Marshal(loginBody)
-			req, _ := http.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
+			req := testutil.NewJSONRequest(http.MethodPost, "/auth/login", body)
 
 			resp, err := app.Test(req)
 			if err != nil {
@@ -342,8 +333,7 @@ func TestAuthHandler_Login_MissingFields(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			body, _ := json.Marshal(tc.reqBody)
-			req, _ := http.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
+			req := testutil.NewJSONRequest(http.MethodPost, "/auth/login", body)
 
 			resp, err := app.Test(req)
 			if err != nil {
@@ -381,8 +371,7 @@ func TestAuthHandler_ChangePassword_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -421,8 +410,7 @@ func TestAuthHandler_ChangePassword_WrongOldPassword(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -458,8 +446,7 @@ func TestAuthHandler_ChangePassword_MissingOldPassword(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -496,8 +483,7 @@ func TestAuthHandler_ChangePassword_ShortPassword(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -535,8 +521,7 @@ func TestAuthHandler_ChangePassword_AdminChangesOtherUserPassword(t *testing.T) 
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
 
 	resp, err := app.Test(req)
@@ -574,8 +559,7 @@ func TestAuthHandler_ChangePassword_NonAdminCannotChangeOtherUserPassword(t *tes
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(userToken))
 
 	resp, err := app.Test(req)
@@ -610,8 +594,7 @@ func TestAuthHandler_ChangePassword_NoAuth(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPut, "/api/auth/change-password", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
 
 	resp, err := app.Test(req)
 	if err != nil {

@@ -1,7 +1,6 @@
 package handler_test
 
 import (
-	"bytes"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
@@ -37,8 +36,7 @@ func TestTrainingHandler_CreateTraining_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -81,8 +79,7 @@ func TestTrainingHandler_CreateTraining_MissingName(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -109,8 +106,7 @@ func TestTrainingHandler_CreateTraining_Unauthorized(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	// No authorization header
 
 	resp, err := app.Test(req)
@@ -143,8 +139,7 @@ func TestTrainingHandler_GetTrainings_Success(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	_, err := app.Test(req)
 	if err != nil {
@@ -152,7 +147,7 @@ func TestTrainingHandler_GetTrainings_Success(t *testing.T) {
 	}
 
 	// Get trainings
-	req, _ = http.NewRequest(http.MethodGet, "/api/trainings", nil)
+	req = testutil.NewRequest(http.MethodGet, "/api/trainings", nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -192,8 +187,7 @@ func TestTrainingHandler_GetTraining_Success(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -205,7 +199,7 @@ func TestTrainingHandler_GetTraining_Success(t *testing.T) {
 	trainingID := int(createdTraining["ID"].(float64))
 
 	// Get the training
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -247,8 +241,7 @@ func TestTrainingHandler_GetTraining_UserIsolation(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -260,7 +253,7 @@ func TestTrainingHandler_GetTraining_UserIsolation(t *testing.T) {
 	trainingID := int(createdTraining["ID"].(float64))
 
 	// User 2 tries to access User 1's training
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -294,8 +287,7 @@ func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
 		"is_favorite": false,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -312,8 +304,7 @@ func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ = json.Marshal(updateBody)
-	req, _ = http.NewRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%d", trainingID), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%d", trainingID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -359,8 +350,7 @@ func TestTrainingHandler_UpdateTraining_UserIsolation(t *testing.T) {
 		"is_favorite": false,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -377,8 +367,7 @@ func TestTrainingHandler_UpdateTraining_UserIsolation(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ = json.Marshal(updateBody)
-	req, _ = http.NewRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%d", trainingID), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%d", trainingID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -412,8 +401,7 @@ func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
 		"is_favorite": false,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -425,7 +413,7 @@ func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
 	trainingID := int(createdTraining["ID"].(float64))
 
 	// Delete the training
-	req, _ = http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -438,7 +426,7 @@ func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
 	}
 
 	// Try to get the deleted training
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -469,8 +457,7 @@ func TestTrainingHandler_DeleteTraining_UserIsolation(t *testing.T) {
 		"is_favorite": false,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/trainings", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -482,7 +469,7 @@ func TestTrainingHandler_DeleteTraining_UserIsolation(t *testing.T) {
 	trainingID := int(createdTraining["ID"].(float64))
 
 	// User 2 tries to delete User 1's training
-	req, _ = http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -496,7 +483,7 @@ func TestTrainingHandler_DeleteTraining_UserIsolation(t *testing.T) {
 	}
 
 	// Verify training still exists for user 1
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, _ = app.Test(req)
 

@@ -1,7 +1,6 @@
 package handler_test
 
 import (
-	"bytes"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
@@ -36,8 +35,7 @@ func TestSessionHandler_CreateSession_Success(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -81,8 +79,7 @@ func TestSessionHandler_CreateSession_MissingName(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -111,8 +108,7 @@ func TestSessionHandler_CreateSession_Unauthorized(t *testing.T) {
 	}
 	body, _ := json.Marshal(reqBody)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	// No authorization header
 
 	resp, err := app.Test(req)
@@ -146,8 +142,7 @@ func TestSessionHandler_GetSessions_Success(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	_, err := app.Test(req)
 	if err != nil {
@@ -155,7 +150,7 @@ func TestSessionHandler_GetSessions_Success(t *testing.T) {
 	}
 
 	// Get sessions
-	req, _ = http.NewRequest(http.MethodGet, "/api/sessions", nil)
+	req = testutil.NewRequest(http.MethodGet, "/api/sessions", nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -197,8 +192,7 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -210,7 +204,7 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 	sessionID := int(createdSession["ID"].(float64))
 
 	// Get the session
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -258,8 +252,7 @@ func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -271,7 +264,7 @@ func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
 	sessionID := int(createdSession["ID"].(float64))
 
 	// User 2 tries to access User 1's session
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -307,8 +300,7 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -326,8 +318,7 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 		"duration": 7200,
 	}
 	body, _ = json.Marshal(updateBody)
-	req, _ = http.NewRequest(http.MethodPut, fmt.Sprintf("/api/sessions/%d", sessionID), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/sessions/%d", sessionID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -374,8 +365,7 @@ func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -393,8 +383,7 @@ func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
 		"duration": 1,
 	}
 	body, _ = json.Marshal(updateBody)
-	req, _ = http.NewRequest(http.MethodPut, fmt.Sprintf("/api/sessions/%d", sessionID), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/sessions/%d", sessionID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -429,8 +418,7 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -442,7 +430,7 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 	sessionID := int(createdSession["ID"].(float64))
 
 	// Delete the session
-	req, _ = http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -455,7 +443,7 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 	}
 
 	// Try to get the deleted session
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -487,8 +475,7 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 		"duration":     3600,
 	}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, err := app.Test(req)
 	if err != nil {
@@ -500,7 +487,7 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 	sessionID := int(createdSession["ID"].(float64))
 
 	// User 2 tries to delete User 1's session
-	req, _ = http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -514,7 +501,7 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 	}
 
 	// Verify session still exists for user 1
-	req, _ = http.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%d", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, _ = app.Test(req)
 

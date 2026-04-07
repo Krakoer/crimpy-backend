@@ -1,12 +1,15 @@
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"crimpy/backend/internal/database"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"testing"
 
@@ -223,4 +226,33 @@ func CreateTestAdminUser(t *testing.T, queries *db.Queries, email string) (strin
 // GetAuthHeader returns a Bearer token header
 func GetAuthHeader(token string) string {
 	return fmt.Sprintf("Bearer %s", token)
+}
+
+// NewRequest creates an HTTP request with proper headers for Fiber v3
+func NewRequest(method, url string, body io.Reader) *http.Request {
+	req, _ := http.NewRequest(method, url, body)
+	req.Host = "localhost"
+	return req
+}
+
+// NewRequestWithAuth creates an HTTP request with auth header and proper headers for Fiber v3
+func NewRequestWithAuth(method, url string, body io.Reader, token string) *http.Request {
+	req := NewRequest(method, url, body)
+	req.Header.Set("Authorization", GetAuthHeader(token))
+	return req
+}
+
+// NewJSONRequest creates an HTTP request with JSON content type and proper headers for Fiber v3
+func NewJSONRequest(method, url string, body []byte) *http.Request {
+	req := NewRequest(method, url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// NewJSONRequestWithAuth creates an HTTP request with JSON and auth headers for Fiber v3
+func NewJSONRequestWithAuth(method, url string, body []byte, token string) *http.Request {
+	req := NewRequest(method, url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", GetAuthHeader(token))
+	return req
 }
