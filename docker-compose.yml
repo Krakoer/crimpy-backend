@@ -1,26 +1,80 @@
+name: crimpy
+
+networks:
+  proxy:
+    external: true
+  crimpy_net:
+    name: crimpy_net
+
 services:
   db:
+    container_name: crimpy_postgres
     image: postgres:16-alpine
+    env_file:
+      - .env.prod
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: crimpy
-    ports: ["5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    networks:
+      - crimpy_net
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "${DB_NAME}", "-U", "${DB_USER}" ]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  migrate:
+    container_name: crimpy_migrate
+    image: arigaio/atlas:latest
+    env_file:
+      - .env.prod
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - crimpy_net
+    command:
+      - migrate
+      - apply
+      - --url
+      - ${DATABASE_URL}
+      - --dir
+      - file://migrations
+    volumes:
+      - ./migrations:/migrations
+    depends_on:
+      db:
+        condition: service_healthy
 
   api:
+    container_name: crimpy_api
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    ports: ["3000:3000"]
+      dockerfile: Dockerfile
+    env_file:
+      - .env.prod
     environment:
-      DATABASE_URL: postgres://user:pass@db:5432/crimpy?sslmode=disable
-      JWT_SECRET: devsecret
-      ENV: development
-    depends_on: [db]
-    volumes:
-      - .:/app
-      - /app/tmp
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: ${PORT:-3000}
+      ENV: production
+    expose:
+      - ${PORT:-3000}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.crimpy-api.rule=Host(`api.portfolio-online.ovh`)
+      - traefik.http.routers.crimpy-api.entrypoints=websecure
+      - traefik.http.routers.crimpy-api.tls.certresolver=dnsResolver
+    networks:
+      - crimpy_net
+      - proxy
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: always
 
 volumes:
   pgdata:
+    driver: local

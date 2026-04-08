@@ -8,19 +8,22 @@ migrate_status:
     atlas migrate status --env dev
 
 dev:
-    docker compose up --build
+    docker compose -f docker-compose.dev.yml up --build
 
 dev-d:
-    docker compose up -d --build
+    docker compose -f docker-compose.dev.yml up -d --build
 
 logs:
-    docker compose logs -f api
+    docker compose -f docker-compose.dev.yml logs -f api
 
 up:
-    docker compose up -d
+    docker compose -f docker-compose.dev.yml up -d
 
 down:
-    docker compose down
+    docker compose -f docker-compose.dev.yml down
+
+status:
+    docker compose -f docker-compose.dev.yml ps
 
 test:
     DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret go test -v ./tests/...
@@ -30,13 +33,13 @@ swagger:
 
 prod-up:
     mkdir -p pgdata
-    export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+    docker compose --env-file .env.prod up -d --build
 
 prod-down:
-    export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) && docker compose -f docker-compose.prod.yml --env-file .env.prod down
+    docker compose --env-file .env.prod down
 
 prod-logs:
-    export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) && docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f api
+    docker compose --env-file .env.prod logs -f api
 
 prod-restart:
-    export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) && docker compose -f docker-compose.prod.yml --env-file .env.prod restart api
+    docker compose --env-file .env.prod restart api

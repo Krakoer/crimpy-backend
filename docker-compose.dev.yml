@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: crimpy
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgres://user:pass@db:5432/crimpy?sslmode=disable
+      JWT_SECRET: devsecret
+      ENV: development
+    depends_on: [db]
+    volumes:
+      - .:/app
+      - /app/tmp
+
+volumes:
+  pgdata:
