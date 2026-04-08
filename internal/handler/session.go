@@ -59,7 +59,36 @@ type UpdateSessionRequest struct {
 	Duration int32  `json:"duration"`
 }
 
-// CreateSession creates a new session for the authenticated user
+type SessionResponse struct {
+	ID                int32  `json:"id"`
+	UserID            string `json:"user_id"`
+	Name              string `json:"name"`
+	Notes             string `json:"notes"`
+	Date              string `json:"date"`
+	IsAssessment      bool   `json:"is_assessment"`
+	SessionType       int32  `json:"session_type"`
+	Duration          int32  `json:"duration"`
+	RepeaterSets      *int32 `json:"repeater_sets,omitempty"`
+	RepeaterReps      *int32 `json:"repeater_reps,omitempty"`
+	RepeaterWorkTime  *int32 `json:"repeater_work_time,omitempty"`
+	RepeaterRestTime  *int32 `json:"repeater_rest_time,omitempty"`
+	RepeaterSetRest   *int32 `json:"repeater_set_rest,omitempty"`
+	RepeaterSplitHand *bool  `json:"repeater_split_hand,omitempty"`
+}
+
+// CreateSession godoc
+// @Summary Create a new session
+// @Description Create a new training session for the authenticated user with optional rep data and assessments
+// @Tags Session
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateSessionRequest true "Session details"
+// @Success 201 {object} SessionResponse "Session created successfully"
+// @Failure 400 {object} map[string]string "Invalid request or validation error"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sessions [post]
 func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	if userID == "" {
@@ -178,7 +207,17 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(session)
 }
 
-// GetSessions retrieves all sessions for the authenticated user
+// GetSessions godoc
+// @Summary Get all sessions
+// @Description Retrieve all training sessions for the authenticated user
+// @Tags Session
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} SessionResponse "List of sessions"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sessions [get]
 func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	if userID == "" {
@@ -198,7 +237,19 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 	return c.JSON(sessions)
 }
 
-// GetSession retrieves a specific session by ID with all related data
+// GetSession godoc
+// @Summary Get a session by ID
+// @Description Retrieve a specific session by ID with all related rep data and assessments. User must own the session unless they are an admin.
+// @Tags Session
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Session ID"
+// @Success 200 {object} map[string]interface{} "Session details with rep_datas and assessments"
+// @Failure 400 {object} map[string]string "Invalid session ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Session not found"
+// @Router /api/sessions/{id} [get]
 func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -228,7 +279,21 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 	})
 }
 
-// UpdateSession updates a session
+// UpdateSession godoc
+// @Summary Update a session
+// @Description Update a session's name, notes, and duration. User must own the session unless they are an admin.
+// @Tags Session
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Session ID"
+// @Param request body UpdateSessionRequest true "Updated session details"
+// @Success 200 {object} SessionResponse "Updated session"
+// @Failure 400 {object} map[string]string "Invalid request or session ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Session not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sessions/{id} [put]
 func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -266,7 +331,20 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
-// DeleteSession deletes a session
+// DeleteSession godoc
+// @Summary Delete a session
+// @Description Delete a session. User must own the session unless they are an admin.
+// @Tags Session
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Session ID"
+// @Success 200 {object} map[string]string "Session deleted successfully"
+// @Failure 400 {object} map[string]string "Invalid session ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Session not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sessions/{id} [delete]
 func (h *SessionHandler) DeleteSession(c fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {

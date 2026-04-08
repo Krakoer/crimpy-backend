@@ -110,6 +110,899 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/repeaters": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new repeater configuration with sets, reps, timings, and grip settings",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Repeater"
+                ],
+                "summary": "Create a new repeater configuration",
+                "parameters": [
+                    {
+                        "description": "Repeater configuration details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateRepeaterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Repeater created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/handler.RepeaterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repeaters/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a specific repeater configuration by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Repeater"
+                ],
+                "summary": "Get a repeater by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Repeater ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Repeater details",
+                        "schema": {
+                            "$ref": "#/definitions/handler.RepeaterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid repeater ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Repeater not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a repeater's configuration settings",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Repeater"
+                ],
+                "summary": "Update a repeater configuration",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Repeater ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated repeater configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateRepeaterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated repeater",
+                        "schema": {
+                            "$ref": "#/definitions/handler.RepeaterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or repeater ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a repeater configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Repeater"
+                ],
+                "summary": "Delete a repeater configuration",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Repeater ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Repeater deleted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid repeater ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all training sessions for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session"
+                ],
+                "summary": "Get all sessions",
+                "responses": {
+                    "200": {
+                        "description": "List of sessions",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.SessionResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session"
+                ],
+                "summary": "Create a new session",
+                "parameters": [
+                    {
+                        "description": "Session details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Session created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/handler.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sessions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a specific session by ID with all related rep data and assessments. User must own the session unless they are an admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session"
+                ],
+                "summary": "Get a session by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session details with rep_datas and assessments",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid session ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a session's name, notes, and duration. User must own the session unless they are an admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session"
+                ],
+                "summary": "Update a session",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated session details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated session",
+                        "schema": {
+                            "$ref": "#/definitions/handler.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or session ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a session. User must own the session unless they are an admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session"
+                ],
+                "summary": "Delete a session",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session deleted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid session ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/trainings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all trainings for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Training"
+                ],
+                "summary": "Get all trainings",
+                "responses": {
+                    "200": {
+                        "description": "List of trainings",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.TrainingResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new training for the authenticated user with optional rep templates",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Training"
+                ],
+                "summary": "Create a new training",
+                "parameters": [
+                    {
+                        "description": "Training details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateTrainingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Training created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/trainings/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a specific training by ID. User must own the training unless they are an admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Training"
+                ],
+                "summary": "Get a training by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Training details",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid training ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a training's name and favorite status. User must own the training unless they are an admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Training"
+                ],
+                "summary": "Update a training",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated training details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateTrainingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated training",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or training ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a training. User must own the training unless they are an admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Training"
+                ],
+                "summary": "Delete a training",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Training deleted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid training ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate user and return JWT token",
@@ -236,6 +1129,23 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.AssessmentRequest": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "type": {
+                    "type": "integer"
+                }
+            }
+        },
         "handler.ChangePasswordRequest": {
             "type": "object",
             "properties": {
@@ -247,6 +1157,111 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.CreateRepeaterRequest": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "resttime": {
+                    "type": "integer"
+                },
+                "set_rest": {
+                    "type": "integer"
+                },
+                "sets": {
+                    "type": "integer"
+                },
+                "split_hand": {
+                    "type": "boolean"
+                },
+                "target_weight_left": {
+                    "type": "number"
+                },
+                "target_weight_right": {
+                    "type": "number"
+                },
+                "worktime": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.CreateSessionRequest": {
+            "type": "object",
+            "properties": {
+                "assessments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentRequest"
+                    }
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "is_assessment": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "rep_datas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.RepDataRequest"
+                    }
+                },
+                "repeater_reps": {
+                    "type": "integer"
+                },
+                "repeater_rest_time": {
+                    "type": "integer"
+                },
+                "repeater_set_rest": {
+                    "type": "integer"
+                },
+                "repeater_sets": {
+                    "type": "integer"
+                },
+                "repeater_split_hand": {
+                    "type": "boolean"
+                },
+                "repeater_work_time": {
+                    "type": "integer"
+                },
+                "session_type": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.CreateTrainingRequest": {
+            "type": "object",
+            "properties": {
+                "is_assessment": {
+                    "type": "boolean"
+                },
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rep_templates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.RepTemplateRequest"
+                    }
+                },
+                "repeater_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -274,6 +1289,217 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.RepDataRequest": {
+            "type": "object",
+            "properties": {
+                "average_weight": {
+                    "type": "number"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "grip_position": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "is_rest": {
+                    "type": "boolean"
+                },
+                "right_hand": {
+                    "type": "boolean"
+                },
+                "target_weight": {
+                    "type": "number"
+                }
+            }
+        },
+        "handler.RepTemplateRequest": {
+            "type": "object",
+            "properties": {
+                "duration": {
+                    "type": "integer"
+                },
+                "grip_position": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "is_rest": {
+                    "type": "boolean"
+                },
+                "right_hand": {
+                    "type": "boolean"
+                },
+                "target_weight": {
+                    "type": "number"
+                }
+            }
+        },
+        "handler.RepeaterResponse": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "resttime": {
+                    "type": "integer"
+                },
+                "set_rest": {
+                    "type": "integer"
+                },
+                "sets": {
+                    "type": "integer"
+                },
+                "split_hand": {
+                    "type": "boolean"
+                },
+                "target_weight_left": {
+                    "type": "number"
+                },
+                "target_weight_right": {
+                    "type": "number"
+                },
+                "worktime": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.SessionResponse": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_assessment": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "repeater_reps": {
+                    "type": "integer"
+                },
+                "repeater_rest_time": {
+                    "type": "integer"
+                },
+                "repeater_set_rest": {
+                    "type": "integer"
+                },
+                "repeater_sets": {
+                    "type": "integer"
+                },
+                "repeater_split_hand": {
+                    "type": "boolean"
+                },
+                "repeater_work_time": {
+                    "type": "integer"
+                },
+                "session_type": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.TrainingResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "is_assessment": {
+                    "type": "boolean"
+                },
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "repeater_id": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateRepeaterRequest": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "resttime": {
+                    "type": "integer"
+                },
+                "set_rest": {
+                    "type": "integer"
+                },
+                "sets": {
+                    "type": "integer"
+                },
+                "split_hand": {
+                    "type": "boolean"
+                },
+                "target_weight_left": {
+                    "type": "number"
+                },
+                "target_weight_right": {
+                    "type": "number"
+                },
+                "worktime": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.UpdateSessionRequest": {
+            "type": "object",
+            "properties": {
+                "duration": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateTrainingRequest": {
+            "type": "object",
+            "properties": {
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "name": {
                     "type": "string"
                 }
             }

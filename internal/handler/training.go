@@ -42,7 +42,28 @@ type UpdateTrainingRequest struct {
 	IsFavorite bool   `json:"is_favorite"`
 }
 
-// CreateTraining creates a new training for the authenticated user
+type TrainingResponse struct {
+	ID           int32  `json:"id"`
+	UserID       string `json:"user_id"`
+	Name         string `json:"name"`
+	RepeaterID   *int32 `json:"repeater_id,omitempty"`
+	IsFavorite   bool   `json:"is_favorite"`
+	IsAssessment bool   `json:"is_assessment"`
+}
+
+// CreateTraining godoc
+// @Summary Create a new training
+// @Description Create a new training for the authenticated user with optional rep templates
+// @Tags Training
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateTrainingRequest true "Training details"
+// @Success 201 {object} TrainingResponse "Training created successfully"
+// @Failure 400 {object} map[string]string "Invalid request or validation error"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/trainings [post]
 func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	if userID == "" {
@@ -106,7 +127,17 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(training)
 }
 
-// GetTrainings retrieves all trainings for the authenticated user
+// GetTrainings godoc
+// @Summary Get all trainings
+// @Description Retrieve all trainings for the authenticated user
+// @Tags Training
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} TrainingResponse "List of trainings"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/trainings [get]
 func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	if userID == "" {
@@ -126,7 +157,19 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	return c.JSON(trainings)
 }
 
-// GetTraining retrieves a specific training by ID
+// GetTraining godoc
+// @Summary Get a training by ID
+// @Description Retrieve a specific training by ID. User must own the training unless they are an admin.
+// @Tags Training
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Training ID"
+// @Success 200 {object} TrainingResponse "Training details"
+// @Failure 400 {object} map[string]string "Invalid training ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Training not found"
+// @Router /api/trainings/{id} [get]
 func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -148,7 +191,21 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 	return c.JSON(training)
 }
 
-// UpdateTraining updates a training
+// UpdateTraining godoc
+// @Summary Update a training
+// @Description Update a training's name and favorite status. User must own the training unless they are an admin.
+// @Tags Training
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Training ID"
+// @Param request body UpdateTrainingRequest true "Updated training details"
+// @Success 200 {object} TrainingResponse "Updated training"
+// @Failure 400 {object} map[string]string "Invalid request or training ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Training not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/trainings/{id} [put]
 func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -185,7 +242,20 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	return c.JSON(updated)
 }
 
-// DeleteTraining deletes a training
+// DeleteTraining godoc
+// @Summary Delete a training
+// @Description Delete a training. User must own the training unless they are an admin.
+// @Tags Training
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Training ID"
+// @Success 200 {object} map[string]string "Training deleted successfully"
+// @Failure 400 {object} map[string]string "Invalid training ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Training not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/trainings/{id} [delete]
 func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {

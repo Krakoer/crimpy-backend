@@ -1,5 +1,16 @@
 basePath: /
 definitions:
+  handler.AssessmentRequest:
+    properties:
+      grip_position:
+        type: integer
+      left_value:
+        type: number
+      right_value:
+        type: number
+      type:
+        type: integer
+    type: object
   handler.ChangePasswordRequest:
     properties:
       new_password:
@@ -8,6 +19,75 @@ definitions:
         type: string
       user_id:
         type: string
+    type: object
+  handler.CreateRepeaterRequest:
+    properties:
+      grip_position:
+        type: integer
+      reps:
+        type: integer
+      resttime:
+        type: integer
+      set_rest:
+        type: integer
+      sets:
+        type: integer
+      split_hand:
+        type: boolean
+      target_weight_left:
+        type: number
+      target_weight_right:
+        type: number
+      worktime:
+        type: integer
+    type: object
+  handler.CreateSessionRequest:
+    properties:
+      assessments:
+        items:
+          $ref: '#/definitions/handler.AssessmentRequest'
+        type: array
+      duration:
+        type: integer
+      is_assessment:
+        type: boolean
+      name:
+        type: string
+      notes:
+        type: string
+      rep_datas:
+        items:
+          $ref: '#/definitions/handler.RepDataRequest'
+        type: array
+      repeater_reps:
+        type: integer
+      repeater_rest_time:
+        type: integer
+      repeater_set_rest:
+        type: integer
+      repeater_sets:
+        type: integer
+      repeater_split_hand:
+        type: boolean
+      repeater_work_time:
+        type: integer
+      session_type:
+        type: integer
+    type: object
+  handler.CreateTrainingRequest:
+    properties:
+      is_assessment:
+        type: boolean
+      is_favorite:
+        type: boolean
+      name:
+        type: string
+      rep_templates:
+        items:
+          $ref: '#/definitions/handler.RepTemplateRequest'
+        type: array
+      repeater_id:
+        type: integer
     type: object
   handler.LoginRequest:
     properties:
@@ -25,6 +105,144 @@ definitions:
       lastname:
         type: string
       password:
+        type: string
+    type: object
+  handler.RepDataRequest:
+    properties:
+      average_weight:
+        type: number
+      duration:
+        type: integer
+      grip_position:
+        type: integer
+      index:
+        type: integer
+      is_rest:
+        type: boolean
+      right_hand:
+        type: boolean
+      target_weight:
+        type: number
+    type: object
+  handler.RepTemplateRequest:
+    properties:
+      duration:
+        type: integer
+      grip_position:
+        type: integer
+      index:
+        type: integer
+      is_rest:
+        type: boolean
+      right_hand:
+        type: boolean
+      target_weight:
+        type: number
+    type: object
+  handler.RepeaterResponse:
+    properties:
+      grip_position:
+        type: integer
+      id:
+        type: integer
+      reps:
+        type: integer
+      resttime:
+        type: integer
+      set_rest:
+        type: integer
+      sets:
+        type: integer
+      split_hand:
+        type: boolean
+      target_weight_left:
+        type: number
+      target_weight_right:
+        type: number
+      worktime:
+        type: integer
+    type: object
+  handler.SessionResponse:
+    properties:
+      date:
+        type: string
+      duration:
+        type: integer
+      id:
+        type: integer
+      is_assessment:
+        type: boolean
+      name:
+        type: string
+      notes:
+        type: string
+      repeater_reps:
+        type: integer
+      repeater_rest_time:
+        type: integer
+      repeater_set_rest:
+        type: integer
+      repeater_sets:
+        type: integer
+      repeater_split_hand:
+        type: boolean
+      repeater_work_time:
+        type: integer
+      session_type:
+        type: integer
+      user_id:
+        type: string
+    type: object
+  handler.TrainingResponse:
+    properties:
+      id:
+        type: integer
+      is_assessment:
+        type: boolean
+      is_favorite:
+        type: boolean
+      name:
+        type: string
+      repeater_id:
+        type: integer
+      user_id:
+        type: string
+    type: object
+  handler.UpdateRepeaterRequest:
+    properties:
+      grip_position:
+        type: integer
+      reps:
+        type: integer
+      resttime:
+        type: integer
+      set_rest:
+        type: integer
+      sets:
+        type: integer
+      split_hand:
+        type: boolean
+      target_weight_left:
+        type: number
+      target_weight_right:
+        type: number
+      worktime:
+        type: integer
+    type: object
+  handler.UpdateSessionRequest:
+    properties:
+      duration:
+        type: integer
+      name:
+        type: string
+      notes:
+        type: string
+    type: object
+  handler.UpdateTrainingRequest:
+    properties:
+      is_favorite:
+        type: boolean
+      name:
         type: string
     type: object
 host: api.portfolio-online.ovh
@@ -97,6 +315,589 @@ paths:
       summary: Change user password
       tags:
       - Authentication
+  /api/repeaters:
+    post:
+      consumes:
+      - application/json
+      description: Create a new repeater configuration with sets, reps, timings, and
+        grip settings
+      parameters:
+      - description: Repeater configuration details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateRepeaterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Repeater created successfully
+          schema:
+            $ref: '#/definitions/handler.RepeaterResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new repeater configuration
+      tags:
+      - Repeater
+  /api/repeaters/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a repeater configuration
+      parameters:
+      - description: Repeater ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Repeater deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid repeater ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a repeater configuration
+      tags:
+      - Repeater
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific repeater configuration by ID
+      parameters:
+      - description: Repeater ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Repeater details
+          schema:
+            $ref: '#/definitions/handler.RepeaterResponse'
+        "400":
+          description: Invalid repeater ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Repeater not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a repeater by ID
+      tags:
+      - Repeater
+    put:
+      consumes:
+      - application/json
+      description: Update a repeater's configuration settings
+      parameters:
+      - description: Repeater ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated repeater configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateRepeaterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated repeater
+          schema:
+            $ref: '#/definitions/handler.RepeaterResponse'
+        "400":
+          description: Invalid request or repeater ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a repeater configuration
+      tags:
+      - Repeater
+  /api/sessions:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all training sessions for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of sessions
+          schema:
+            items:
+              $ref: '#/definitions/handler.SessionResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all sessions
+      tags:
+      - Session
+    post:
+      consumes:
+      - application/json
+      description: Create a new training session for the authenticated user with optional
+        rep data and assessments
+      parameters:
+      - description: Session details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Session created successfully
+          schema:
+            $ref: '#/definitions/handler.SessionResponse'
+        "400":
+          description: Invalid request or validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new session
+      tags:
+      - Session
+  /api/sessions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a session. User must own the session unless they are an
+        admin.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a session
+      tags:
+      - Session
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific session by ID with all related rep data and
+        assessments. User must own the session unless they are an admin.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session details with rep_datas and assessments
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a session by ID
+      tags:
+      - Session
+    put:
+      consumes:
+      - application/json
+      description: Update a session's name, notes, and duration. User must own the
+        session unless they are an admin.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated session details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated session
+          schema:
+            $ref: '#/definitions/handler.SessionResponse'
+        "400":
+          description: Invalid request or session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a session
+      tags:
+      - Session
+  /api/trainings:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all trainings for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of trainings
+          schema:
+            items:
+              $ref: '#/definitions/handler.TrainingResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all trainings
+      tags:
+      - Training
+    post:
+      consumes:
+      - application/json
+      description: Create a new training for the authenticated user with optional
+        rep templates
+      parameters:
+      - description: Training details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateTrainingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Training created successfully
+          schema:
+            $ref: '#/definitions/handler.TrainingResponse'
+        "400":
+          description: Invalid request or validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new training
+      tags:
+      - Training
+  /api/trainings/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a training. User must own the training unless they are an
+        admin.
+      parameters:
+      - description: Training ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Training deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid training ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a training
+      tags:
+      - Training
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific training by ID. User must own the training
+        unless they are an admin.
+      parameters:
+      - description: Training ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Training details
+          schema:
+            $ref: '#/definitions/handler.TrainingResponse'
+        "400":
+          description: Invalid training ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a training by ID
+      tags:
+      - Training
+    put:
+      consumes:
+      - application/json
+      description: Update a training's name and favorite status. User must own the
+        training unless they are an admin.
+      parameters:
+      - description: Training ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated training details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateTrainingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated training
+          schema:
+            $ref: '#/definitions/handler.TrainingResponse'
+        "400":
+          description: Invalid request or training ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a training
+      tags:
+      - Training
   /auth/login:
     post:
       consumes:
