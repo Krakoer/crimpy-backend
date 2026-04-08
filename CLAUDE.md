@@ -169,7 +169,7 @@ This application is configured to work with **Traefik** as a reverse proxy. The 
    ```
 
 3. **Set secure credentials in .env.prod:**
-   - `DB_USER` and `DB_PASSWORD`: Database credentials
+   - `DB_USER` and `DB_PASSWORD`: Database credentials (avoid special characters like `%` and `&`)
    - `JWT_SECRET`: Generate with `openssl rand -base64 32`
    - `DATABASE_URL`: Update with your DB_PASSWORD (keep `@db:5432` as hostname)
    - `PORT`: Internal container port (default: 3000)
@@ -180,6 +180,7 @@ This application is configured to work with **Traefik** as a reverse proxy. The 
    ```
 
 This command will:
+- Create `./pgdata` directory owned by your user
 - Start PostgreSQL database with persistent storage in `./pgdata`
 - Run database migrations automatically via Atlas
 - Build and start the API server
@@ -196,10 +197,23 @@ The production setup includes these Traefik labels:
 
 To change the domain, edit the `traefik.http.routers.crimpy-api.rule` label in [docker-compose.prod.yml](docker-compose.prod.yml).
 
+### Database Data Ownership
+
+The PostgreSQL data is stored in `./pgdata` and is **owned by your user** (not root). This is achieved by:
+- Running the PostgreSQL container as your user (via `DOCKER_UID` and `DOCKER_GID` environment variables)
+- Using a bind mount to `./pgdata` instead of a Docker-managed volume
+- Setting `PGDATA=/var/lib/postgresql/data/pgdata` to work with non-root user
+
+This allows you to:
+- Back up the database by simply copying the `pgdata` directory
+- Delete the `pgdata` directory to reset the database
+- Access database files without sudo permissions
+
 **Important:**
 - Ensure `.env.prod` is never committed to version control (already in .gitignore)
 - The API container exposes port 3000 internally but is only accessible via Traefik
-- Database data persists in `./pgdata` directory
+- Database data persists in `./pgdata` directory owned by your user
+- The `pgdata` directory is excluded from Docker builds via `.dockerignore`
 
 ## Testing Notes
 

@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+docker-compose.prod.yml
+.dockerignore
+
+# PostgreSQL data
+pgdata
+
+# Environment files
+.env
+.env.prod
+.env.prod.example
+
+# Documentation
+*.md
+# Note: docs/ folder is needed for Swagger, so NOT excluded
+
+# Development tools
+.air.toml
+Justfile
+
+# Tests
+tests
+
+# Build artifacts
+tmp
+
+# IDE
+.vscode
+.idea
+
+# Bruno API collection
+bruno

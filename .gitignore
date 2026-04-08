@@ -1,5 +1,6 @@
 tmp/
 testdata/
+pgdata/
 .env.prod
 coverage.out
 coverage.html
