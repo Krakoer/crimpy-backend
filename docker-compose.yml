@@ -50,9 +50,7 @@ services:
 
   api:
     container_name: crimpy_api
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME}/crimpy-api:${API_VERSION:-latest}
     env_file:
       - .env.prod
     environment:

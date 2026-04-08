@@ -43,3 +43,7 @@ prod-logs:
 
 prod-restart:
     docker compose --env-file .env.prod restart api
+
+prod-pull:
+    docker compose --env-file .env.prod pull
+    docker compose --env-file .env.prod up -d

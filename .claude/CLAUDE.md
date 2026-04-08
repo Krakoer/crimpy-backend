@@ -215,6 +215,77 @@ This allows you to:
 - Database data persists in `./pgdata` directory owned by your user
 - The `pgdata` directory is excluded from Docker builds via `.dockerignore`
 
+### Continuous Deployment with Docker
+
+The backend uses GitHub Actions to automatically build and publish Docker images to DockerHub when version tags are created.
+
+#### Prerequisites
+
+Before using automated deployments, set up these GitHub secrets in your repository settings:
+1. `DOCKERHUB_USERNAME` - Your DockerHub username
+2. `DOCKERHUB_TOKEN` - A DockerHub access token (create at https://hub.docker.com/settings/security)
+
+#### Creating a New Release
+
+To deploy a new version to production:
+
+```bash
+# Ensure all changes are committed and pushed to main
+git checkout main
+git pull
+
+# Create and push a version tag (format: v1.0.0)
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers the GitHub Actions workflow which will:
+1. Build the Docker image for multiple platforms (amd64, arm64)
+2. Push the image to DockerHub with the version tag and `latest` tag
+3. Create a GitHub release with deployment instructions
+
+#### Updating Production Server
+
+After the GitHub Action completes, update your VPS:
+
+```bash
+# SSH into your VPS
+cd /path/to/crimpy-backend
+
+# Update .env.prod to specify the version (optional, defaults to latest)
+# API_VERSION=v1.0.0
+
+# Pull the new image and restart services
+docker compose pull
+docker compose up -d
+
+# Verify the deployment
+docker compose logs -f api
+```
+
+#### Rolling Back to a Previous Version
+
+If needed, you can roll back to any previous version:
+
+```bash
+# Edit .env.prod and set API_VERSION to the desired version
+API_VERSION=v0.9.0
+
+# Pull and restart
+docker compose pull
+docker compose up -d
+```
+
+#### Development vs Production Builds
+
+- **Development**: Use `docker-compose.dev.yml` which builds the image locally with live reload
+- **Production**: Use `docker-compose.yml` which pulls pre-built images from DockerHub
+
+To build locally for testing production configuration:
+```bash
+docker compose -f docker-compose.notraefik.yml up --build
+```
+
 ## Testing Notes
 
 - Tests are in `tests/handler/` using `handler_test` package
