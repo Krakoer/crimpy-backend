@@ -57,6 +57,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(queries)
+	adminHandler := handler.NewAdminHandler(queries)
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
@@ -111,6 +112,11 @@ func main() {
 	api.Get("/repeaters/:id", repeaterHandler.GetRepeater)
 	api.Put("/repeaters/:id", repeaterHandler.UpdateRepeater)
 	api.Delete("/repeaters/:id", repeaterHandler.DeleteRepeater)
+
+	// Admin routes
+	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)
+	api.Put("/admin/coaches/:id/validate", adminHandler.ValidateCoach)
+	api.Put("/admin/coaches/:id/reject", adminHandler.RejectCoach)
 
 	// Read port from environment or default to 3000
 	port := os.Getenv("PORT")

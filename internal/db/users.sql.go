@@ -12,7 +12,7 @@ import (
 )
 
 const createAdminUser = `-- name: CreateAdminUser :one
-INSERT INTO users (email, firstname, lastname, password, is_admin) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, created_at
+INSERT INTO users (email, firstname, lastname, password, is_admin) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, created_at
 `
 
 type CreateAdminUserParams struct {
@@ -37,13 +37,48 @@ func (q *Queries) CreateAdminUser(ctx context.Context, arg CreateAdminUserParams
 		&i.Firstname,
 		&i.Lastname,
 		&i.IsAdmin,
+		&i.IsCoach,
+		&i.CoachValidated,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createCoachUser = `-- name: CreateCoachUser :one
+INSERT INTO users (email, firstname, lastname, password, is_coach) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, created_at
+`
+
+type CreateCoachUserParams struct {
+	Email     string
+	Firstname string
+	Lastname  string
+	Password  string
+}
+
+func (q *Queries) CreateCoachUser(ctx context.Context, arg CreateCoachUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createCoachUser,
+		arg.Email,
+		arg.Firstname,
+		arg.Lastname,
+		arg.Password,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Password,
+		&i.Firstname,
+		&i.Lastname,
+		&i.IsAdmin,
+		&i.IsCoach,
+		&i.CoachValidated,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, created_at
+INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, created_at
 `
 
 type CreateUserParams struct {
@@ -69,13 +104,49 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Firstname,
 		&i.Lastname,
 		&i.IsAdmin,
+		&i.IsCoach,
+		&i.CoachValidated,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const getPendingCoaches = `-- name: GetPendingCoaches :many
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, created_at FROM users WHERE is_coach = true AND coach_validated = false ORDER BY created_at ASC
+`
+
+func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, getPendingCoaches)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Password,
+			&i.Firstname,
+			&i.Lastname,
+			&i.IsAdmin,
+			&i.IsCoach,
+			&i.CoachValidated,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password, firstname, lastname, is_admin, created_at FROM users WHERE email = $1
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, created_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -88,13 +159,15 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Firstname,
 		&i.Lastname,
 		&i.IsAdmin,
+		&i.IsCoach,
+		&i.CoachValidated,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password, firstname, lastname, is_admin, created_at FROM users WHERE id = $1
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, created_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -107,9 +180,20 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Firstname,
 		&i.Lastname,
 		&i.IsAdmin,
+		&i.IsCoach,
+		&i.CoachValidated,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const rejectCoach = `-- name: RejectCoach :exec
+UPDATE users SET is_coach = false, coach_validated = false WHERE id = $1
+`
+
+func (q *Queries) RejectCoach(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, rejectCoach, id)
+	return err
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :exec
@@ -123,5 +207,14 @@ type UpdateUserPasswordParams struct {
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.Password)
+	return err
+}
+
+const validateCoach = `-- name: ValidateCoach :exec
+UPDATE users SET coach_validated = true WHERE id = $1 AND is_coach = true
+`
+
+func (q *Queries) ValidateCoach(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, validateCoach, id)
 	return err
 }

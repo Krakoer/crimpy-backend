@@ -27,6 +27,7 @@ type RegisterRequest struct {
 	Password  string `json:"password"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
+	IsCoach   bool   `json:"is_coach"`
 }
 
 type LoginRequest struct {
@@ -35,11 +36,13 @@ type LoginRequest struct {
 }
 
 type UserResponse struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Firstname string `json:"firstname"`
-	Lastname  string `json:"lastname"`
-	CreatedAt string `json:"created_at"`
+	ID             string `json:"id"`
+	Email          string `json:"email"`
+	Firstname      string `json:"firstname"`
+	Lastname       string `json:"lastname"`
+	IsCoach        bool   `json:"is_coach"`
+	CoachValidated bool   `json:"coach_validated"`
+	CreatedAt      string `json:"created_at"`
 }
 
 // Register godoc
@@ -84,13 +87,23 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		})
 	}
 
-	// Create user in database
-	user, err := h.queries.CreateUser(context.Background(), db.CreateUserParams{
-		Email:     req.Email,
-		Password:  hashedPassword,
-		Firstname: req.Firstname,
-		Lastname:  req.Lastname,
-	})
+	// Create user in database based on account type
+	var user db.User
+	if req.IsCoach {
+		user, err = h.queries.CreateCoachUser(context.Background(), db.CreateCoachUserParams{
+			Email:     req.Email,
+			Password:  hashedPassword,
+			Firstname: req.Firstname,
+			Lastname:  req.Lastname,
+		})
+	} else {
+		user, err = h.queries.CreateUser(context.Background(), db.CreateUserParams{
+			Email:     req.Email,
+			Password:  hashedPassword,
+			Firstname: req.Firstname,
+			Lastname:  req.Lastname,
+		})
+	}
 
 	if err != nil {
 		// Check for duplicate email
@@ -105,14 +118,21 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 	}
 
 	// Return user response (without password)
+	message := "User registered successfully"
+	if req.IsCoach {
+		message = "Coach account created. Pending admin validation."
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message": "User registered successfully",
+		"message": message,
 		"user": UserResponse{
-			ID:        user.ID.String(),
-			Email:     user.Email,
-			Firstname: user.Firstname,
-			Lastname:  user.Lastname,
-			CreatedAt: user.CreatedAt.Time.String(),
+			ID:             user.ID.String(),
+			Email:          user.Email,
+			Firstname:      user.Firstname,
+			Lastname:       user.Lastname,
+			IsCoach:        user.IsCoach,
+			CoachValidated: user.CoachValidated,
+			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
 }
@@ -172,11 +192,13 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		"message": "Login successful",
 		"token":   token,
 		"user": UserResponse{
-			ID:        user.ID.String(),
-			Email:     user.Email,
-			Firstname: user.Firstname,
-			Lastname:  user.Lastname,
-			CreatedAt: user.CreatedAt.Time.String(),
+			ID:             user.ID.String(),
+			Email:          user.Email,
+			Firstname:      user.Firstname,
+			Lastname:       user.Lastname,
+			IsCoach:        user.IsCoach,
+			CoachValidated: user.CoachValidated,
+			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
 }

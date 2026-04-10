@@ -4,11 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Shell Usage
 
-Always use the `zsh` shell when running commands.
+Always source `~/.zshrc` before running commands.
 
 ## Code Style and Documentation
 
 We value code that explains itself through clear class, method, and variable names. Comments may be used when necessary to explain tricky logic, but should otherwise be avoided. Write self-documenting code with descriptive names rather than relying on comments.
+
+Use unitary commits with concise and comprehensive commit messages to make the review easier.
+
+Never use unicode characters such as long dashes, triple dots, arrows or emojis, in the code or in the doc.
 
 ## Project Overview
 

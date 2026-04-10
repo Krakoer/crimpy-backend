@@ -1,11 +1,13 @@
 CREATE TABLE "users" (
-  "id"           UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "email"        TEXT        NOT NULL,
-  "password"     TEXT        NOT NULL,
-  "firstname"    TEXT        NOT NULL,
-  "lastname"     TEXT        NOT NULL,
-  "is_admin"     BOOLEAN     NOT NULL DEFAULT false,
-  "created_at"   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"              UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "email"           TEXT        NOT NULL,
+  "password"        TEXT        NOT NULL,
+  "firstname"       TEXT        NOT NULL,
+  "lastname"        TEXT        NOT NULL,
+  "is_admin"        BOOLEAN     NOT NULL DEFAULT false,
+  "is_coach"        BOOLEAN     NOT NULL DEFAULT false,
+  "coach_validated" BOOLEAN     NOT NULL DEFAULT false,
+  "created_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 

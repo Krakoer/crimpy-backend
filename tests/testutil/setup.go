@@ -103,6 +103,11 @@ type HandlerConfig struct {
 		Login(fiber.Ctx) error
 		ChangePassword(fiber.Ctx) error
 	}
+	AdminHandler interface {
+		GetPendingCoaches(fiber.Ctx) error
+		ValidateCoach(fiber.Ctx) error
+		RejectCoach(fiber.Ctx) error
+	}
 	TrainingHandler interface {
 		CreateTraining(fiber.Ctx) error
 		GetTrainings(fiber.Ctx) error
@@ -164,6 +169,12 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Delete("/repeaters/:id", config.RepeaterHandler.DeleteRepeater)
 	}
 
+	if config.AdminHandler != nil {
+		api.Get("/admin/coaches/pending", config.AdminHandler.GetPendingCoaches)
+		api.Put("/admin/coaches/:id/validate", config.AdminHandler.ValidateCoach)
+		api.Put("/admin/coaches/:id/reject", config.AdminHandler.RejectCoach)
+	}
+
 	return app
 }
 
@@ -213,6 +224,34 @@ func CreateTestAdminUser(t *testing.T, queries *db.Queries, email string) (strin
 	})
 	if err != nil {
 		t.Fatalf("Failed to create test admin user: %v", err)
+	}
+
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
+	if err != nil {
+		t.Fatalf("Failed to generate JWT: %v", err)
+	}
+
+	return user.ID.String(), token
+}
+
+// CreateTestCoachUser creates a test coach user (unvalidated) and returns a JWT token
+func CreateTestCoachUser(t *testing.T, queries *db.Queries, email string) (string, string) {
+	t.Helper()
+
+	password := "password123"
+	hashedPassword, err := utils.HashPassword(password)
+	if err != nil {
+		t.Fatalf("Failed to hash password: %v", err)
+	}
+
+	user, err := queries.CreateCoachUser(context.Background(), db.CreateCoachUserParams{
+		Email:     email,
+		Password:  hashedPassword,
+		Firstname: "Coach",
+		Lastname:  "User",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test coach user: %v", err)
 	}
 
 	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
