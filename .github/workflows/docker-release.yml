@@ -45,6 +45,8 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
+        permissions:
+          contents: write
         with:
           generate_release_notes: true
           body: |
