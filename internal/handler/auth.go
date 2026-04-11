@@ -42,6 +42,7 @@ type UserResponse struct {
 	Lastname       string `json:"lastname"`
 	IsCoach        bool   `json:"is_coach"`
 	CoachValidated bool   `json:"coach_validated"`
+	IsAdmin        bool   `json:"is_admin"`
 	CreatedAt      string `json:"created_at"`
 }
 
@@ -132,6 +133,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 			Lastname:       user.Lastname,
 			IsCoach:        user.IsCoach,
 			CoachValidated: user.CoachValidated,
+			IsAdmin:        user.IsAdmin,
 			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
@@ -198,6 +200,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 			Lastname:       user.Lastname,
 			IsCoach:        user.IsCoach,
 			CoachValidated: user.CoachValidated,
+			IsAdmin:        user.IsAdmin,
 			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
@@ -315,5 +318,51 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Password updated successfully",
+	})
+}
+
+// GetCurrentUser godoc
+// @Summary Get current user information
+// @Description Get the authenticated user's information from their JWT token
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} UserResponse "User information"
+// @Failure 401 {object} map[string]string "Unauthorized - invalid or missing token"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/user [get]
+func (h *AuthHandler) GetCurrentUser(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(userID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid user ID",
+		})
+	}
+
+	user, err := h.queries.GetUserByID(context.Background(), userUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "User not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve user",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(UserResponse{
+		ID:             user.ID.String(),
+		Email:          user.Email,
+		Firstname:      user.Firstname,
+		Lastname:       user.Lastname,
+		IsCoach:        user.IsCoach,
+		CoachValidated: user.CoachValidated,
+		IsAdmin:        user.IsAdmin,
+		CreatedAt:      user.CreatedAt.Time.String(),
 	})
 }

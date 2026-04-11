@@ -102,6 +102,7 @@ type HandlerConfig struct {
 		Register(fiber.Ctx) error
 		Login(fiber.Ctx) error
 		ChangePassword(fiber.Ctx) error
+		GetCurrentUser(fiber.Ctx) error
 	}
 	AdminHandler interface {
 		GetPendingCoaches(fiber.Ctx) error
@@ -143,6 +144,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	api := app.Group("/api", middleware.AuthMiddleware())
 
 	if config.AuthHandler != nil {
+		api.Get("/user", config.AuthHandler.GetCurrentUser)
 		api.Put("/auth/change-password", config.AuthHandler.ChangePassword)
 	}
 

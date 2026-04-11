@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
@@ -69,6 +70,14 @@ func main() {
 	app.Use(logger.New())
 	app.Use(recover.New())
 
+	// CORS middleware - allow frontend to connect
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: true,
+	}))
+
 	// Public routes
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"message": "Crimpy Backend API"})
@@ -91,6 +100,7 @@ func main() {
 	api := app.Group("/api", middleware.AuthMiddleware())
 
 	// Auth protected routes
+	api.Get("/user", authHandler.GetCurrentUser)
 	api.Put("/auth/change-password", authHandler.ChangePassword)
 
 	// Training routes

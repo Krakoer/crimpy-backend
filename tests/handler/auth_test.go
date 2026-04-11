@@ -605,3 +605,98 @@ func TestAuthHandler_ChangePassword_NoAuth(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", fiber.StatusUnauthorized, resp.StatusCode)
 	}
 }
+
+func TestAuthHandler_GetCurrentUser_Success(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	userID, token := testutil.CreateTestUser(t, queries, "getuser@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodGet, "/api/user", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var user map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&user)
+
+	if user["id"] != userID {
+		t.Errorf("Expected user ID %s, got %v", userID, user["id"])
+	}
+
+	if user["email"] != "getuser@test.com" {
+		t.Errorf("Expected email getuser@test.com, got %v", user["email"])
+	}
+
+	if user["is_admin"] != false {
+		t.Errorf("Expected is_admin false, got %v", user["is_admin"])
+	}
+}
+
+func TestAuthHandler_GetCurrentUser_AdminUser(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	userID, token := testutil.CreateTestAdminUser(t, queries, "adminuser@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodGet, "/api/user", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var user map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&user)
+
+	if user["id"] != userID {
+		t.Errorf("Expected user ID %s, got %v", userID, user["id"])
+	}
+
+	if user["is_admin"] != true {
+		t.Errorf("Expected is_admin true, got %v", user["is_admin"])
+	}
+}
+
+func TestAuthHandler_GetCurrentUser_NoAuth(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	authHandler := handler.NewAuthHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: authHandler,
+	})
+
+	req := testutil.NewJSONRequest(http.MethodGet, "/api/user", nil)
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected status %d, got %d", fiber.StatusUnauthorized, resp.StatusCode)
+	}
+}

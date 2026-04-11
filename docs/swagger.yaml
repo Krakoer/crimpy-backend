@@ -264,6 +264,25 @@ definitions:
       name:
         type: string
     type: object
+  handler.UserResponse:
+    properties:
+      coach_validated:
+        type: boolean
+      created_at:
+        type: string
+      email:
+        type: string
+      firstname:
+        type: string
+      id:
+        type: string
+      is_admin:
+        type: boolean
+      is_coach:
+        type: boolean
+      lastname:
+        type: string
+    type: object
 host: api.portfolio-online.ovh
 info:
   contact:
@@ -1035,6 +1054,41 @@ paths:
       summary: Update a training
       tags:
       - Training
+  /api/user:
+    get:
+      consumes:
+      - application/json
+      description: Get the authenticated user's information from their JWT token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User information
+          schema:
+            $ref: '#/definitions/handler.UserResponse'
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user information
+      tags:
+      - Authentication
   /auth/login:
     post:
       consumes:
