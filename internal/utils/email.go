@@ -1,22 +1,13 @@
 package utils
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-)
 
-type ResendEmailRequest struct {
-	From       string                 `json:"from"`
-	To         []string               `json:"to"`
-	TemplateID string                 `json:"template_id"`
-	Variables  map[string]interface{} `json:"variables"`
-}
+	"github.com/resend/resend-go/v3"
+)
 
 func GenerateVerificationToken() (string, error) {
 	b := make([]byte, 32)
@@ -47,39 +38,23 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 		templateID = "email-verification-coach"
 	}
 
-	reqBody := ResendEmailRequest{
-		From:       emailFrom,
-		To:         []string{email},
-		TemplateID: templateID,
-		Variables: map[string]interface{}{
-			"firstname":         firstname,
-			"verification_link": verificationLink,
+	client := resend.NewClient(resendAPIKey)
+
+	params := &resend.SendEmailRequest{
+		From: emailFrom,
+		To:   []string{email},
+		Template: &resend.EmailTemplate{
+			Id: templateID,
+			Variables: map[string]interface{}{
+				"firstname":         firstname,
+				"verification_link": verificationLink,
+			},
 		},
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	_, err := client.Emails.Send(params)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+resendAPIKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("resend API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("failed to send email: %w", err)
 	}
 
 	return nil
