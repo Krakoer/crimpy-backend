@@ -26,6 +26,7 @@ type CoachResponse struct {
 	Lastname       string `json:"lastname"`
 	IsCoach        bool   `json:"is_coach"`
 	CoachValidated bool   `json:"coach_validated"`
+	EmailVerified  bool   `json:"email_verified"`
 	CreatedAt      string `json:"created_at"`
 }
 
@@ -63,6 +64,7 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 			Lastname:       coach.Lastname,
 			IsCoach:        coach.IsCoach,
 			CoachValidated: coach.CoachValidated,
+			EmailVerified:  coach.EmailVerified,
 			CreatedAt:      coach.CreatedAt.Time.String(),
 		})
 	}
@@ -98,7 +100,21 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		})
 	}
 
-	err := h.queries.ValidateCoach(context.Background(), userUUID)
+	// Check if coach has verified their email first
+	coach, err := h.queries.GetUserByID(context.Background(), userUUID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve coach",
+		})
+	}
+
+	if !coach.EmailVerified {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Coach must verify their email before admin validation",
+		})
+	}
+
+	err = h.queries.ValidateCoach(context.Background(), userUUID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to validate coach",

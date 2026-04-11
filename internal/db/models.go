@@ -80,13 +80,17 @@ type Training struct {
 }
 
 type User struct {
-	ID             pgtype.UUID
-	Email          string
-	Password       string
-	Firstname      string
-	Lastname       string
-	IsAdmin        bool
-	IsCoach        bool
-	CoachValidated bool
-	CreatedAt      pgtype.Timestamptz
+	ID                         pgtype.UUID
+	Email                      string
+	Password                   string
+	Firstname                  string
+	Lastname                   string
+	IsAdmin                    bool
+	IsCoach                    bool
+	CoachValidated             bool
+	EmailVerified              bool
+	VerificationToken          pgtype.Text
+	VerificationTokenExpiresAt pgtype.Timestamptz
+	VerificationEmailSentAt    pgtype.Timestamptz
+	CreatedAt                  pgtype.Timestamptz
 }

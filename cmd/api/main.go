@@ -95,6 +95,8 @@ func main() {
 	// Auth routes (public)
 	app.Post("/auth/register", authHandler.Register)
 	app.Post("/auth/login", authHandler.Login)
+	app.Get("/auth/verify", authHandler.VerifyEmail)
+	app.Post("/auth/resend-verification", authHandler.ResendVerificationEmail)
 
 	// Protected routes - require authentication
 	api := app.Group("/api", middleware.AuthMiddleware())

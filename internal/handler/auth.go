@@ -6,6 +6,7 @@ import (
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -43,6 +44,7 @@ type UserResponse struct {
 	IsCoach        bool   `json:"is_coach"`
 	CoachValidated bool   `json:"coach_validated"`
 	IsAdmin        bool   `json:"is_admin"`
+	EmailVerified  bool   `json:"email_verified"`
 	CreatedAt      string `json:"created_at"`
 }
 
@@ -118,10 +120,53 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		})
 	}
 
+	// Generate verification token and send email
+	verificationToken, err := utils.GenerateVerificationToken()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to generate verification token",
+		})
+	}
+
+	// Set token expiration to 24 hours from now
+	expiresAt := pgtype.Timestamptz{}
+	expiresAt.Scan(time.Now().Add(24 * time.Hour))
+
+	err = h.queries.SetVerificationToken(context.Background(), db.SetVerificationTokenParams{
+		ID:                         user.ID,
+		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
+		VerificationTokenExpiresAt: expiresAt,
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to save verification token",
+		})
+	}
+
+	// Send verification email
+	if err := utils.SendVerificationEmail(user.Email, user.Firstname, verificationToken, req.IsCoach); err != nil {
+		// Log error but don't fail registration
+		// User can request to resend verification email
+		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+			"message": "User registered, but verification email failed to send. Please request a new verification email.",
+			"user": UserResponse{
+				ID:             user.ID.String(),
+				Email:          user.Email,
+				Firstname:      user.Firstname,
+				Lastname:       user.Lastname,
+				IsCoach:        user.IsCoach,
+				CoachValidated: user.CoachValidated,
+				IsAdmin:        user.IsAdmin,
+				EmailVerified:  user.EmailVerified,
+				CreatedAt:      user.CreatedAt.Time.String(),
+			},
+		})
+	}
+
 	// Return user response (without password)
-	message := "User registered successfully"
+	message := "User registered successfully. Please check your email to verify your account."
 	if req.IsCoach {
-		message = "Coach account created. Pending admin validation."
+		message = "Coach account created. Please verify your email to proceed with admin validation."
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
@@ -134,6 +179,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 			IsCoach:        user.IsCoach,
 			CoachValidated: user.CoachValidated,
 			IsAdmin:        user.IsAdmin,
+			EmailVerified:  user.EmailVerified,
 			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
@@ -183,6 +229,13 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
+	// Check if email is verified
+	if !user.EmailVerified {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Please verify your email before logging in. Check your inbox for the verification link.",
+		})
+	}
+
 	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -201,6 +254,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 			IsCoach:        user.IsCoach,
 			CoachValidated: user.CoachValidated,
 			IsAdmin:        user.IsAdmin,
+			EmailVerified:  user.EmailVerified,
 			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
@@ -363,6 +417,147 @@ func (h *AuthHandler) GetCurrentUser(c fiber.Ctx) error {
 		IsCoach:        user.IsCoach,
 		CoachValidated: user.CoachValidated,
 		IsAdmin:        user.IsAdmin,
+		EmailVerified:  user.EmailVerified,
 		CreatedAt:      user.CreatedAt.Time.String(),
+	})
+}
+
+// VerifyEmail godoc
+// @Summary Verify user email
+// @Description Verify user email using the token sent via email
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param token query string true "Verification token"
+// @Success 200 {object} map[string]string "Email verified successfully"
+// @Failure 400 {object} map[string]string "Invalid or missing token"
+// @Failure 404 {object} map[string]string "Invalid or expired token"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/verify [get]
+func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
+	token := c.Query("token")
+	if token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Verification token is required",
+		})
+	}
+
+	user, err := h.queries.GetUserByVerificationToken(context.Background(), pgtype.Text{String: token, Valid: true})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Invalid or expired verification token",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to verify email",
+		})
+	}
+
+	err = h.queries.VerifyUserEmail(context.Background(), user.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update verification status",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Email verified successfully. You can now log in.",
+	})
+}
+
+type ResendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
+// ResendVerificationEmail godoc
+// @Summary Resend verification email
+// @Description Resend verification email with a 10-minute cooldown per email
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body ResendVerificationRequest true "Email address"
+// @Success 200 {object} map[string]string "Verification email sent"
+// @Failure 400 {object} map[string]string "Invalid request or email already verified"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 429 {object} map[string]string "Too many requests - cooldown active"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/resend-verification [post]
+func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
+	var req ResendVerificationRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email is required",
+		})
+	}
+
+	user, err := h.queries.GetUserByEmail(context.Background(), req.Email)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "User not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve user",
+		})
+	}
+
+	if user.EmailVerified {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email is already verified",
+		})
+	}
+
+	// Check cooldown (10 minutes)
+	lastSent, err := h.queries.GetVerificationEmailSentAt(context.Background(), req.Email)
+	if err == nil && lastSent.Valid {
+		timeSinceLastSent := time.Since(lastSent.Time)
+		if timeSinceLastSent < 10*time.Minute {
+			remainingTime := 10*time.Minute - timeSinceLastSent
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Please wait before requesting another verification email. Try again in " + remainingTime.Round(time.Second).String(),
+			})
+		}
+	}
+
+	// Generate new verification token
+	verificationToken, err := utils.GenerateVerificationToken()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to generate verification token",
+		})
+	}
+
+	// Set token expiration to 24 hours from now
+	expiresAt := pgtype.Timestamptz{}
+	expiresAt.Scan(time.Now().Add(24 * time.Hour))
+
+	err = h.queries.SetVerificationToken(context.Background(), db.SetVerificationTokenParams{
+		ID:                         user.ID,
+		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
+		VerificationTokenExpiresAt: expiresAt,
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to save verification token",
+		})
+	}
+
+	// Send verification email
+	if err := utils.SendVerificationEmail(user.Email, user.Firstname, verificationToken, user.IsCoach); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send verification email",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Verification email sent successfully. Please check your inbox.",
 	})
 }
