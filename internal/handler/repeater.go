@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crimpy/backend/internal/db"
+	"crimpy/backend/internal/middleware"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -68,6 +69,13 @@ type RepeaterResponse struct {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/repeaters [post]
 func (h *RepeaterHandler) CreateRepeater(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(userID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
 	var req CreateRepeaterRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
@@ -84,6 +92,7 @@ func (h *RepeaterHandler) CreateRepeater(c fiber.Ctx) error {
 	}
 
 	repeater, err := h.queries.CreateRepeater(context.Background(), db.CreateRepeaterParams{
+		UserID:            userUUID,
 		Sets:              req.Sets,
 		Reps:              req.Reps,
 		Worktime:          req.Worktime,

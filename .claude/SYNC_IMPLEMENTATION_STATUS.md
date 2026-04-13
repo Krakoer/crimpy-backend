@@ -72,7 +72,13 @@ if !isAdmin && resource.UserID.Bytes != userUUID.Bytes {
 }
 ```
 
-## In Progress / Pending
+## In Progress
+
+### Schema Applied Successfully
+- ✅ Removed Atlas trigger functions (Atlas Pro-only feature)
+- ✅ Sync version and server_updated_at will be managed in application code
+- ✅ All tests passing with UUID-based schema
+- ✅ Fixed test utilities to handle UUIDs instead of integers
 
 ### Sync Handler - Push/Migrate Implementation
 The Push and Migrate handlers currently return stub responses. Need to implement:
@@ -81,6 +87,8 @@ The Push and Migrate handlers currently return stub responses. Need to implement
 2. **Migrate endpoint** - Bulk insert with conflict handling
 3. **Proper error handling** for malformed UUIDs and timestamps
 4. **Validation** of device_id header
+
+## Pending
 
 ### Missing Features
 

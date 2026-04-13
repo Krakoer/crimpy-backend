@@ -13,13 +13,14 @@ import (
 
 const createRepeater = `-- name: CreateRepeater :one
 INSERT INTO repeaters (
-  sets, reps, worktime, resttime, set_rest,
+  user_id, sets, reps, worktime, resttime, set_rest,
   target_weight_right, target_weight_left, split_hand, grip_position
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id
 `
 
 type CreateRepeaterParams struct {
+	UserID            pgtype.UUID
 	Sets              int32
 	Reps              int32
 	Worktime          int32
@@ -33,6 +34,7 @@ type CreateRepeaterParams struct {
 
 func (q *Queries) CreateRepeater(ctx context.Context, arg CreateRepeaterParams) (Repeater, error) {
 	row := q.db.QueryRow(ctx, createRepeater,
+		arg.UserID,
 		arg.Sets,
 		arg.Reps,
 		arg.Worktime,

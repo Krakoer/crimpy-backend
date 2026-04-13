@@ -1,8 +1,2 @@
-h1:xa4iyqnDiWwJLY+cN4W6DPeN+8urVgObEHoDqZGN7xE=
-20260402154027_initial.sql h1:SgMm8XOhea3WMf0KDQHTROHRJNMklm4jFEENCvCqhmc=
-20260402162810_add_training_tables.sql h1:R1PogzU+77e53bTncC9Z5iK2DrF6/7G1fEmhr//e72Q=
-20260402202217_remove_unused_fields.sql h1:kjH1U7LHmlAbVz0YSq/D30L/I/E7Oig8pE6yrzpfJsg=
-20260402202429_add_admin_field.sql h1:jKMfDpWpgKTTBU7S7Hz55nsiHw3JDp9QZE9cTveERjA=
-20260410204122_add_coach_fields.sql h1:v9+AMJihYs7SPcoIXtkHavzZZnD/80fWon4d+SjOLKY=
-20260411115731_add_email_verification.sql h1:YeJnSzUxlUskebcGZfu315Yp/1cwhLpmGOTY6dw+qsk=
-20260413095350_add_cloud_sync_support.sql h1:0X9jvXOjcP7ZvNE9cIR1b4cKuJhYiypokdvo6kGYYao=
+h1:KjY0vG77+zOuVmabNSTFAhJDP3rSp//ojLONrIRjGcI=
+20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
