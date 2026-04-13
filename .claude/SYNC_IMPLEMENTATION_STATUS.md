@@ -43,30 +43,36 @@
 - ✅ Added sync routes to `cmd/api/main.go`
 - ✅ All sync endpoints protected by JWT authentication
 
-## In Progress / Pending
+## Completed - Handler UUID Migration
 
-### Breaking Changes - Requires Full Handler Refactoring
-**CRITICAL:** The migration from SERIAL (integer) IDs to UUIDs is a breaking change that affects ALL existing handlers and queries.
+### Handler Refactoring - DONE
+- ✅ Updated session.go to use UUID string parameters
+- ✅ Updated training.go to use UUID string parameters
+- ✅ Updated repeater.go to use UUID string parameters
+- ✅ Fixed sync.go type assertions for LastSyncVersion
+- ✅ Added UUID conversion helper functions (uuidToString, uuidPtrToString)
+- ✅ Updated all Swagger documentation to reflect UUID parameters
+- ✅ Changed CreateTrainingRequest.RepeaterID from int32 to string
+- ✅ Regenerated database code with sqlc
+- ✅ Build successful with all UUID changes
 
-#### Files That Need Updates:
-1. **internal/handler/session.go** - Update to use UUID string params instead of integers
-2. **internal/handler/training.go** - Update to use UUID string params
-3. **internal/handler/repeater.go** - Update to use UUID string params
-4. **queries/*.sql** - All existing queries need UUID parameter types
-5. **All tests** - Update to generate and use UUIDs
-
-#### Specific Issues to Fix:
+### UUID Implementation Details
+All handlers now use:
 ```go
-// OLD (integer):
-id, _ := c.Params().Int("id")
-h.queries.GetSession(ctx, int32(id))
-
-// NEW (UUID):
 idStr := c.Params("id")
 var uuid pgtype.UUID
 uuid.Scan(idStr)
 h.queries.GetSession(ctx, uuid)
 ```
+
+User ownership verification uses byte comparison:
+```go
+if !isAdmin && resource.UserID.Bytes != userUUID.Bytes {
+    return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+}
+```
+
+## In Progress / Pending
 
 ### Sync Handler - Push/Migrate Implementation
 The Push and Migrate handlers currently return stub responses. Need to implement:
