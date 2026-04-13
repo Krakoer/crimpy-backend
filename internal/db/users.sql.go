@@ -123,6 +123,15 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUser, id)
+	return err
+}
+
 const getPendingCoaches = `-- name: GetPendingCoaches :many
 SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users WHERE is_coach = true AND coach_validated = false AND email_verified = true ORDER BY created_at ASC
 `
@@ -245,6 +254,44 @@ func (q *Queries) GetVerificationEmailSentAt(ctx context.Context, email string) 
 	var verification_email_sent_at pgtype.Timestamptz
 	err := row.Scan(&verification_email_sent_at)
 	return verification_email_sent_at, err
+}
+
+const listAllUsers = `-- name: ListAllUsers :many
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users ORDER BY created_at DESC
+`
+
+func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listAllUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Password,
+			&i.Firstname,
+			&i.Lastname,
+			&i.IsAdmin,
+			&i.IsCoach,
+			&i.CoachValidated,
+			&i.EmailVerified,
+			&i.VerificationToken,
+			&i.VerificationTokenExpiresAt,
+			&i.VerificationEmailSentAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const rejectCoach = `-- name: RejectCoach :exec

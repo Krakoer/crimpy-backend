@@ -129,6 +129,8 @@ func main() {
 	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)
 	api.Put("/admin/coaches/:id/validate", adminHandler.ValidateCoach)
 	api.Put("/admin/coaches/:id/reject", adminHandler.RejectCoach)
+	api.Get("/admin/users", adminHandler.ListUsers)
+	api.Delete("/admin/users/:id", adminHandler.DeleteUser)
 
 	// Read port from environment or default to 3000
 	port := os.Getenv("PORT")

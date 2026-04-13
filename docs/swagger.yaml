@@ -423,6 +423,86 @@ paths:
       summary: Get pending coach accounts
       tags:
       - Admin
+  /api/admin/users:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all users in the system (admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of all users
+          schema:
+            items:
+              $ref: '#/definitions/handler.UserResponse'
+            type: array
+        "403":
+          description: Admin access required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all users
+      tags:
+      - Admin
+  /api/admin/users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a user from the system (admin only)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid user ID or cannot delete admin
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Admin access required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a user
+      tags:
+      - Admin
   /api/auth/change-password:
     put:
       consumes:

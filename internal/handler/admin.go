@@ -165,3 +165,102 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 		"message": "Coach rejected successfully",
 	})
 }
+
+// ListUsers godoc
+// @Summary List all users
+// @Description Retrieve all users in the system (admin only)
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} UserResponse "List of all users"
+// @Failure 403 {object} map[string]string "Admin access required"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/admin/users [get]
+func (h *AdminHandler) ListUsers(c fiber.Ctx) error {
+	if !middleware.IsAdmin(c) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Admin access required",
+		})
+	}
+
+	users, err := h.queries.ListAllUsers(context.Background())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve users",
+		})
+	}
+
+	var response []UserResponse
+	for _, user := range users {
+		response = append(response, UserResponse{
+			ID:             user.ID.String(),
+			Email:          user.Email,
+			Firstname:      user.Firstname,
+			Lastname:       user.Lastname,
+			IsCoach:        user.IsCoach,
+			CoachValidated: user.CoachValidated,
+			IsAdmin:        user.IsAdmin,
+			EmailVerified:  user.EmailVerified,
+			CreatedAt:      user.CreatedAt.Time.String(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(response)
+}
+
+// DeleteUser godoc
+// @Summary Delete a user
+// @Description Delete a user from the system (admin only)
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Success 200 {object} map[string]string "User deleted successfully"
+// @Failure 400 {object} map[string]string "Invalid user ID or cannot delete admin"
+// @Failure 403 {object} map[string]string "Admin access required"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/admin/users/{id} [delete]
+func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
+	if !middleware.IsAdmin(c) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Admin access required",
+		})
+	}
+
+	userID := c.Params("id")
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(userID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid user ID",
+		})
+	}
+
+	// Check if user exists and is not an admin
+	user, err := h.queries.GetUserByID(context.Background(), userUUID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "User not found",
+		})
+	}
+
+	// Prevent deletion of admin users
+	if user.IsAdmin {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot delete admin users",
+		})
+	}
+
+	err = h.queries.DeleteUser(context.Background(), userUUID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to delete user",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "User deleted successfully",
+	})
+}

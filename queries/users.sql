@@ -37,3 +37,9 @@ UPDATE users SET email_verified = true, verification_token = NULL, verification_
 
 -- name: GetVerificationEmailSentAt :one
 SELECT verification_email_sent_at FROM users WHERE email = $1;
+
+-- name: ListAllUsers :many
+SELECT * FROM users ORDER BY created_at DESC;
+
+-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1;
