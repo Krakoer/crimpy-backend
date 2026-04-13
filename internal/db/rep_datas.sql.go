@@ -7,18 +7,20 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createRepData = `-- name: CreateRepData :one
 INSERT INTO rep_datas (
   average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
+RETURNING id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id
 `
 
 type CreateRepDataParams struct {
 	AverageWeight float32
-	SessionID     int32
+	SessionID     pgtype.UUID
 	IsRest        bool
 	RightHand     bool
 	Duration      int32
@@ -49,6 +51,13 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.DeviceID,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
@@ -57,7 +66,7 @@ const deleteRepData = `-- name: DeleteRepData :exec
 DELETE FROM rep_datas WHERE id = $1
 `
 
-func (q *Queries) DeleteRepData(ctx context.Context, id int32) error {
+func (q *Queries) DeleteRepData(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteRepData, id)
 	return err
 }
@@ -66,16 +75,16 @@ const deleteSessionRepDatas = `-- name: DeleteSessionRepDatas :exec
 DELETE FROM rep_datas WHERE session_id = $1
 `
 
-func (q *Queries) DeleteSessionRepDatas(ctx context.Context, sessionID int32) error {
+func (q *Queries) DeleteSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteSessionRepDatas, sessionID)
 	return err
 }
 
 const getRepData = `-- name: GetRepData :one
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position FROM rep_datas WHERE id = $1
+SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM rep_datas WHERE id = $1
 `
 
-func (q *Queries) GetRepData(ctx context.Context, id int32) (RepData, error) {
+func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, error) {
 	row := q.db.QueryRow(ctx, getRepData, id)
 	var i RepData
 	err := row.Scan(
@@ -88,15 +97,22 @@ func (q *Queries) GetRepData(ctx context.Context, id int32) (RepData, error) {
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.DeviceID,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position FROM rep_datas WHERE session_id = $1 ORDER BY index
+SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM rep_datas WHERE session_id = $1 ORDER BY index
 `
 
-func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID int32) ([]RepData, error) {
+func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) ([]RepData, error) {
 	rows, err := q.db.Query(ctx, getSessionRepDatas, sessionID)
 	if err != nil {
 		return nil, err
@@ -115,6 +131,13 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID int32) ([]Re
 			&i.TargetWeight,
 			&i.Index,
 			&i.GripPosition,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DeviceID,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}

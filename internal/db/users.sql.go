@@ -12,7 +12,7 @@ import (
 )
 
 const createAdminUser = `-- name: CreateAdminUser :one
-INSERT INTO users (email, firstname, lastname, password, is_admin, email_verified) VALUES ($1, $2, $3, $4, true, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at
+INSERT INTO users (email, firstname, lastname, password, is_admin, email_verified) VALUES ($1, $2, $3, $4, true, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at
 `
 
 type CreateAdminUserParams struct {
@@ -44,12 +44,13 @@ func (q *Queries) CreateAdminUser(ctx context.Context, arg CreateAdminUserParams
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
 		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const createCoachUser = `-- name: CreateCoachUser :one
-INSERT INTO users (email, firstname, lastname, password, is_coach) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at
+INSERT INTO users (email, firstname, lastname, password, is_coach) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at
 `
 
 type CreateCoachUserParams struct {
@@ -81,12 +82,13 @@ func (q *Queries) CreateCoachUser(ctx context.Context, arg CreateCoachUserParams
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
 		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at
+INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at
 `
 
 type CreateUserParams struct {
@@ -119,6 +121,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
 		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
@@ -133,7 +136,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getPendingCoaches = `-- name: GetPendingCoaches :many
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users WHERE is_coach = true AND coach_validated = false AND email_verified = true ORDER BY created_at ASC
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE is_coach = true AND coach_validated = false AND email_verified = true ORDER BY created_at ASC
 `
 
 func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
@@ -159,6 +162,7 @@ func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
 			&i.VerificationTokenExpiresAt,
 			&i.VerificationEmailSentAt,
 			&i.CreatedAt,
+			&i.LastSeenAt,
 		); err != nil {
 			return nil, err
 		}
@@ -171,7 +175,7 @@ func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users WHERE email = $1
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -191,12 +195,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
 		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users WHERE id = $1
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -216,12 +221,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
 		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getUserByVerificationToken = `-- name: GetUserByVerificationToken :one
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users WHERE verification_token = $1 AND verification_token_expires_at > NOW()
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE verification_token = $1 AND verification_token_expires_at > NOW()
 `
 
 func (q *Queries) GetUserByVerificationToken(ctx context.Context, verificationToken pgtype.Text) (User, error) {
@@ -241,6 +247,7 @@ func (q *Queries) GetUserByVerificationToken(ctx context.Context, verificationTo
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
 		&i.CreatedAt,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
@@ -257,7 +264,7 @@ func (q *Queries) GetVerificationEmailSentAt(ctx context.Context, email string) 
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at FROM users ORDER BY created_at DESC
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -283,6 +290,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.VerificationTokenExpiresAt,
 			&i.VerificationEmailSentAt,
 			&i.CreatedAt,
+			&i.LastSeenAt,
 		); err != nil {
 			return nil, err
 		}

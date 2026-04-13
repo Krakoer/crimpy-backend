@@ -14,14 +14,14 @@ import (
 const createAssessment = `-- name: CreateAssessment :one
 INSERT INTO assessments (type, right_value, left_value, session_id, grip_position)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, type, right_value, left_value, session_id, grip_position
+RETURNING id, type, right_value, left_value, session_id, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id
 `
 
 type CreateAssessmentParams struct {
 	Type         int32
 	RightValue   pgtype.Float4
 	LeftValue    pgtype.Float4
-	SessionID    int32
+	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
 }
 
@@ -41,6 +41,13 @@ func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentPara
 		&i.LeftValue,
 		&i.SessionID,
 		&i.GripPosition,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.DeviceID,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
@@ -49,16 +56,16 @@ const deleteAssessment = `-- name: DeleteAssessment :exec
 DELETE FROM assessments WHERE id = $1
 `
 
-func (q *Queries) DeleteAssessment(ctx context.Context, id int32) error {
+func (q *Queries) DeleteAssessment(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteAssessment, id)
 	return err
 }
 
 const getAssessment = `-- name: GetAssessment :one
-SELECT id, type, right_value, left_value, session_id, grip_position FROM assessments WHERE id = $1
+SELECT id, type, right_value, left_value, session_id, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM assessments WHERE id = $1
 `
 
-func (q *Queries) GetAssessment(ctx context.Context, id int32) (Assessment, error) {
+func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment, error) {
 	row := q.db.QueryRow(ctx, getAssessment, id)
 	var i Assessment
 	err := row.Scan(
@@ -68,15 +75,22 @@ func (q *Queries) GetAssessment(ctx context.Context, id int32) (Assessment, erro
 		&i.LeftValue,
 		&i.SessionID,
 		&i.GripPosition,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.DeviceID,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const getSessionAssessments = `-- name: GetSessionAssessments :many
-SELECT id, type, right_value, left_value, session_id, grip_position FROM assessments WHERE session_id = $1
+SELECT id, type, right_value, left_value, session_id, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM assessments WHERE session_id = $1
 `
 
-func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID int32) ([]Assessment, error) {
+func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UUID) ([]Assessment, error) {
 	rows, err := q.db.Query(ctx, getSessionAssessments, sessionID)
 	if err != nil {
 		return nil, err
@@ -92,6 +106,13 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID int32) ([
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DeviceID,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -104,7 +125,7 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID int32) ([
 }
 
 const getUserAssessmentsByType = `-- name: GetUserAssessmentsByType :many
-SELECT a.id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position FROM assessments a
+SELECT a.id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.created_at, a.updated_at, a.deleted_at, a.device_id, a.sync_version, a.server_updated_at, a.user_id FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 WHERE s.user_id = $1 AND a.type = $2
 ORDER BY s.date DESC
@@ -131,6 +152,13 @@ func (q *Queries) GetUserAssessmentsByType(ctx context.Context, arg GetUserAsses
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DeviceID,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}

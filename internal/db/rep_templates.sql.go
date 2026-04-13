@@ -7,20 +7,22 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createRepTemplate = `-- name: CreateRepTemplate :one
 INSERT INTO rep_templates (
   is_rest, right_hand, duration, training_id, target_weight, index, grip_position
 ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position
+RETURNING id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id
 `
 
 type CreateRepTemplateParams struct {
 	IsRest       bool
 	RightHand    bool
 	Duration     int32
-	TrainingID   int32
+	TrainingID   pgtype.UUID
 	TargetWeight float32
 	Index        int32
 	GripPosition int32
@@ -46,6 +48,13 @@ func (q *Queries) CreateRepTemplate(ctx context.Context, arg CreateRepTemplatePa
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.DeviceID,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
@@ -54,7 +63,7 @@ const deleteRepTemplate = `-- name: DeleteRepTemplate :exec
 DELETE FROM rep_templates WHERE id = $1
 `
 
-func (q *Queries) DeleteRepTemplate(ctx context.Context, id int32) error {
+func (q *Queries) DeleteRepTemplate(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteRepTemplate, id)
 	return err
 }
@@ -63,16 +72,16 @@ const deleteTrainingRepTemplates = `-- name: DeleteTrainingRepTemplates :exec
 DELETE FROM rep_templates WHERE training_id = $1
 `
 
-func (q *Queries) DeleteTrainingRepTemplates(ctx context.Context, trainingID int32) error {
+func (q *Queries) DeleteTrainingRepTemplates(ctx context.Context, trainingID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteTrainingRepTemplates, trainingID)
 	return err
 }
 
 const getRepTemplate = `-- name: GetRepTemplate :one
-SELECT id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position FROM rep_templates WHERE id = $1
+SELECT id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM rep_templates WHERE id = $1
 `
 
-func (q *Queries) GetRepTemplate(ctx context.Context, id int32) (RepTemplate, error) {
+func (q *Queries) GetRepTemplate(ctx context.Context, id pgtype.UUID) (RepTemplate, error) {
 	row := q.db.QueryRow(ctx, getRepTemplate, id)
 	var i RepTemplate
 	err := row.Scan(
@@ -84,15 +93,22 @@ func (q *Queries) GetRepTemplate(ctx context.Context, id int32) (RepTemplate, er
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.DeviceID,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const getTrainingRepTemplates = `-- name: GetTrainingRepTemplates :many
-SELECT id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position FROM rep_templates WHERE training_id = $1 ORDER BY index
+SELECT id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM rep_templates WHERE training_id = $1 ORDER BY index
 `
 
-func (q *Queries) GetTrainingRepTemplates(ctx context.Context, trainingID int32) ([]RepTemplate, error) {
+func (q *Queries) GetTrainingRepTemplates(ctx context.Context, trainingID pgtype.UUID) ([]RepTemplate, error) {
 	rows, err := q.db.Query(ctx, getTrainingRepTemplates, trainingID)
 	if err != nil {
 		return nil, err
@@ -110,6 +126,13 @@ func (q *Queries) GetTrainingRepTemplates(ctx context.Context, trainingID int32)
 			&i.TargetWeight,
 			&i.Index,
 			&i.GripPosition,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DeviceID,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}

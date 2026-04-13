@@ -62,6 +62,7 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
+	syncHandler := handler.NewSyncHandler(queries)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -131,6 +132,12 @@ func main() {
 	api.Put("/admin/coaches/:id/reject", adminHandler.RejectCoach)
 	api.Get("/admin/users", adminHandler.ListUsers)
 	api.Delete("/admin/users/:id", adminHandler.DeleteUser)
+
+	// Sync routes
+	api.Get("/sync/summary", syncHandler.GetSummary)
+	api.Get("/sync/pull", syncHandler.Pull)
+	api.Post("/sync/push", syncHandler.Push)
+	api.Post("/sync/migrate", syncHandler.Migrate)
 
 	// Read port from environment or default to 3000
 	port := os.Getenv("PORT")

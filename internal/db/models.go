@@ -9,39 +9,60 @@ import (
 )
 
 type Assessment struct {
-	ID           int32
-	Type         int32
-	RightValue   pgtype.Float4
-	LeftValue    pgtype.Float4
-	SessionID    int32
-	GripPosition pgtype.Int4
+	ID              pgtype.UUID
+	Type            int32
+	RightValue      pgtype.Float4
+	LeftValue       pgtype.Float4
+	SessionID       pgtype.UUID
+	GripPosition    pgtype.Int4
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	DeviceID        pgtype.UUID
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
+	UserID          pgtype.UUID
 }
 
 type RepData struct {
-	ID            int32
-	AverageWeight float32
-	SessionID     int32
-	IsRest        bool
-	RightHand     bool
-	Duration      int32
-	TargetWeight  float32
-	Index         int32
-	GripPosition  int32
+	ID              pgtype.UUID
+	AverageWeight   float32
+	SessionID       pgtype.UUID
+	IsRest          bool
+	RightHand       bool
+	Duration        int32
+	TargetWeight    float32
+	Index           int32
+	GripPosition    int32
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	DeviceID        pgtype.UUID
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
+	UserID          pgtype.UUID
 }
 
 type RepTemplate struct {
-	ID           int32
-	IsRest       bool
-	RightHand    bool
-	Duration     int32
-	TrainingID   int32
-	TargetWeight float32
-	Index        int32
-	GripPosition int32
+	ID              pgtype.UUID
+	IsRest          bool
+	RightHand       bool
+	Duration        int32
+	TrainingID      pgtype.UUID
+	TargetWeight    float32
+	Index           int32
+	GripPosition    int32
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	DeviceID        pgtype.UUID
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
+	UserID          pgtype.UUID
 }
 
 type Repeater struct {
-	ID                int32
+	ID                pgtype.UUID
 	Sets              int32
 	Reps              int32
 	Worktime          int32
@@ -51,10 +72,17 @@ type Repeater struct {
 	TargetWeightLeft  pgtype.Float4
 	SplitHand         bool
 	GripPosition      int32
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	DeviceID          pgtype.UUID
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
+	UserID            pgtype.UUID
 }
 
 type Session struct {
-	ID                int32
+	ID                pgtype.UUID
 	UserID            pgtype.UUID
 	Name              string
 	Notes             string
@@ -68,15 +96,27 @@ type Session struct {
 	RepeaterRestTime  pgtype.Int4
 	RepeaterSetRest   pgtype.Int4
 	RepeaterSplitHand pgtype.Bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	DeviceID          pgtype.UUID
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type Training struct {
-	ID           int32
-	UserID       pgtype.UUID
-	Name         string
-	RepeaterID   pgtype.Int4
-	IsFavorite   bool
-	IsAssessment bool
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	Name            string
+	RepeaterID      pgtype.UUID
+	IsFavorite      bool
+	IsAssessment    bool
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	DeviceID        pgtype.UUID
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
 }
 
 type User struct {
@@ -93,4 +133,5 @@ type User struct {
 	VerificationTokenExpiresAt pgtype.Timestamptz
 	VerificationEmailSentAt    pgtype.Timestamptz
 	CreatedAt                  pgtype.Timestamptz
+	LastSeenAt                 pgtype.Timestamptz
 }
