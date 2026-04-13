@@ -4,9 +4,11 @@ import (
 	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -171,6 +173,13 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 		})
 	}
 
+	lastSyncVersion := int64(0)
+	if summary.LastSyncVersion != nil {
+		if v, ok := summary.LastSyncVersion.(int64); ok {
+			lastSyncVersion = v
+		}
+	}
+
 	return c.Status(fiber.StatusOK).JSON(SyncSummaryResponse{
 		UserID: userID,
 		Collections: map[string]int64{
@@ -181,13 +190,17 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 			"rep_templates": summary.RepTemplatesCount,
 			"rep_datas":     summary.RepDatasCount,
 		},
-		LastSyncVersion: summary.LastSyncVersion,
+		LastSyncVersion: lastSyncVersion,
 	})
 }
 
 func (h *SyncHandler) Pull(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-	sinceVersion := c.QueryInt("since_version", 0)
+	sinceVersionStr := c.Query("since_version", "0")
+	sinceVersion := int64(0)
+	if v, err := strconv.ParseInt(sinceVersionStr, 10, 64); err == nil {
+		sinceVersion = v
+	}
 
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
@@ -293,8 +306,15 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		repDataRecords[i] = convertRepDataToRecord(rd)
 	}
 
+	lastSyncVersion := int64(0)
+	if summary.LastSyncVersion != nil {
+		if v, ok := summary.LastSyncVersion.(int64); ok {
+			lastSyncVersion = v
+		}
+	}
+
 	return c.Status(fiber.StatusOK).JSON(PullResponse{
-		ServerVersion: summary.LastSyncVersion,
+		ServerVersion: lastSyncVersion,
 		Records: map[string]interface{}{
 			"sessions":      sessionRecords,
 			"assessments":   assessmentRecords,
@@ -333,8 +353,15 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 		})
 	}
 
+	lastSyncVersion := int64(0)
+	if summary.LastSyncVersion != nil {
+		if v, ok := summary.LastSyncVersion.(int64); ok {
+			lastSyncVersion = v
+		}
+	}
+
 	return c.Status(fiber.StatusOK).JSON(PushResponse{
-		ServerVersion: summary.LastSyncVersion,
+		ServerVersion: lastSyncVersion,
 		Accepted:      accepted,
 		Rejected:      rejected,
 		Conflicts:     []string{},
@@ -352,14 +379,8 @@ func convertSessionToRecord(s db.Session) SessionRecord {
 		deletedAt = &t
 	}
 
-	var deviceID *string
-	if s.DeviceID.Valid {
-		d := s.DeviceID.Bytes.String()
-		deviceID = &d
-	}
-
 	return SessionRecord{
-		ID:                s.ID.Bytes.String(),
+		ID:                uuidToString(s.ID),
 		Name:              s.Name,
 		Notes:             s.Notes,
 		Date:              s.Date.Time.Format(time.RFC3339),
@@ -375,7 +396,7 @@ func convertSessionToRecord(s db.Session) SessionRecord {
 		CreatedAt:         s.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:         s.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
-		DeviceID:          deviceID,
+		DeviceID:          uuidPtrToString(s.DeviceID),
 		SyncVersion:       s.SyncVersion,
 		ServerUpdatedAt:   s.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -388,23 +409,17 @@ func convertAssessmentToRecord(a db.Assessment) AssessmentRecord {
 		deletedAt = &t
 	}
 
-	var deviceID *string
-	if a.DeviceID.Valid {
-		d := a.DeviceID.Bytes.String()
-		deviceID = &d
-	}
-
 	return AssessmentRecord{
-		ID:              a.ID.Bytes.String(),
+		ID:              uuidToString(a.ID),
 		Type:            a.Type,
 		RightValue:      convertFloat32Ptr(a.RightValue),
 		LeftValue:       convertFloat32Ptr(a.LeftValue),
-		SessionID:       a.SessionID.Bytes.String(),
+		SessionID:       uuidToString(a.SessionID),
 		GripPosition:    a.GripPosition.Int32,
 		CreatedAt:       a.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       a.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        deviceID,
+		DeviceID:        uuidPtrToString(a.DeviceID),
 		SyncVersion:     a.SyncVersion,
 		ServerUpdatedAt: a.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -417,28 +432,16 @@ func convertTrainingToRecord(t db.Training) TrainingRecord {
 		deletedAt = &dt
 	}
 
-	var deviceID *string
-	if t.DeviceID.Valid {
-		d := t.DeviceID.Bytes.String()
-		deviceID = &d
-	}
-
-	var repeaterID *string
-	if t.RepeaterID.Valid {
-		r := t.RepeaterID.Bytes.String()
-		repeaterID = &r
-	}
-
 	return TrainingRecord{
-		ID:              t.ID.Bytes.String(),
+		ID:              uuidToString(t.ID),
 		Name:            t.Name,
-		RepeaterID:      repeaterID,
+		RepeaterID:      uuidPtrToString(t.RepeaterID),
 		IsFavorite:      t.IsFavorite,
 		IsAssessment:    t.IsAssessment,
 		CreatedAt:       t.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       t.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        deviceID,
+		DeviceID:        uuidPtrToString(t.DeviceID),
 		SyncVersion:     t.SyncVersion,
 		ServerUpdatedAt: t.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -451,14 +454,8 @@ func convertRepeaterToRecord(r db.Repeater) RepeaterRecord {
 		deletedAt = &t
 	}
 
-	var deviceID *string
-	if r.DeviceID.Valid {
-		d := r.DeviceID.Bytes.String()
-		deviceID = &d
-	}
-
 	return RepeaterRecord{
-		ID:                r.ID.Bytes.String(),
+		ID:                uuidToString(r.ID),
 		Sets:              r.Sets,
 		Reps:              r.Reps,
 		Worktime:          r.Worktime,
@@ -471,7 +468,7 @@ func convertRepeaterToRecord(r db.Repeater) RepeaterRecord {
 		CreatedAt:         r.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:         r.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
-		DeviceID:          deviceID,
+		DeviceID:          uuidPtrToString(r.DeviceID),
 		SyncVersion:       r.SyncVersion,
 		ServerUpdatedAt:   r.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -484,15 +481,9 @@ func convertRepTemplateToRecord(rt db.RepTemplate) RepTemplateRecord {
 		deletedAt = &t
 	}
 
-	var deviceID *string
-	if rt.DeviceID.Valid {
-		d := rt.DeviceID.Bytes.String()
-		deviceID = &d
-	}
-
 	return RepTemplateRecord{
-		ID:              rt.ID.Bytes.String(),
-		TrainingID:      rt.TrainingID.Bytes.String(),
+		ID:              uuidToString(rt.ID),
+		TrainingID:      uuidToString(rt.TrainingID),
 		IsRest:          rt.IsRest,
 		RightHand:       rt.RightHand,
 		Duration:        rt.Duration,
@@ -502,7 +493,7 @@ func convertRepTemplateToRecord(rt db.RepTemplate) RepTemplateRecord {
 		CreatedAt:       rt.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       rt.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        deviceID,
+		DeviceID:        uuidPtrToString(rt.DeviceID),
 		SyncVersion:     rt.SyncVersion,
 		ServerUpdatedAt: rt.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -515,15 +506,9 @@ func convertRepDataToRecord(rd db.RepData) RepDataRecord {
 		deletedAt = &t
 	}
 
-	var deviceID *string
-	if rd.DeviceID.Valid {
-		d := rd.DeviceID.Bytes.String()
-		deviceID = &d
-	}
-
 	return RepDataRecord{
-		ID:              rd.ID.Bytes.String(),
-		SessionID:       rd.SessionID.Bytes.String(),
+		ID:              uuidToString(rd.ID),
+		SessionID:       uuidToString(rd.SessionID),
 		AverageWeight:   rd.AverageWeight,
 		IsRest:          rd.IsRest,
 		RightHand:       rd.RightHand,
@@ -534,7 +519,7 @@ func convertRepDataToRecord(rd db.RepData) RepDataRecord {
 		CreatedAt:       rd.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       rd.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        deviceID,
+		DeviceID:        uuidPtrToString(rd.DeviceID),
 		SyncVersion:     rd.SyncVersion,
 		ServerUpdatedAt: rd.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -559,4 +544,19 @@ func convertBoolPtr(v pgtype.Bool) *bool {
 		return &v.Bool
 	}
 	return nil
+}
+
+func uuidToString(u pgtype.UUID) string {
+	if !u.Valid {
+		return ""
+	}
+	return uuid.UUID(u.Bytes).String()
+}
+
+func uuidPtrToString(u pgtype.UUID) *string {
+	if !u.Valid {
+		return nil
+	}
+	s := uuid.UUID(u.Bytes).String()
+	return &s
 }

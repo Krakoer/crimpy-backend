@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"crimpy/backend/internal/db"
-	"strconv"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -110,18 +109,19 @@ func (h *RepeaterHandler) CreateRepeater(c fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Repeater ID"
+// @Param id path string true "Repeater ID (UUID)"
 // @Success 200 {object} RepeaterResponse "Repeater details"
 // @Failure 400 {object} map[string]string "Invalid repeater ID"
 // @Failure 404 {object} map[string]string "Repeater not found"
 // @Router /api/repeaters/{id} [get]
 func (h *RepeaterHandler) GetRepeater(c fiber.Ctx) error {
-	id, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
+	idStr := c.Params("id")
+	var repeaterUUID pgtype.UUID
+	if err := repeaterUUID.Scan(idStr); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid repeater ID"})
 	}
 
-	repeater, err := h.queries.GetRepeater(context.Background(), int32(id))
+	repeater, err := h.queries.GetRepeater(context.Background(), repeaterUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Repeater not found"})
 	}
@@ -136,15 +136,16 @@ func (h *RepeaterHandler) GetRepeater(c fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Repeater ID"
+// @Param id path string true "Repeater ID (UUID)"
 // @Param request body UpdateRepeaterRequest true "Updated repeater configuration"
 // @Success 200 {object} RepeaterResponse "Updated repeater"
 // @Failure 400 {object} map[string]string "Invalid request or repeater ID"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/repeaters/{id} [put]
 func (h *RepeaterHandler) UpdateRepeater(c fiber.Ctx) error {
-	id, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
+	idStr := c.Params("id")
+	var repeaterUUID pgtype.UUID
+	if err := repeaterUUID.Scan(idStr); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid repeater ID"})
 	}
 
@@ -164,7 +165,7 @@ func (h *RepeaterHandler) UpdateRepeater(c fiber.Ctx) error {
 	}
 
 	updated, err := h.queries.UpdateRepeater(context.Background(), db.UpdateRepeaterParams{
-		ID:                int32(id),
+		ID:                repeaterUUID,
 		Sets:              req.Sets,
 		Reps:              req.Reps,
 		Worktime:          req.Worktime,
@@ -190,18 +191,19 @@ func (h *RepeaterHandler) UpdateRepeater(c fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Repeater ID"
+// @Param id path string true "Repeater ID (UUID)"
 // @Success 200 {object} map[string]string "Repeater deleted successfully"
 // @Failure 400 {object} map[string]string "Invalid repeater ID"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/repeaters/{id} [delete]
 func (h *RepeaterHandler) DeleteRepeater(c fiber.Ctx) error {
-	id, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
+	idStr := c.Params("id")
+	var repeaterUUID pgtype.UUID
+	if err := repeaterUUID.Scan(idStr); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid repeater ID"})
 	}
 
-	if err := h.queries.DeleteRepeater(context.Background(), int32(id)); err != nil {
+	if err := h.queries.DeleteRepeater(context.Background(), repeaterUUID); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete repeater"})
 	}
 
