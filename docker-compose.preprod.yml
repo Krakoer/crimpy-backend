@@ -18,6 +18,7 @@ services:
       POSTGRES_DB: ${DB_NAME}
     networks:
       - crimpy_dev_net
+    ports: ["5432:5432"]
     volumes:
       - dev-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -67,7 +68,7 @@ services:
       - ${PORT:-3000}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.dev-crimpy-api.rule=Host(`dev.crimpy.app`)
+      - traefik.http.routers.dev-crimpy-api.rule=Host(`devapi.crimpy.app`)
       - traefik.http.routers.dev-crimpy-api.entrypoints=websecure
       - traefik.http.routers.dev-crimpy-api.tls.certresolver=dnsResolver
       - traefik.http.routers.crimpypg.middlewares=traefik-ip
