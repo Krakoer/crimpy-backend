@@ -149,6 +149,17 @@ type RepDataRecord struct {
 	ServerUpdatedAt string  `json:"server_updated_at"`
 }
 
+// GetSummary godoc
+// @Summary Get sync summary
+// @Description Returns count of records per collection and last sync version for the authenticated user
+// @Tags sync
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} SyncSummaryResponse "Sync summary"
+// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sync/summary [get]
 func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
@@ -194,6 +205,18 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 	})
 }
 
+// Pull godoc
+// @Summary Pull sync changes
+// @Description Returns all records modified after the specified sync version for incremental sync
+// @Tags sync
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param since_version query integer false "Sync version to pull changes since" default(0)
+// @Success 200 {object} PullResponse "Records and current server version"
+// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sync/pull [get]
 func (h *SyncHandler) Pull(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	sinceVersionStr := c.Query("since_version", "0")
@@ -326,6 +349,18 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 	})
 }
 
+// Push godoc
+// @Summary Push local changes to cloud
+// @Description Accepts a batch of locally changed records and applies last-write-wins conflict resolution
+// @Tags sync
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body PushRequest true "Records to push"
+// @Success 200 {object} PushResponse "Push results with accepted and rejected IDs"
+// @Failure 400 {object} map[string]string "Invalid request body or user ID"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sync/push [post]
 func (h *SyncHandler) Push(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
@@ -447,6 +482,18 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 	})
 }
 
+// Migrate godoc
+// @Summary Migrate local data to cloud on first sync
+// @Description Bulk uploads all local data when cloud account is empty (called once at first login)
+// @Tags sync
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body PushRequest true "All local records to migrate"
+// @Success 200 {object} PushResponse "Migration results with accepted and rejected IDs"
+// @Failure 400 {object} map[string]string "Invalid request body or user ID"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sync/migrate [post]
 func (h *SyncHandler) Migrate(c fiber.Ctx) error {
 	return h.Push(c)
 }

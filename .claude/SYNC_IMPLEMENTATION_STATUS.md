@@ -72,6 +72,17 @@ if !isAdmin && resource.UserID.Bytes != userUUID.Bytes {
 }
 ```
 
+## Completed - Sync Endpoints Implementation
+
+### Push and Migrate Endpoints - DONE
+- ✅ Implemented Push endpoint with full record parsing
+- ✅ Implemented Migrate endpoint (reuses Push logic)
+- ✅ Added helper functions for UUID and timestamp parsing
+- ✅ Created upsert methods for all 6 collection types
+- ✅ Last-write-wins conflict resolution based on updated_at timestamps
+- ✅ Proper error handling with accepted/rejected record tracking
+- ✅ All database upsert queries working correctly
+
 ## In Progress
 
 ### Schema Applied Successfully
@@ -79,14 +90,6 @@ if !isAdmin && resource.UserID.Bytes != userUUID.Bytes {
 - ✅ Sync version and server_updated_at will be managed in application code
 - ✅ All tests passing with UUID-based schema
 - ✅ Fixed test utilities to handle UUIDs instead of integers
-
-### Sync Handler - Push/Migrate Implementation
-The Push and Migrate handlers currently return stub responses. Need to implement:
-
-1. **Push endpoint** - Parse incoming records and call Upsert queries
-2. **Migrate endpoint** - Bulk insert with conflict handling
-3. **Proper error handling** for malformed UUIDs and timestamps
-4. **Validation** of device_id header
 
 ## Pending
 
