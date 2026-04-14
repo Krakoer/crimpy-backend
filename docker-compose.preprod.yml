@@ -71,7 +71,7 @@ services:
       - traefik.http.routers.dev-crimpy-api.rule=Host(`devapi.crimpy.app`)
       - traefik.http.routers.dev-crimpy-api.entrypoints=websecure
       - traefik.http.routers.dev-crimpy-api.tls.certresolver=dnsResolver
-      - traefik.http.routers.crimpypg.middlewares=traefik-ip
+      - traefik.http.routers.dev-crimpy-api.middlewares=traefik-ip
       - traefik.http.middlewares.traefik-ip.ipallowlist.sourcerange=10.14.0.0/16
     networks:
       - crimpy_dev_net
