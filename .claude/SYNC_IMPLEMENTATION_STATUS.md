@@ -91,17 +91,23 @@ if !isAdmin && resource.UserID.Bytes != userUUID.Bytes {
 - ✅ All tests passing with UUID-based schema
 - ✅ Fixed test utilities to handle UUIDs instead of integers
 
+## Completed - Additional Features
+
+### Device ID Validation - DONE
+- ✅ Added validateDeviceID helper function
+- ✅ Validates X-Device-ID header format (UUID) in all sync endpoints
+- ✅ Returns 400 error for malformed device IDs
+- ✅ Device ID is optional (allows sync without device tracking)
+
+### Swagger Documentation - DONE
+- ✅ Added OpenAPI annotations to all sync endpoints
+- ✅ Documented X-Device-ID header parameter
+- ✅ Documented request/response schemas
+- ✅ Regenerated swagger.json and swagger.yaml
+
 ## Pending
 
-### Missing Features
-
-#### Device ID Middleware
-Need to add middleware to extract and validate `X-Device-ID` header on sync endpoints.
-
-#### Swagger Documentation
-Add Swagger annotations to all sync endpoints.
-
-#### Integration Tests
+### Integration Tests
 Create tests for:
 - Sync summary with empty/populated data
 - Pull with various since_version values
@@ -109,58 +115,51 @@ Create tests for:
 - Migrate with bulk data
 - Conflict resolution (LWW based on updated_at)
 
-## Known Issues
+## Resolved Issues
 
-### 1. Fiber v3 API Changes
+### 1. Fiber v3 API Changes - RESOLVED
+Fixed by using Query() and manual parsing:
 ```go
-// ERROR: c.QueryInt undefined
-sinceVersion := c.QueryInt("since_version", 0)
-
-// FIX: Use Query() and parse manually
 sinceVersionStr := c.Query("since_version", "0")
 sinceVersion, _ := strconv.ParseInt(sinceVersionStr, 10, 64)
 ```
 
-### 2. Type Assertion for GetSyncSummary
-The summary query returns an anonymous struct. Need to check the generated type in `sync.sql.go`.
-
-### 3. UUID String Conversion
-UUIDs are stored as `pgtype.UUID` with `.Bytes` field. Need helper function:
+### 2. Type Assertion for GetSyncSummary - RESOLVED
+Fixed with proper type assertion:
 ```go
-func uuidToString(u pgtype.UUID) string {
-    if !u.Valid {
-        return ""
+lastSyncVersion := int64(0)
+if summary.LastSyncVersion != nil {
+    if v, ok := summary.LastSyncVersion.(int64); ok {
+        lastSyncVersion = v
     }
-    // Use proper UUID formatting
-    return uuid.UUID(u.Bytes).String()
 }
 ```
 
+### 3. UUID String Conversion - RESOLVED
+Added helper functions:
+- `uuidToString(pgtype.UUID) string`
+- `uuidPtrToString(pgtype.UUID) *string`
+- `parseUUID(string) (pgtype.UUID, error)`
+- `parseTimestamp(string) (pgtype.Timestamptz, error)`
+
 ## Next Steps
 
-### Priority 1: Make the Build Work
-1. Fix Fiber v3 API usage in sync.go
-2. Fix type assertion for GetSyncSummary
-3. Update all existing handlers to use UUIDs
-4. Update all existing queries to use UUID parameters
-5. Run `sqlc generate` and fix any remaining errors
+### Priority 1: Testing
+1. Create integration tests for sync endpoints
+2. Test with Bruno/Postman
+3. Verify upsert queries work correctly with real data
+4. Test conflict resolution scenarios
 
-### Priority 2: Complete Sync Implementation
-1. Implement Push handler with proper record parsing
-2. Implement Migrate handler
-3. Add device ID middleware/validation
-4. Add proper error responses
+### Priority 2: Trigger Functions (Application-Level)
+Since Atlas Pro triggers are not available, implement sync_version and server_updated_at updates in application code:
+1. Modify upsert queries to calculate next sync_version
+2. Ensure server_updated_at is set correctly on all writes
+3. Test sync_version incrementing
 
-### Priority 3: Testing
-1. Apply migrations to dev database
-2. Create integration tests
-3. Test with Bruno/Postman
-4. Verify trigger functions work correctly
-
-### Priority 4: Documentation
-1. Add Swagger annotations
-2. Update API documentation
-3. Document breaking changes for mobile app team
+### Priority 3: Mobile App Coordination
+1. Document API changes for mobile team
+2. Provide sample requests/responses
+3. Coordinate deployment timeline
 
 ## Migration Strategy for Production
 
