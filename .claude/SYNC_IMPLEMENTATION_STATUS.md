@@ -142,6 +142,15 @@ Added helper functions:
 - `parseUUID(string) (pgtype.UUID, error)`
 - `parseTimestamp(string) (pgtype.Timestamptz, error)`
 
+## Completed - Sync Version Management
+
+### Application-Level Sync Version - DONE
+- ✅ Updated all 6 upsert queries to automatically set server_updated_at = now()
+- ✅ Implemented sync_version calculation using MAX(sync_version) + 1 per user
+- ✅ Maintains last-write-wins logic based on updated_at comparison
+- ✅ No database triggers required - fully application-managed
+- ✅ All tests passing with new query logic
+
 ## Next Steps
 
 ### Priority 1: Testing
@@ -149,14 +158,9 @@ Added helper functions:
 2. Test with Bruno/Postman
 3. Verify upsert queries work correctly with real data
 4. Test conflict resolution scenarios
+5. Verify sync_version incrementing behavior
 
-### Priority 2: Trigger Functions (Application-Level)
-Since Atlas Pro triggers are not available, implement sync_version and server_updated_at updates in application code:
-1. Modify upsert queries to calculate next sync_version
-2. Ensure server_updated_at is set correctly on all writes
-3. Test sync_version incrementing
-
-### Priority 3: Mobile App Coordination
+### Priority 2: Mobile App Coordination
 1. Document API changes for mobile team
 2. Provide sample requests/responses
 3. Coordinate deployment timeline
