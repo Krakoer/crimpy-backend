@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/database"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
+	"crimpy/backend/internal/handler/sync"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"log"
@@ -62,7 +63,7 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
-	syncHandler := handler.NewSyncHandler(queries)
+	syncHandler := sync.NewSyncHandler(queries)
 
 	// Create Fiber app
 	app := fiber.New()

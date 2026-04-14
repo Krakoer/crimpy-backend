@@ -1011,7 +1011,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.PushRequest"
+                            "$ref": "#/definitions/sync.PushRequest"
                         }
                     }
                 ],
@@ -1019,7 +1019,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Migration results with accepted and rejected IDs",
                         "schema": {
-                            "$ref": "#/definitions/handler.PushResponse"
+                            "$ref": "#/definitions/sync.PushResponse"
                         }
                     },
                     "400": {
@@ -1080,7 +1080,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Records and current server version",
                         "schema": {
-                            "$ref": "#/definitions/handler.PullResponse"
+                            "$ref": "#/definitions/sync.PullResponse"
                         }
                     },
                     "400": {
@@ -1135,7 +1135,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.PushRequest"
+                            "$ref": "#/definitions/sync.PushRequest"
                         }
                     }
                 ],
@@ -1143,7 +1143,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Push results with accepted and rejected IDs",
                         "schema": {
-                            "$ref": "#/definitions/handler.PushResponse"
+                            "$ref": "#/definitions/sync.PushResponse"
                         }
                     },
                     "400": {
@@ -1197,7 +1197,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Sync summary",
                         "schema": {
-                            "$ref": "#/definitions/handler.SyncSummaryResponse"
+                            "$ref": "#/definitions/sync.SyncSummaryResponse"
                         }
                     },
                     "400": {
@@ -2044,53 +2044,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.PullResponse": {
-            "type": "object",
-            "properties": {
-                "records": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "server_version": {
-                    "type": "integer"
-                }
-            }
-        },
-        "handler.PushRequest": {
-            "type": "object",
-            "properties": {
-                "records": {
-                    "type": "object",
-                    "additionalProperties": true
-                }
-            }
-        },
-        "handler.PushResponse": {
-            "type": "object",
-            "properties": {
-                "accepted": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "conflicts": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "rejected": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "server_version": {
-                    "type": "integer"
-                }
-            }
-        },
         "handler.RegisterRequest": {
             "type": "object",
             "properties": {
@@ -2250,24 +2203,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.SyncSummaryResponse": {
-            "type": "object",
-            "properties": {
-                "collections": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "integer",
-                        "format": "int64"
-                    }
-                },
-                "last_sync_version": {
-                    "type": "integer"
-                },
-                "user_id": {
-                    "type": "string"
-                }
-            }
-        },
         "handler.TrainingResponse": {
             "type": "object",
             "properties": {
@@ -2376,6 +2311,71 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "lastname": {
+                    "type": "string"
+                }
+            }
+        },
+        "sync.PullResponse": {
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "server_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "sync.PushRequest": {
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "sync.PushResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rejected": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "server_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "sync.SyncSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "collections": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "last_sync_version": {
+                    "type": "integer"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }

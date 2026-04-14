@@ -115,37 +115,6 @@ definitions:
       password:
         type: string
     type: object
-  handler.PullResponse:
-    properties:
-      records:
-        additionalProperties: true
-        type: object
-      server_version:
-        type: integer
-    type: object
-  handler.PushRequest:
-    properties:
-      records:
-        additionalProperties: true
-        type: object
-    type: object
-  handler.PushResponse:
-    properties:
-      accepted:
-        items:
-          type: string
-        type: array
-      conflicts:
-        items:
-          type: string
-        type: array
-      rejected:
-        items:
-          type: string
-        type: array
-      server_version:
-        type: integer
-    type: object
   handler.RegisterRequest:
     properties:
       email:
@@ -250,18 +219,6 @@ definitions:
       user_id:
         type: string
     type: object
-  handler.SyncSummaryResponse:
-    properties:
-      collections:
-        additionalProperties:
-          format: int64
-          type: integer
-        type: object
-      last_sync_version:
-        type: integer
-      user_id:
-        type: string
-    type: object
   handler.TrainingResponse:
     properties:
       id:
@@ -333,6 +290,49 @@ definitions:
       is_coach:
         type: boolean
       lastname:
+        type: string
+    type: object
+  sync.PullResponse:
+    properties:
+      records:
+        additionalProperties: true
+        type: object
+      server_version:
+        type: integer
+    type: object
+  sync.PushRequest:
+    properties:
+      records:
+        additionalProperties: true
+        type: object
+    type: object
+  sync.PushResponse:
+    properties:
+      accepted:
+        items:
+          type: string
+        type: array
+      conflicts:
+        items:
+          type: string
+        type: array
+      rejected:
+        items:
+          type: string
+        type: array
+      server_version:
+        type: integer
+    type: object
+  sync.SyncSummaryResponse:
+    properties:
+      collections:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      last_sync_version:
+        type: integer
+      user_id:
         type: string
     type: object
 host: api.portfolio-online.ovh
@@ -985,14 +985,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.PushRequest'
+          $ref: '#/definitions/sync.PushRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Migration results with accepted and rejected IDs
           schema:
-            $ref: '#/definitions/handler.PushResponse'
+            $ref: '#/definitions/sync.PushResponse'
         "400":
           description: Invalid request body or user ID
           schema:
@@ -1032,7 +1032,7 @@ paths:
         "200":
           description: Records and current server version
           schema:
-            $ref: '#/definitions/handler.PullResponse'
+            $ref: '#/definitions/sync.PullResponse'
         "400":
           description: Invalid user ID
           schema:
@@ -1066,14 +1066,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.PushRequest'
+          $ref: '#/definitions/sync.PushRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Push results with accepted and rejected IDs
           schema:
-            $ref: '#/definitions/handler.PushResponse'
+            $ref: '#/definitions/sync.PushResponse'
         "400":
           description: Invalid request body or user ID
           schema:
@@ -1108,7 +1108,7 @@ paths:
         "200":
           description: Sync summary
           schema:
-            $ref: '#/definitions/handler.SyncSummaryResponse'
+            $ref: '#/definitions/sync.SyncSummaryResponse'
         "400":
           description: Invalid user ID
           schema:
