@@ -457,27 +457,37 @@ func (h *AuthHandler) GetCurrentUser(c fiber.Ctx) error {
 	})
 }
 
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
 // VerifyEmail godoc
 // @Summary Verify user email
 // @Description Verify user email using the token sent via email
 // @Tags Authentication
 // @Accept json
 // @Produce json
-// @Param token query string true "Verification token"
+// @Param request body VerifyEmailRequest true "Validation Token"
 // @Success 200 {object} map[string]string "Email verified successfully"
 // @Failure 400 {object} map[string]string "Invalid or missing token"
 // @Failure 404 {object} map[string]string "Invalid or expired token"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/verify [get]
+// @Router /auth/verify [post]
 func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
-	token := c.Query("token")
-	if token == "" {
+	var req VerifyEmailRequest
+	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Verification token is required",
+			"error": "Invalid request body",
 		})
 	}
 
-	user, err := h.queries.GetUserByVerificationToken(context.Background(), pgtype.Text{String: token, Valid: true})
+	if req.Token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Token is required",
+		})
+	}
+
+	user, err := h.queries.GetUserByVerificationToken(context.Background(), pgtype.Text{String: req.Token, Valid: true})
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -497,7 +507,7 @@ func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Email verified successfully. You can now log in.",
+		"message": "Email verified successfully. An admin will validate your account soon.",
 	})
 }
 

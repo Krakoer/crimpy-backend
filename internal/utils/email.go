@@ -32,7 +32,7 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 		return fmt.Errorf("RESEND_API_KEY or RESEND_EMAIL_FROM not set")
 	}
 
-	verificationLink := fmt.Sprintf("%s/auth/verify?token=%s", baseUrl, verificationToken)
+	verificationLink := fmt.Sprintf("%s/verify?token=%s", baseUrl, verificationToken)
 
 	templateID := "email-verification-normal"
 	if isCoach {
