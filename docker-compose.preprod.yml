@@ -1,0 +1,88 @@
+name: crimpy-dev
+
+networks:
+  proxy:
+    external: true
+  crimpy_dev_net:
+    name: crimpy_dev_net
+
+services:
+  db:
+    container_name: crimpy_dev_postgres
+    image: postgres:16-alpine
+    env_file:
+      - .env.preprod
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    networks:
+      - crimpy_dev_net
+    volumes:
+      - dev-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "${DB_NAME}", "-U", "${DB_USER}" ]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: crimpy_dev_pgadmin4
+    restart: always
+    expose:
+      - 80
+    networks:
+      - crimpy_dev_net
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dev-crimpypg.rule=Host(`devpg.crimpy.app`)
+      - traefik.http.routers.dev-crimpypg.entrypoints=websecure
+      - traefik.http.routers.dev-crimpypg.tls.certresolver=dnsResolver
+      - traefik.http.routers.dev-crimpypg.middlewares=traefik-ip
+      - traefik.http.middlewares.traefik-ip.ipallowlist.sourcerange=10.14.0.0/16
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_MAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PWD}
+    volumes:
+      - dev-pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    container_name: crimpy_dev_api
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    env_file:
+      - .env.preprod
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: ${PORT:-3000}
+      ENV: preproduction
+    expose:
+      - ${PORT:-3000}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dev-crimpy-api.rule=Host(`dev.crimpy.app`)
+      - traefik.http.routers.dev-crimpy-api.entrypoints=websecure
+      - traefik.http.routers.dev-crimpy-api.tls.certresolver=dnsResolver
+      - traefik.http.routers.crimpypg.middlewares=traefik-ip
+      - traefik.http.middlewares.traefik-ip.ipallowlist.sourcerange=10.14.0.0/16
+    networks:
+      - crimpy_dev_net
+      - proxy
+    volumes:
+      - .:/app
+      - /app/tmp
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  dev-pgdata:
+  dev-pgadmin-data:
