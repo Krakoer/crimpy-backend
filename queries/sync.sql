@@ -100,7 +100,13 @@ ON CONFLICT (id) DO UPDATE SET
   repeater_split_hand = EXCLUDED.repeater_split_hand,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id
+  device_id = EXCLUDED.device_id,
+  server_updated_at = now(),
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM sessions
+    WHERE user_id = $2::uuid
+  )
 WHERE sessions.user_id = $2::uuid AND EXCLUDED.updated_at > sessions.server_updated_at
 RETURNING *;
 
@@ -119,7 +125,13 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id
+  device_id = EXCLUDED.device_id,
+  server_updated_at = now(),
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM assessments
+    WHERE user_id = $2::uuid
+  )
 WHERE assessments.user_id = $2::uuid AND EXCLUDED.updated_at > assessments.server_updated_at
 RETURNING *;
 
@@ -137,7 +149,13 @@ ON CONFLICT (id) DO UPDATE SET
   is_assessment = EXCLUDED.is_assessment,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id
+  device_id = EXCLUDED.device_id,
+  server_updated_at = now(),
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM trainings
+    WHERE user_id = $2::uuid
+  )
 WHERE trainings.user_id = $2::uuid AND EXCLUDED.updated_at > trainings.server_updated_at
 RETURNING *;
 
@@ -161,7 +179,13 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id
+  device_id = EXCLUDED.device_id,
+  server_updated_at = now(),
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM repeaters
+    WHERE user_id = $2::uuid
+  )
 WHERE repeaters.user_id = $2::uuid AND EXCLUDED.updated_at > repeaters.server_updated_at
 RETURNING *;
 
@@ -182,7 +206,13 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id
+  device_id = EXCLUDED.device_id,
+  server_updated_at = now(),
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM rep_templates
+    WHERE user_id = $2::uuid
+  )
 WHERE rep_templates.user_id = $2::uuid AND EXCLUDED.updated_at > rep_templates.server_updated_at
 RETURNING *;
 
@@ -204,7 +234,13 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id
+  device_id = EXCLUDED.device_id,
+  server_updated_at = now(),
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM rep_datas
+    WHERE user_id = $2::uuid
+  )
 WHERE rep_datas.user_id = $2::uuid AND EXCLUDED.updated_at > rep_datas.server_updated_at
 RETURNING *;
 
