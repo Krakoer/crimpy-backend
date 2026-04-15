@@ -56,11 +56,6 @@ func (h *SyncHandler) upsertSession(ctx context.Context, userUUID pgtype.UUID, d
 		}
 	}
 
-	var deviceID pgtype.UUID
-	if deviceIDStr, ok := m["device_id"].(string); ok && deviceIDStr != "" {
-		deviceID, _ = parseUUID(deviceIDStr)
-	}
-
 	var repeaterSets, repeaterReps, repeaterWorkTime, repeaterRestTime, repeaterSetRest pgtype.Int4
 	if v, ok := m["repeater_sets"].(float64); ok {
 		repeaterSets.Int32 = int32(v)
@@ -107,7 +102,6 @@ func (h *SyncHandler) upsertSession(ctx context.Context, userUUID pgtype.UUID, d
 		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 		DeletedAt:         deletedAt,
-		DeviceID:          deviceID,
 	})
 	if err != nil {
 		return id, err
@@ -171,11 +165,6 @@ func (h *SyncHandler) upsertAssessment(ctx context.Context, userUUID pgtype.UUID
 		}
 	}
 
-	var deviceID pgtype.UUID
-	if deviceIDStr, ok := m["device_id"].(string); ok && deviceIDStr != "" {
-		deviceID, _ = parseUUID(deviceIDStr)
-	}
-
 	var gripPos pgtype.Int4
 	gripPos.Int32 = gripPosition
 	gripPos.Valid = true
@@ -191,7 +180,6 @@ func (h *SyncHandler) upsertAssessment(ctx context.Context, userUUID pgtype.UUID
 		CreatedAt:    createdAt,
 		UpdatedAt:    updatedAt,
 		DeletedAt:    deletedAt,
-		DeviceID:     deviceID,
 	})
 	if err != nil {
 		return id, err
@@ -245,11 +233,6 @@ func (h *SyncHandler) upsertTraining(ctx context.Context, userUUID pgtype.UUID, 
 		}
 	}
 
-	var deviceID pgtype.UUID
-	if deviceIDStr, ok := m["device_id"].(string); ok && deviceIDStr != "" {
-		deviceID, _ = parseUUID(deviceIDStr)
-	}
-
 	_, err = h.queries.UpsertTraining(ctx, db.UpsertTrainingParams{
 		ID:           trainingUUID,
 		UserID:       userUUID,
@@ -260,7 +243,6 @@ func (h *SyncHandler) upsertTraining(ctx context.Context, userUUID pgtype.UUID, 
 		CreatedAt:    createdAt,
 		UpdatedAt:    updatedAt,
 		DeletedAt:    deletedAt,
-		DeviceID:     deviceID,
 	})
 	if err != nil {
 		return id, err
@@ -323,11 +305,6 @@ func (h *SyncHandler) upsertRepeater(ctx context.Context, userUUID pgtype.UUID, 
 		}
 	}
 
-	var deviceID pgtype.UUID
-	if deviceIDStr, ok := m["device_id"].(string); ok && deviceIDStr != "" {
-		deviceID, _ = parseUUID(deviceIDStr)
-	}
-
 	_, err = h.queries.UpsertRepeater(ctx, db.UpsertRepeaterParams{
 		ID:                repeaterUUID,
 		UserID:            userUUID,
@@ -343,7 +320,6 @@ func (h *SyncHandler) upsertRepeater(ctx context.Context, userUUID pgtype.UUID, 
 		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 		DeletedAt:         deletedAt,
-		DeviceID:          deviceID,
 	})
 	if err != nil {
 		return id, err
@@ -401,11 +377,6 @@ func (h *SyncHandler) upsertRepTemplate(ctx context.Context, userUUID pgtype.UUI
 		}
 	}
 
-	var deviceID pgtype.UUID
-	if deviceIDStr, ok := m["device_id"].(string); ok && deviceIDStr != "" {
-		deviceID, _ = parseUUID(deviceIDStr)
-	}
-
 	_, err = h.queries.UpsertRepTemplate(ctx, db.UpsertRepTemplateParams{
 		ID:           repTemplateUUID,
 		UserID:       userUUID,
@@ -419,7 +390,6 @@ func (h *SyncHandler) upsertRepTemplate(ctx context.Context, userUUID pgtype.UUI
 		CreatedAt:    createdAt,
 		UpdatedAt:    updatedAt,
 		DeletedAt:    deletedAt,
-		DeviceID:     deviceID,
 	})
 	if err != nil {
 		return id, err
@@ -478,11 +448,6 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 		}
 	}
 
-	var deviceID pgtype.UUID
-	if deviceIDStr, ok := m["device_id"].(string); ok && deviceIDStr != "" {
-		deviceID, _ = parseUUID(deviceIDStr)
-	}
-
 	_, err = h.queries.UpsertRepData(ctx, db.UpsertRepDataParams{
 		ID:            repDataUUID,
 		UserID:        userUUID,
@@ -497,7 +462,6 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
 		DeletedAt:     deletedAt,
-		DeviceID:      deviceID,
 	})
 	if err != nil {
 		return id, err

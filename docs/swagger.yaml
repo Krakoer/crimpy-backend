@@ -977,10 +977,6 @@ paths:
       description: Bulk uploads all local data when cloud account is empty (called
         once at first login)
       parameters:
-      - description: Device ID (UUID)
-        in: header
-        name: X-Device-ID
-        type: string
       - description: All local records to migrate
         in: body
         name: request
@@ -1018,10 +1014,6 @@ paths:
       description: Returns all records modified after the specified sync version for
         incremental sync
       parameters:
-      - description: Device ID (UUID)
-        in: header
-        name: X-Device-ID
-        type: string
       - default: 0
         description: Sync version to pull changes since
         in: query
@@ -1058,10 +1050,6 @@ paths:
       description: Accepts a batch of locally changed records and applies last-write-wins
         conflict resolution
       parameters:
-      - description: Device ID (UUID)
-        in: header
-        name: X-Device-ID
-        type: string
       - description: Records to push
         in: body
         name: request
@@ -1098,11 +1086,6 @@ paths:
       - application/json
       description: Returns count of records per collection and last sync version for
         the authenticated user
-      parameters:
-      - description: Device ID (UUID)
-        in: header
-        name: X-Device-ID
-        type: string
       produces:
       - application/json
       responses:

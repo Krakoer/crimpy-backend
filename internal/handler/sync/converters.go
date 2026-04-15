@@ -32,7 +32,6 @@ func convertSessionToRecord(s db.Session) SessionRecord {
 		CreatedAt:         s.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:         s.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
-		DeviceID:          uuidPtrToString(s.DeviceID),
 		SyncVersion:       s.SyncVersion,
 		ServerUpdatedAt:   s.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -55,7 +54,6 @@ func convertAssessmentToRecord(a db.Assessment) AssessmentRecord {
 		CreatedAt:       a.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       a.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        uuidPtrToString(a.DeviceID),
 		SyncVersion:     a.SyncVersion,
 		ServerUpdatedAt: a.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -77,7 +75,6 @@ func convertTrainingToRecord(t db.Training) TrainingRecord {
 		CreatedAt:       t.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       t.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        uuidPtrToString(t.DeviceID),
 		SyncVersion:     t.SyncVersion,
 		ServerUpdatedAt: t.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -104,7 +101,6 @@ func convertRepeaterToRecord(r db.Repeater) RepeaterRecord {
 		CreatedAt:         r.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:         r.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
-		DeviceID:          uuidPtrToString(r.DeviceID),
 		SyncVersion:       r.SyncVersion,
 		ServerUpdatedAt:   r.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -129,7 +125,6 @@ func convertRepTemplateToRecord(rt db.RepTemplate) RepTemplateRecord {
 		CreatedAt:       rt.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       rt.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        uuidPtrToString(rt.DeviceID),
 		SyncVersion:     rt.SyncVersion,
 		ServerUpdatedAt: rt.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
@@ -155,7 +150,6 @@ func convertRepDataToRecord(rd db.RepData) RepDataRecord {
 		CreatedAt:       rd.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       rd.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
-		DeviceID:        uuidPtrToString(rd.DeviceID),
 		SyncVersion:     rd.SyncVersion,
 		ServerUpdatedAt: rd.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}

@@ -18,7 +18,7 @@ INSERT INTO sessions (
   repeater_set_rest, repeater_split_hand
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-) RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at
+) RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type CreateSessionParams struct {
@@ -70,7 +70,6 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.DeviceID,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 	)
@@ -87,7 +86,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at FROM sessions WHERE id = $1
+SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -111,7 +110,6 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.DeviceID,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 	)
@@ -119,7 +117,7 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 }
 
 const getUserSessions = `-- name: GetUserSessions :many
-SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at FROM sessions WHERE user_id = $1 ORDER BY date DESC
+SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM sessions WHERE user_id = $1 ORDER BY date DESC
 `
 
 func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Session, error) {
@@ -149,7 +147,6 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Se
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
-			&i.DeviceID,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
 		); err != nil {
@@ -164,7 +161,7 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Se
 }
 
 const getUserSessionsByType = `-- name: GetUserSessionsByType :many
-SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at FROM sessions WHERE user_id = $1 AND session_type = $2 ORDER BY date DESC
+SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM sessions WHERE user_id = $1 AND session_type = $2 ORDER BY date DESC
 `
 
 type GetUserSessionsByTypeParams struct {
@@ -199,7 +196,6 @@ func (q *Queries) GetUserSessionsByType(ctx context.Context, arg GetUserSessions
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
-			&i.DeviceID,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
 		); err != nil {
@@ -217,7 +213,7 @@ const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4
 WHERE id = $1
-RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpdateSessionParams struct {
@@ -253,7 +249,6 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.DeviceID,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 	)

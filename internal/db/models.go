@@ -18,7 +18,6 @@ type Assessment struct {
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
-	DeviceID        pgtype.UUID
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
 	UserID          pgtype.UUID
@@ -37,7 +36,6 @@ type RepData struct {
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
-	DeviceID        pgtype.UUID
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
 	UserID          pgtype.UUID
@@ -55,7 +53,6 @@ type RepTemplate struct {
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
-	DeviceID        pgtype.UUID
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
 	UserID          pgtype.UUID
@@ -75,7 +72,6 @@ type Repeater struct {
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
-	DeviceID          pgtype.UUID
 	SyncVersion       int64
 	ServerUpdatedAt   pgtype.Timestamptz
 	UserID            pgtype.UUID
@@ -99,7 +95,6 @@ type Session struct {
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
-	DeviceID          pgtype.UUID
 	SyncVersion       int64
 	ServerUpdatedAt   pgtype.Timestamptz
 }
@@ -114,7 +109,6 @@ type Training struct {
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
-	DeviceID        pgtype.UUID
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
 }

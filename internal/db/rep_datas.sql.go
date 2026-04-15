@@ -15,7 +15,7 @@ const createRepData = `-- name: CreateRepData :one
 INSERT INTO rep_datas (
   average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id
+RETURNING id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id
 `
 
 type CreateRepDataParams struct {
@@ -54,7 +54,6 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.DeviceID,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 		&i.UserID,
@@ -81,7 +80,7 @@ func (q *Queries) DeleteSessionRepDatas(ctx context.Context, sessionID pgtype.UU
 }
 
 const getRepData = `-- name: GetRepData :one
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM rep_datas WHERE id = $1
+SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas WHERE id = $1
 `
 
 func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, error) {
@@ -100,7 +99,6 @@ func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.DeviceID,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 		&i.UserID,
@@ -109,7 +107,7 @@ func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, erro
 }
 
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, device_id, sync_version, server_updated_at, user_id FROM rep_datas WHERE session_id = $1 ORDER BY index
+SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas WHERE session_id = $1 ORDER BY index
 `
 
 func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) ([]RepData, error) {
@@ -134,7 +132,6 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
-			&i.DeviceID,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
 			&i.UserID,

@@ -27,19 +27,12 @@ func NewSyncHandler(queries *db.Queries) *SyncHandler {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param X-Device-ID header string false "Device ID (UUID)"
 // @Success 200 {object} SyncSummaryResponse "Sync summary"
 // @Failure 400 {object} map[string]string "Invalid user ID"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sync/summary [get]
 func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-
-	if err := validateDeviceID(c); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
 
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
@@ -90,7 +83,6 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param X-Device-ID header string false "Device ID (UUID)"
 // @Param since_version query integer false "Sync version to pull changes since" default(0)
 // @Success 200 {object} PullResponse "Records and current server version"
 // @Failure 400 {object} map[string]string "Invalid user ID"
@@ -98,12 +90,6 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 // @Router /api/sync/pull [get]
 func (h *SyncHandler) Pull(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-
-	if err := validateDeviceID(c); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
 
 	sinceVersionStr := c.Query("since_version", "0")
 	sinceVersion := int64(0)
@@ -242,7 +228,6 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param X-Device-ID header string false "Device ID (UUID)"
 // @Param request body PushRequest true "Records to push"
 // @Success 200 {object} PushResponse "Push results with accepted and rejected IDs"
 // @Failure 400 {object} map[string]string "Invalid request body or user ID"
@@ -250,12 +235,6 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 // @Router /api/sync/push [post]
 func (h *SyncHandler) Push(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-
-	if err := validateDeviceID(c); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
 
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
@@ -381,7 +360,6 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param X-Device-ID header string false "Device ID (UUID)"
 // @Param request body PushRequest true "All local records to migrate"
 // @Success 200 {object} PushResponse "Migration results with accepted and rejected IDs"
 // @Failure 400 {object} map[string]string "Invalid request body or user ID"
@@ -389,17 +367,4 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 // @Router /api/sync/migrate [post]
 func (h *SyncHandler) Migrate(c fiber.Ctx) error {
 	return h.Push(c)
-}
-
-func validateDeviceID(c fiber.Ctx) error {
-	deviceID := c.Get("X-Device-ID")
-	if deviceID == "" {
-		return nil
-	}
-
-	var u pgtype.UUID
-	if err := u.Scan(deviceID); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "Invalid device ID format")
-	}
-	return nil
 }

@@ -38,7 +38,6 @@ type SessionRecord struct {
 	CreatedAt         string  `json:"created_at"`
 	UpdatedAt         string  `json:"updated_at"`
 	DeletedAt         *string `json:"deleted_at"`
-	DeviceID          *string `json:"device_id"`
 	SyncVersion       int64   `json:"sync_version"`
 	ServerUpdatedAt   string  `json:"server_updated_at"`
 }
@@ -53,7 +52,6 @@ type AssessmentRecord struct {
 	CreatedAt       string   `json:"created_at"`
 	UpdatedAt       string   `json:"updated_at"`
 	DeletedAt       *string  `json:"deleted_at"`
-	DeviceID        *string  `json:"device_id"`
 	SyncVersion     int64    `json:"sync_version"`
 	ServerUpdatedAt string   `json:"server_updated_at"`
 }
@@ -67,7 +65,6 @@ type TrainingRecord struct {
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
 	DeletedAt       *string `json:"deleted_at"`
-	DeviceID        *string `json:"device_id"`
 	SyncVersion     int64   `json:"sync_version"`
 	ServerUpdatedAt string  `json:"server_updated_at"`
 }
@@ -86,7 +83,6 @@ type RepeaterRecord struct {
 	CreatedAt         string   `json:"created_at"`
 	UpdatedAt         string   `json:"updated_at"`
 	DeletedAt         *string  `json:"deleted_at"`
-	DeviceID          *string  `json:"device_id"`
 	SyncVersion       int64    `json:"sync_version"`
 	ServerUpdatedAt   string   `json:"server_updated_at"`
 }
@@ -103,7 +99,6 @@ type RepTemplateRecord struct {
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
 	DeletedAt       *string `json:"deleted_at"`
-	DeviceID        *string `json:"device_id"`
 	SyncVersion     int64   `json:"sync_version"`
 	ServerUpdatedAt string  `json:"server_updated_at"`
 }
@@ -121,7 +116,6 @@ type RepDataRecord struct {
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
 	DeletedAt       *string `json:"deleted_at"`
-	DeviceID        *string `json:"device_id"`
 	SyncVersion     int64   `json:"sync_version"`
 	ServerUpdatedAt string  `json:"server_updated_at"`
 }

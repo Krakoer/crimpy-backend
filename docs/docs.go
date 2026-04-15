@@ -1000,12 +1000,6 @@ const docTemplate = `{
                 "summary": "Migrate local data to cloud on first sync",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Device ID (UUID)",
-                        "name": "X-Device-ID",
-                        "in": "header"
-                    },
-                    {
                         "description": "All local records to migrate",
                         "name": "request",
                         "in": "body",
@@ -1063,12 +1057,6 @@ const docTemplate = `{
                 "summary": "Pull sync changes",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Device ID (UUID)",
-                        "name": "X-Device-ID",
-                        "in": "header"
-                    },
-                    {
                         "type": "integer",
                         "default": 0,
                         "description": "Sync version to pull changes since",
@@ -1123,12 +1111,6 @@ const docTemplate = `{
                 ],
                 "summary": "Push local changes to cloud",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Device ID (UUID)",
-                        "name": "X-Device-ID",
-                        "in": "header"
-                    },
                     {
                         "description": "Records to push",
                         "name": "request",
@@ -1185,14 +1167,6 @@ const docTemplate = `{
                     "sync"
                 ],
                 "summary": "Get sync summary",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Device ID (UUID)",
-                        "name": "X-Device-ID",
-                        "in": "header"
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "Sync summary",

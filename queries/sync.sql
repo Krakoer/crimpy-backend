@@ -81,9 +81,9 @@ SELECT * FROM rep_datas WHERE id = $1::uuid AND user_id = $2::uuid;
 INSERT INTO sessions (
   id, user_id, name, notes, date, is_assessment, session_type, duration,
   repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
-  repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, device_id
+  repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 )
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
@@ -100,7 +100,6 @@ ON CONFLICT (id) DO UPDATE SET
   repeater_split_hand = EXCLUDED.repeater_split_hand,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id,
   server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
@@ -113,9 +112,9 @@ RETURNING *;
 -- name: UpsertAssessment :one
 INSERT INTO assessments (
   id, user_id, type, right_value, left_value, session_id, grip_position,
-  created_at, updated_at, deleted_at, device_id
+  created_at, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
 ON CONFLICT (id) DO UPDATE SET
   type = EXCLUDED.type,
@@ -125,7 +124,6 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id,
   server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
@@ -138,9 +136,9 @@ RETURNING *;
 -- name: UpsertTraining :one
 INSERT INTO trainings (
   id, user_id, name, repeater_id, is_favorite, is_assessment,
-  created_at, updated_at, deleted_at, device_id
+  created_at, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+  $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
@@ -149,7 +147,6 @@ ON CONFLICT (id) DO UPDATE SET
   is_assessment = EXCLUDED.is_assessment,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id,
   server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
@@ -163,9 +160,9 @@ RETURNING *;
 INSERT INTO repeaters (
   id, user_id, sets, reps, worktime, resttime, set_rest,
   target_weight_right, target_weight_left, split_hand, grip_position,
-  created_at, updated_at, deleted_at, device_id
+  created_at, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 )
 ON CONFLICT (id) DO UPDATE SET
   sets = EXCLUDED.sets,
@@ -179,7 +176,6 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id,
   server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
@@ -192,9 +188,9 @@ RETURNING *;
 -- name: UpsertRepTemplate :one
 INSERT INTO rep_templates (
   id, user_id, training_id, is_rest, right_hand, duration, target_weight, index, grip_position,
-  created_at, updated_at, deleted_at, device_id
+  created_at, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 )
 ON CONFLICT (id) DO UPDATE SET
   training_id = EXCLUDED.training_id,
@@ -206,7 +202,6 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id,
   server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
@@ -219,9 +214,9 @@ RETURNING *;
 -- name: UpsertRepData :one
 INSERT INTO rep_datas (
   id, user_id, session_id, average_weight, is_rest, right_hand, duration, target_weight, index, grip_position,
-  created_at, updated_at, deleted_at, device_id
+  created_at, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
 ON CONFLICT (id) DO UPDATE SET
   session_id = EXCLUDED.session_id,
@@ -234,7 +229,6 @@ ON CONFLICT (id) DO UPDATE SET
   grip_position = EXCLUDED.grip_position,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
-  device_id = EXCLUDED.device_id,
   server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
