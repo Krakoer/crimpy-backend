@@ -317,10 +317,6 @@ definitions:
         items:
           type: string
         type: array
-      conflicts:
-        items:
-          type: string
-        type: array
       rejected:
         items:
           type: string

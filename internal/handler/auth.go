@@ -506,8 +506,16 @@ func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
 		})
 	}
 
+	var msg string
+	if user.IsCoach {
+		msg = "Email verified successfully. An admin will validate your account soon."
+	} else {
+		msg = "Email verified successfully."
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Email verified successfully. An admin will validate your account soon.",
+		"message":  msg,
+		"is_coach": user.IsCoach,
 	})
 }
 

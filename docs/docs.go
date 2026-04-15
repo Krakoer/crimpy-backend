@@ -2355,12 +2355,6 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
-                "conflicts": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
                 "rejected": {
                     "type": "array",
                     "items": {

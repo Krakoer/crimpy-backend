@@ -19,7 +19,6 @@ type PushResponse struct {
 	ServerVersion int64    `json:"server_version"`
 	Accepted      []string `json:"accepted"`
 	Rejected      []string `json:"rejected"`
-	Conflicts     []string `json:"conflicts"`
 }
 
 type SessionRecord struct {

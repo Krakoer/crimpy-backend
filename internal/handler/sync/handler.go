@@ -371,7 +371,6 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 		ServerVersion: lastSyncVersion,
 		Accepted:      accepted,
 		Rejected:      rejected,
-		Conflicts:     []string{},
 	})
 }
 
