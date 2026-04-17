@@ -193,7 +193,8 @@ func uuidPtrToString(u pgtype.UUID) *string {
 
 func parseTimestamp(s string) (pgtype.Timestamptz, error) {
 	var ts pgtype.Timestamptz
-	t, err := time.Parse(time.RFC3339, s)
+	layout := "2006-01-02T15:04:05.000"
+	t, err := time.Parse(layout, s)
 	if err != nil {
 		return ts, err
 	}
