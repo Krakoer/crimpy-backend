@@ -209,3 +209,55 @@ func parseUUID(s string) (pgtype.UUID, error) {
 	}
 	return u, nil
 }
+
+func convertPinnedBuiltinTrainingToRecord(pbt db.PinnedBuiltinTraining) PinnedBuiltinTrainingRecord {
+	var deletedAt *string
+	if pbt.DeletedAt.Valid {
+		t := pbt.DeletedAt.Time.Format(time.RFC3339)
+		deletedAt = &t
+	}
+
+	return PinnedBuiltinTrainingRecord{
+		BuiltinTrainingID: uuidToString(pbt.BuiltinTrainingID),
+		UpdatedAt:         pbt.UpdatedAt.Time.Format(time.RFC3339),
+		DeletedAt:         deletedAt,
+		SyncVersion:       pbt.SyncVersion,
+	}
+}
+
+func convertSensorConfigToRecord(sc db.SensorConfig) SensorConfigRecord {
+	var deletedAt *string
+	if sc.DeletedAt.Valid {
+		t := sc.DeletedAt.Time.Format(time.RFC3339)
+		deletedAt = &t
+	}
+
+	return SensorConfigRecord{
+		ID:          uuidToString(sc.ID),
+		Name:        sc.Name,
+		Index:       sc.Index,
+		Tare:        sc.Tare,
+		Coef:        sc.Coef,
+		UpdatedAt:   sc.UpdatedAt.Time.Format(time.RFC3339),
+		DeletedAt:   deletedAt,
+		SyncVersion: sc.SyncVersion,
+	}
+}
+
+func convertBuiltinTrainingWeightToRecord(btw db.BuiltinTrainingWeight) BuiltinTrainingWeightRecord {
+	var deletedAt *string
+	if btw.DeletedAt.Valid {
+		t := btw.DeletedAt.Time.Format(time.RFC3339)
+		deletedAt = &t
+	}
+
+	return BuiltinTrainingWeightRecord{
+		ID:                uuidToString(btw.ID),
+		BuiltinTrainingID: uuidToString(btw.BuiltinTraningID),
+		CustomWeightRight: btw.CustomWeightRight,
+		CustomWeightLeft:  btw.CustomWeightLeft,
+		UpdatedAt:         btw.UpdatedAt.Time.Format(time.RFC3339),
+		DeletedAt:         deletedAt,
+		SyncVersion:       btw.SyncVersion,
+	}
+}

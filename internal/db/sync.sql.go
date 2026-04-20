@@ -85,6 +85,85 @@ func (q *Queries) GetAssessmentsSinceVersion(ctx context.Context, arg GetAssessm
 	return items, nil
 }
 
+const getBuiltinTrainingWeightsSinceVersion = `-- name: GetBuiltinTrainingWeightsSinceVersion :many
+SELECT id, user_id, builtin_traning_id, sync_version, updated_at, deleted_at, custom_weight_right, custom_weight_left FROM builtin_training_weights
+WHERE user_id = $1::uuid
+AND sync_version > $2::bigint
+ORDER BY sync_version ASC
+`
+
+type GetBuiltinTrainingWeightsSinceVersionParams struct {
+	Column1 pgtype.UUID
+	Column2 int64
+}
+
+func (q *Queries) GetBuiltinTrainingWeightsSinceVersion(ctx context.Context, arg GetBuiltinTrainingWeightsSinceVersionParams) ([]BuiltinTrainingWeight, error) {
+	rows, err := q.db.Query(ctx, getBuiltinTrainingWeightsSinceVersion, arg.Column1, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BuiltinTrainingWeight
+	for rows.Next() {
+		var i BuiltinTrainingWeight
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.BuiltinTraningID,
+			&i.SyncVersion,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.CustomWeightRight,
+			&i.CustomWeightLeft,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPinnedBuiltinTrainingsSinceVersion = `-- name: GetPinnedBuiltinTrainingsSinceVersion :many
+SELECT builtin_training_id, user_id, sync_version, updated_at, deleted_at FROM pinned_builtin_trainings
+WHERE user_id = $1::uuid
+AND sync_version > $2::bigint
+ORDER BY sync_version ASC
+`
+
+type GetPinnedBuiltinTrainingsSinceVersionParams struct {
+	Column1 pgtype.UUID
+	Column2 int64
+}
+
+func (q *Queries) GetPinnedBuiltinTrainingsSinceVersion(ctx context.Context, arg GetPinnedBuiltinTrainingsSinceVersionParams) ([]PinnedBuiltinTraining, error) {
+	rows, err := q.db.Query(ctx, getPinnedBuiltinTrainingsSinceVersion, arg.Column1, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PinnedBuiltinTraining
+	for rows.Next() {
+		var i PinnedBuiltinTraining
+		if err := rows.Scan(
+			&i.BuiltinTrainingID,
+			&i.UserID,
+			&i.SyncVersion,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRepDataByID = `-- name: GetRepDataByID :one
 SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas WHERE id = $1::uuid AND user_id = $2::uuid
 `
@@ -325,6 +404,48 @@ func (q *Queries) GetRepeatersSinceVersion(ctx context.Context, arg GetRepeaters
 	return items, nil
 }
 
+const getSensorConfigsSinceVersion = `-- name: GetSensorConfigsSinceVersion :many
+SELECT id, user_id, sync_version, updated_at, deleted_at, name, index, tare, coef FROM sensor_configs
+WHERE user_id = $1::uuid
+AND sync_version > $2::bigint
+ORDER BY sync_version ASC
+`
+
+type GetSensorConfigsSinceVersionParams struct {
+	Column1 pgtype.UUID
+	Column2 int64
+}
+
+func (q *Queries) GetSensorConfigsSinceVersion(ctx context.Context, arg GetSensorConfigsSinceVersionParams) ([]SensorConfig, error) {
+	rows, err := q.db.Query(ctx, getSensorConfigsSinceVersion, arg.Column1, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SensorConfig
+	for rows.Next() {
+		var i SensorConfig
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SyncVersion,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Name,
+			&i.Index,
+			&i.Tare,
+			&i.Coef,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSessionByID = `-- name: GetSessionByID :one
 SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM sessions WHERE id = $1::uuid AND user_id = $2::uuid
 `
@@ -422,6 +543,9 @@ SELECT
   (SELECT COUNT(*) FROM repeaters WHERE user_id = $1::uuid AND deleted_at IS NULL) as repeaters_count,
   (SELECT COUNT(*) FROM rep_templates WHERE user_id = $1::uuid AND deleted_at IS NULL) as rep_templates_count,
   (SELECT COUNT(*) FROM rep_datas WHERE user_id = $1::uuid AND deleted_at IS NULL) as rep_datas_count,
+  (SELECT COUNT(*) FROM pinned_builtin_trainings WHERE user_id = $1::uuid AND deleted_at IS NULL) as pinned_builtin_trainings_count,
+  (SELECT COUNT(*) FROM sensor_configs WHERE user_id = $1::uuid AND deleted_at IS NULL) as sensor_configs_count,
+  (SELECT COUNT(*) FROM builtin_training_weights WHERE user_id = $1::uuid AND deleted_at IS NULL) as builtin_training_weights_count,
   COALESCE((
     SELECT MAX(sync_version) FROM (
       SELECT MAX(sync_version) as sync_version FROM sessions WHERE user_id = $1::uuid
@@ -435,19 +559,28 @@ SELECT
       SELECT MAX(sync_version) FROM rep_templates WHERE user_id = $1::uuid
       UNION ALL
       SELECT MAX(sync_version) FROM rep_datas WHERE user_id = $1::uuid
+      UNION ALL
+      SELECT MAX(sync_version) FROM pinned_builtin_trainings WHERE user_id = $1::uuid
+      UNION ALL
+      SELECT MAX(sync_version) FROM sensor_configs WHERE user_id = $1::uuid
+      UNION ALL
+      SELECT MAX(sync_version) FROM builtin_training_weights WHERE user_id = $1::uuid
     ) as all_versions
   ), 0) as last_sync_version
 `
 
 type GetSyncSummaryRow struct {
-	UserID            pgtype.UUID
-	SessionsCount     int64
-	AssessmentsCount  int64
-	TrainingsCount    int64
-	RepeatersCount    int64
-	RepTemplatesCount int64
-	RepDatasCount     int64
-	LastSyncVersion   interface{}
+	UserID                      pgtype.UUID
+	SessionsCount               int64
+	AssessmentsCount            int64
+	TrainingsCount              int64
+	RepeatersCount              int64
+	RepTemplatesCount           int64
+	RepDatasCount               int64
+	PinnedBuiltinTrainingsCount int64
+	SensorConfigsCount          int64
+	BuiltinTrainingWeightsCount int64
+	LastSyncVersion             interface{}
 }
 
 func (q *Queries) GetSyncSummary(ctx context.Context, dollar_1 pgtype.UUID) (GetSyncSummaryRow, error) {
@@ -461,6 +594,9 @@ func (q *Queries) GetSyncSummary(ctx context.Context, dollar_1 pgtype.UUID) (Get
 		&i.RepeatersCount,
 		&i.RepTemplatesCount,
 		&i.RepDatasCount,
+		&i.PinnedBuiltinTrainingsCount,
+		&i.SensorConfigsCount,
+		&i.BuiltinTrainingWeightsCount,
 		&i.LastSyncVersion,
 	)
 	return i, err
@@ -612,6 +748,104 @@ func (q *Queries) UpsertAssessment(ctx context.Context, arg UpsertAssessmentPara
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 		&i.UserID,
+	)
+	return i, err
+}
+
+const upsertBuiltinTrainingWeight = `-- name: UpsertBuiltinTrainingWeight :one
+INSERT INTO builtin_training_weights (
+  id, user_id, builtin_traning_id, custom_weight_right, custom_weight_left, updated_at, deleted_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7
+)
+ON CONFLICT (id) DO UPDATE SET
+  builtin_traning_id = EXCLUDED.builtin_traning_id,
+  custom_weight_right = EXCLUDED.custom_weight_right,
+  custom_weight_left = EXCLUDED.custom_weight_left,
+  updated_at = EXCLUDED.updated_at,
+  deleted_at = EXCLUDED.deleted_at,
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM builtin_training_weights
+    WHERE user_id = $2::uuid
+  )
+WHERE builtin_training_weights.user_id = $2::uuid AND EXCLUDED.updated_at > builtin_training_weights.updated_at
+RETURNING id, user_id, builtin_traning_id, sync_version, updated_at, deleted_at, custom_weight_right, custom_weight_left
+`
+
+type UpsertBuiltinTrainingWeightParams struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	BuiltinTraningID  pgtype.UUID
+	CustomWeightRight float32
+	CustomWeightLeft  float32
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertBuiltinTrainingWeight(ctx context.Context, arg UpsertBuiltinTrainingWeightParams) (BuiltinTrainingWeight, error) {
+	row := q.db.QueryRow(ctx, upsertBuiltinTrainingWeight,
+		arg.ID,
+		arg.UserID,
+		arg.BuiltinTraningID,
+		arg.CustomWeightRight,
+		arg.CustomWeightLeft,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+	)
+	var i BuiltinTrainingWeight
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BuiltinTraningID,
+		&i.SyncVersion,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.CustomWeightRight,
+		&i.CustomWeightLeft,
+	)
+	return i, err
+}
+
+const upsertPinnedBuiltinTraining = `-- name: UpsertPinnedBuiltinTraining :one
+INSERT INTO pinned_builtin_trainings (
+  builtin_training_id, user_id, updated_at, deleted_at
+) VALUES (
+  $1, $2, $3, $4
+)
+ON CONFLICT (builtin_training_id) DO UPDATE SET
+  updated_at = EXCLUDED.updated_at,
+  deleted_at = EXCLUDED.deleted_at,
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM pinned_builtin_trainings
+    WHERE user_id = $2::uuid
+  )
+WHERE pinned_builtin_trainings.user_id = $2::uuid AND EXCLUDED.updated_at > pinned_builtin_trainings.updated_at
+RETURNING builtin_training_id, user_id, sync_version, updated_at, deleted_at
+`
+
+type UpsertPinnedBuiltinTrainingParams struct {
+	BuiltinTrainingID pgtype.UUID
+	UserID            pgtype.UUID
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertPinnedBuiltinTraining(ctx context.Context, arg UpsertPinnedBuiltinTrainingParams) (PinnedBuiltinTraining, error) {
+	row := q.db.QueryRow(ctx, upsertPinnedBuiltinTraining,
+		arg.BuiltinTrainingID,
+		arg.UserID,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+	)
+	var i PinnedBuiltinTraining
+	err := row.Scan(
+		&i.BuiltinTrainingID,
+		&i.UserID,
+		&i.SyncVersion,
+		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -856,6 +1090,65 @@ func (q *Queries) UpsertRepeater(ctx context.Context, arg UpsertRepeaterParams) 
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
 		&i.UserID,
+	)
+	return i, err
+}
+
+const upsertSensorConfig = `-- name: UpsertSensorConfig :one
+INSERT INTO sensor_configs (
+  id, user_id, name, index, tare, coef, updated_at, deleted_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8
+)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  index = EXCLUDED.index,
+  tare = EXCLUDED.tare,
+  coef = EXCLUDED.coef,
+  updated_at = EXCLUDED.updated_at,
+  deleted_at = EXCLUDED.deleted_at,
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM sensor_configs
+    WHERE user_id = $2::uuid
+  )
+WHERE sensor_configs.user_id = $2::uuid AND EXCLUDED.updated_at > sensor_configs.updated_at
+RETURNING id, user_id, sync_version, updated_at, deleted_at, name, index, tare, coef
+`
+
+type UpsertSensorConfigParams struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Name      string
+	Index     int64
+	Tare      float32
+	Coef      float32
+	UpdatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertSensorConfig(ctx context.Context, arg UpsertSensorConfigParams) (SensorConfig, error) {
+	row := q.db.QueryRow(ctx, upsertSensorConfig,
+		arg.ID,
+		arg.UserID,
+		arg.Name,
+		arg.Index,
+		arg.Tare,
+		arg.Coef,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+	)
+	var i SensorConfig
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SyncVersion,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Name,
+		&i.Index,
+		&i.Tare,
+		&i.Coef,
 	)
 	return i, err
 }

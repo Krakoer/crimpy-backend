@@ -119,3 +119,31 @@ type RepDataRecord struct {
 	SyncVersion     int64   `json:"sync_version"`
 	ServerUpdatedAt string  `json:"server_updated_at"`
 }
+
+type PinnedBuiltinTrainingRecord struct {
+	BuiltinTrainingID string  `json:"builtin_training_id"`
+	UpdatedAt         string  `json:"updated_at"`
+	DeletedAt         *string `json:"deleted_at"`
+	SyncVersion       int64   `json:"sync_version"`
+}
+
+type SensorConfigRecord struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Index       int64   `json:"index"`
+	Tare        float32 `json:"tare"`
+	Coef        float32 `json:"coef"`
+	UpdatedAt   string  `json:"updated_at"`
+	DeletedAt   *string `json:"deleted_at"`
+	SyncVersion int64   `json:"sync_version"`
+}
+
+type BuiltinTrainingWeightRecord struct {
+	ID                string  `json:"id"`
+	BuiltinTrainingID string  `json:"builtin_training_id"`
+	CustomWeightRight float32 `json:"custom_weight_right"`
+	CustomWeightLeft  float32 `json:"custom_weight_left"`
+	UpdatedAt         string  `json:"updated_at"`
+	DeletedAt         *string `json:"deleted_at"`
+	SyncVersion       int64   `json:"sync_version"`
+}

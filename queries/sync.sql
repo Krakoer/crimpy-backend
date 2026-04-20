@@ -7,6 +7,9 @@ SELECT
   (SELECT COUNT(*) FROM repeaters WHERE user_id = $1::uuid AND deleted_at IS NULL) as repeaters_count,
   (SELECT COUNT(*) FROM rep_templates WHERE user_id = $1::uuid AND deleted_at IS NULL) as rep_templates_count,
   (SELECT COUNT(*) FROM rep_datas WHERE user_id = $1::uuid AND deleted_at IS NULL) as rep_datas_count,
+  (SELECT COUNT(*) FROM pinned_builtin_trainings WHERE user_id = $1::uuid AND deleted_at IS NULL) as pinned_builtin_trainings_count,
+  (SELECT COUNT(*) FROM sensor_configs WHERE user_id = $1::uuid AND deleted_at IS NULL) as sensor_configs_count,
+  (SELECT COUNT(*) FROM builtin_training_weights WHERE user_id = $1::uuid AND deleted_at IS NULL) as builtin_training_weights_count,
   COALESCE((
     SELECT MAX(sync_version) FROM (
       SELECT MAX(sync_version) as sync_version FROM sessions WHERE user_id = $1::uuid
@@ -20,6 +23,12 @@ SELECT
       SELECT MAX(sync_version) FROM rep_templates WHERE user_id = $1::uuid
       UNION ALL
       SELECT MAX(sync_version) FROM rep_datas WHERE user_id = $1::uuid
+      UNION ALL
+      SELECT MAX(sync_version) FROM pinned_builtin_trainings WHERE user_id = $1::uuid
+      UNION ALL
+      SELECT MAX(sync_version) FROM sensor_configs WHERE user_id = $1::uuid
+      UNION ALL
+      SELECT MAX(sync_version) FROM builtin_training_weights WHERE user_id = $1::uuid
     ) as all_versions
   ), 0) as last_sync_version;
 
@@ -55,6 +64,24 @@ ORDER BY sync_version ASC;
 
 -- name: GetRepDatasSinceVersion :many
 SELECT * FROM rep_datas
+WHERE user_id = $1::uuid
+AND sync_version > $2::bigint
+ORDER BY sync_version ASC;
+
+-- name: GetPinnedBuiltinTrainingsSinceVersion :many
+SELECT * FROM pinned_builtin_trainings
+WHERE user_id = $1::uuid
+AND sync_version > $2::bigint
+ORDER BY sync_version ASC;
+
+-- name: GetSensorConfigsSinceVersion :many
+SELECT * FROM sensor_configs
+WHERE user_id = $1::uuid
+AND sync_version > $2::bigint
+ORDER BY sync_version ASC;
+
+-- name: GetBuiltinTrainingWeightsSinceVersion :many
+SELECT * FROM builtin_training_weights
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC;
@@ -236,6 +263,64 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE rep_datas.user_id = $2::uuid AND EXCLUDED.updated_at > rep_datas.server_updated_at
+RETURNING *;
+
+-- name: UpsertPinnedBuiltinTraining :one
+INSERT INTO pinned_builtin_trainings (
+  builtin_training_id, user_id, updated_at, deleted_at
+) VALUES (
+  $1, $2, $3, $4
+)
+ON CONFLICT (builtin_training_id) DO UPDATE SET
+  updated_at = EXCLUDED.updated_at,
+  deleted_at = EXCLUDED.deleted_at,
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM pinned_builtin_trainings
+    WHERE user_id = $2::uuid
+  )
+WHERE pinned_builtin_trainings.user_id = $2::uuid AND EXCLUDED.updated_at > pinned_builtin_trainings.updated_at
+RETURNING *;
+
+-- name: UpsertSensorConfig :one
+INSERT INTO sensor_configs (
+  id, user_id, name, index, tare, coef, updated_at, deleted_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8
+)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  index = EXCLUDED.index,
+  tare = EXCLUDED.tare,
+  coef = EXCLUDED.coef,
+  updated_at = EXCLUDED.updated_at,
+  deleted_at = EXCLUDED.deleted_at,
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM sensor_configs
+    WHERE user_id = $2::uuid
+  )
+WHERE sensor_configs.user_id = $2::uuid AND EXCLUDED.updated_at > sensor_configs.updated_at
+RETURNING *;
+
+-- name: UpsertBuiltinTrainingWeight :one
+INSERT INTO builtin_training_weights (
+  id, user_id, builtin_traning_id, custom_weight_right, custom_weight_left, updated_at, deleted_at
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7
+)
+ON CONFLICT (id) DO UPDATE SET
+  builtin_traning_id = EXCLUDED.builtin_traning_id,
+  custom_weight_right = EXCLUDED.custom_weight_right,
+  custom_weight_left = EXCLUDED.custom_weight_left,
+  updated_at = EXCLUDED.updated_at,
+  deleted_at = EXCLUDED.deleted_at,
+  sync_version = (
+    SELECT COALESCE(MAX(sync_version), 0) + 1
+    FROM builtin_training_weights
+    WHERE user_id = $2::uuid
+  )
+WHERE builtin_training_weights.user_id = $2::uuid AND EXCLUDED.updated_at > builtin_training_weights.updated_at
 RETURNING *;
 
 -- name: UpdateUserLastSeen :exec

@@ -23,6 +23,25 @@ type Assessment struct {
 	UserID          pgtype.UUID
 }
 
+type BuiltinTrainingWeight struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	BuiltinTraningID  pgtype.UUID
+	SyncVersion       int64
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	CustomWeightRight float32
+	CustomWeightLeft  float32
+}
+
+type PinnedBuiltinTraining struct {
+	BuiltinTrainingID pgtype.UUID
+	UserID            pgtype.UUID
+	SyncVersion       int64
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+}
+
 type RepData struct {
 	ID              pgtype.UUID
 	AverageWeight   float32
@@ -75,6 +94,18 @@ type Repeater struct {
 	SyncVersion       int64
 	ServerUpdatedAt   pgtype.Timestamptz
 	UserID            pgtype.UUID
+}
+
+type SensorConfig struct {
+	ID          pgtype.UUID
+	UserID      pgtype.UUID
+	SyncVersion int64
+	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
+	Name        string
+	Index       int64
+	Tare        float32
+	Coef        float32
 }
 
 type Session struct {

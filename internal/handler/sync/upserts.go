@@ -469,3 +469,153 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 
 	return id, nil
 }
+
+func (h *SyncHandler) upsertPinnedBuiltinTraining(ctx context.Context, userUUID pgtype.UUID, data interface{}) (string, error) {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Invalid pinned builtin training record")
+	}
+
+	builtinTrainingID, _ := m["builtin_training_id"].(string)
+	if builtinTrainingID == "" {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Missing builtin training ID")
+	}
+
+	builtinTrainingUUID, err := parseUUID(builtinTrainingID)
+	if err != nil {
+		return builtinTrainingID, err
+	}
+
+	updatedAtStr, _ := m["updated_at"].(string)
+	updatedAt, err := parseTimestamp(updatedAtStr)
+	if err != nil {
+		return builtinTrainingID, err
+	}
+
+	var deletedAt pgtype.Timestamptz
+	if deletedAtStr, ok := m["deleted_at"].(string); ok && deletedAtStr != "" {
+		deletedAt, err = parseTimestamp(deletedAtStr)
+		if err != nil {
+			return builtinTrainingID, err
+		}
+	}
+
+	_, err = h.queries.UpsertPinnedBuiltinTraining(ctx, db.UpsertPinnedBuiltinTrainingParams{
+		BuiltinTrainingID: builtinTrainingUUID,
+		UserID:            userUUID,
+		UpdatedAt:         updatedAt,
+		DeletedAt:         deletedAt,
+	})
+	if err != nil {
+		return builtinTrainingID, err
+	}
+
+	return builtinTrainingID, nil
+}
+
+func (h *SyncHandler) upsertSensorConfig(ctx context.Context, userUUID pgtype.UUID, data interface{}) (string, error) {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Invalid sensor config record")
+	}
+
+	id, _ := m["id"].(string)
+	if id == "" {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Missing sensor config ID")
+	}
+
+	sensorConfigUUID, err := parseUUID(id)
+	if err != nil {
+		return id, err
+	}
+
+	name, _ := m["name"].(string)
+	index := int64(m["index"].(float64))
+	tare := float32(m["tare"].(float64))
+	coef := float32(m["coef"].(float64))
+
+	updatedAtStr, _ := m["updated_at"].(string)
+	updatedAt, err := parseTimestamp(updatedAtStr)
+	if err != nil {
+		return id, err
+	}
+
+	var deletedAt pgtype.Timestamptz
+	if deletedAtStr, ok := m["deleted_at"].(string); ok && deletedAtStr != "" {
+		deletedAt, err = parseTimestamp(deletedAtStr)
+		if err != nil {
+			return id, err
+		}
+	}
+
+	_, err = h.queries.UpsertSensorConfig(ctx, db.UpsertSensorConfigParams{
+		ID:        sensorConfigUUID,
+		UserID:    userUUID,
+		Name:      name,
+		Index:     index,
+		Tare:      tare,
+		Coef:      coef,
+		UpdatedAt: updatedAt,
+		DeletedAt: deletedAt,
+	})
+	if err != nil {
+		return id, err
+	}
+
+	return id, nil
+}
+
+func (h *SyncHandler) upsertBuiltinTrainingWeight(ctx context.Context, userUUID pgtype.UUID, data interface{}) (string, error) {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Invalid builtin training weight record")
+	}
+
+	id, _ := m["id"].(string)
+	if id == "" {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Missing builtin training weight ID")
+	}
+
+	builtinTrainingWeightUUID, err := parseUUID(id)
+	if err != nil {
+		return id, err
+	}
+
+	builtinTrainingIDStr, _ := m["builtin_training_id"].(string)
+	builtinTrainingID, err := parseUUID(builtinTrainingIDStr)
+	if err != nil {
+		return id, err
+	}
+
+	customWeightRight := float32(m["custom_weight_right"].(float64))
+	customWeightLeft := float32(m["custom_weight_left"].(float64))
+
+	updatedAtStr, _ := m["updated_at"].(string)
+	updatedAt, err := parseTimestamp(updatedAtStr)
+	if err != nil {
+		return id, err
+	}
+
+	var deletedAt pgtype.Timestamptz
+	if deletedAtStr, ok := m["deleted_at"].(string); ok && deletedAtStr != "" {
+		deletedAt, err = parseTimestamp(deletedAtStr)
+		if err != nil {
+			return id, err
+		}
+	}
+
+	_, err = h.queries.UpsertBuiltinTrainingWeight(ctx, db.UpsertBuiltinTrainingWeightParams{
+		ID:                builtinTrainingWeightUUID,
+		UserID:            userUUID,
+		BuiltinTraningID:  builtinTrainingID,
+		CustomWeightRight: customWeightRight,
+		CustomWeightLeft:  customWeightLeft,
+		UpdatedAt:         updatedAt,
+		DeletedAt:         deletedAt,
+	})
+	if err != nil {
+		return id, err
+	}
+
+	return id, nil
+}

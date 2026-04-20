@@ -135,6 +135,43 @@ CREATE TABLE "rep_datas" (
   PRIMARY KEY ("id")
 );
 
+-- Stores the IDs of pinned builtin trainings
+CREATE TABLE "pinned_builtin_trainings" (
+  "builtin_training_id"     UUID        NOT NULL,
+  "user_id"                 UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "sync_version"            BIGINT      NOT NULL DEFAULT 1,
+  "updated_at"              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "deleted_at"              TIMESTAMPTZ,
+  PRIMARY KEY ("builtin_training_id")
+);
+
+-- Stores the saved sensor configs.
+CREATE TABLE "sensor_configs" (
+  "id"                UUID        NOT NULL,
+  "user_id"           UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "sync_version"      BIGINT      NOT NULL DEFAULT 1,
+  "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "deleted_at"        TIMESTAMPTZ,
+  "name"              TEXT        NOT NULL,
+  "index"             BIGINT      NOT NULL,
+  "tare"              REAL        NOT NULL,
+  "coef"              REAL        NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+-- Stores custom weights for builtin trainings per user.
+CREATE TABLE "builtin_training_weights" (
+  "id"                    UUID        NOT NULL,
+  "user_id"               UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "builtin_traning_id"    UUID        NOT NULL,
+  "sync_version"          BIGINT      NOT NULL DEFAULT 1,
+  "updated_at"            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "deleted_at"            TIMESTAMPTZ,
+  "custom_weight_right"   REAL        NOT NULL,
+  "custom_weight_left"    REAL        NOT NULL,
+  PRIMARY KEY ("id")
+);
+
 -- Indexes for foreign keys to improve query performance
 CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
 CREATE INDEX "assessments_session_id_idx" ON "assessments"("session_id");
@@ -146,6 +183,9 @@ CREATE INDEX "rep_templates_training_id_idx" ON "rep_templates"("training_id");
 CREATE INDEX "rep_templates_user_id_idx" ON "rep_templates"("user_id");
 CREATE INDEX "rep_datas_session_id_idx" ON "rep_datas"("session_id");
 CREATE INDEX "rep_datas_user_id_idx" ON "rep_datas"("user_id");
+CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings"("user_id");
+CREATE INDEX "sensor_configs_user_id_idx" ON "sensor_configs"("user_id");
+CREATE INDEX "builtin_training_weights_user_id_idx" ON "builtin_training_weights"("user_id");
 
 -- Indexes for sync operations
 CREATE INDEX "sessions_user_sync_idx" ON "sessions"("user_id", "sync_version");
@@ -154,6 +194,6 @@ CREATE INDEX "trainings_user_sync_idx" ON "trainings"("user_id", "sync_version")
 CREATE INDEX "repeaters_user_sync_idx" ON "repeaters"("user_id", "sync_version");
 CREATE INDEX "rep_templates_user_sync_idx" ON "rep_templates"("user_id", "sync_version");
 CREATE INDEX "rep_datas_user_sync_idx" ON "rep_datas"("user_id", "sync_version");
-
--- Note: sync_version and server_updated_at are managed in application code
--- during upsert operations to avoid needing Atlas Pro features for triggers
+CREATE INDEX "pinned_builtin_trainings_user_sync_idx" ON "pinned_builtin_trainings"("user_id", "sync_version");
+CREATE INDEX "sensor_configs_user_sync_idx" ON "sensor_configs"("user_id", "sync_version");
+CREATE INDEX "builtin_training_weights_user_sync_idx" ON "builtin_training_weights"("user_id", "sync_version");

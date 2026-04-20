@@ -1,0 +1,525 @@
+package handler_test
+
+import (
+	"crimpy/backend/internal/handler/sync"
+	"crimpy/backend/tests/testutil"
+	"encoding/json"
+	"net/http"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
+)
+
+func TestSyncHandler_GetSummary_EmptyAccount(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync1@test.com")
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	req := testutil.NewRequest(http.MethodGet, "/api/sync/summary", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var summary map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&summary)
+
+	collections := summary["collections"].(map[string]interface{})
+
+	if collections["sessions"].(float64) != 0 {
+		t.Errorf("Expected 0 sessions, got %v", collections["sessions"])
+	}
+
+	if collections["trainings"].(float64) != 0 {
+		t.Errorf("Expected 0 trainings, got %v", collections["trainings"])
+	}
+
+	if summary["last_sync_version"].(float64) != 0 {
+		t.Errorf("Expected last_sync_version 0, got %v", summary["last_sync_version"])
+	}
+}
+
+func TestSyncHandler_GetSummary_WithData(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync2@test.com")
+
+	// Create some test data using session handler
+	sessionHandler := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: testutil.NewSessionHandler(queries),
+	})
+
+	// Create a session
+	reqBody := map[string]interface{}{
+		"name":         "Test Session",
+		"session_type": 1,
+		"duration":     3600,
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	sessionHandler.Test(req)
+
+	// Now get sync summary
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	req = testutil.NewRequest(http.MethodGet, "/api/sync/summary", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var summary map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&summary)
+
+	collections := summary["collections"].(map[string]interface{})
+
+	if collections["sessions"].(float64) != 1 {
+		t.Errorf("Expected 1 session, got %v", collections["sessions"])
+	}
+}
+
+func TestSyncHandler_Pull_InitialSync(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync5@test.com")
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	req := testutil.NewRequest(http.MethodGet, "/api/sync/pull?since_version=0", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var pullResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pullResp)
+
+	if pullResp["server_version"] == nil {
+		t.Error("Expected server_version in response")
+	}
+
+	records := pullResp["records"].(map[string]interface{})
+	if records["sessions"] == nil {
+		t.Error("Expected sessions array in records")
+	}
+}
+
+func TestSyncHandler_Push_NewRecords(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync6@test.com")
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	sessionID := uuid.New().String()
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	pushReq := map[string]interface{}{
+		"records": map[string]interface{}{
+			"sessions": []interface{}{
+				map[string]interface{}{
+					"id":                sessionID,
+					"name":              "Synced Session",
+					"notes":             "Test notes",
+					"date":              now,
+					"is_assessment":     false,
+					"session_type":      1,
+					"duration":          3600,
+					"created_at":        now,
+					"updated_at":        now,
+					"deleted_at":        nil,
+					"sync_version":      0,
+					"server_updated_at": now,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(pushReq)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sync/push", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var pushResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pushResp)
+
+	accepted := pushResp["accepted"].([]interface{})
+	if len(accepted) != 1 {
+		t.Errorf("Expected 1 accepted record, got %d", len(accepted))
+	}
+
+	if accepted[0].(string) != sessionID {
+		t.Errorf("Expected accepted ID %s, got %v", sessionID, accepted[0])
+	}
+
+	rejected := pushResp["rejected"].([]interface{})
+	if len(rejected) != 0 {
+		t.Errorf("Expected 0 rejected records, got %d", len(rejected))
+	}
+
+	// Verify sync_version was set
+	if pushResp["server_version"].(float64) == 0 {
+		t.Error("Expected server_version to be incremented")
+	}
+}
+
+func TestSyncHandler_Push_UpdateExisting(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync7@test.com")
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	sessionID := uuid.New().String()
+	now := time.Now().UTC()
+
+	// First push - create record
+	pushReq := map[string]interface{}{
+		"records": map[string]interface{}{
+			"sessions": []interface{}{
+				map[string]interface{}{
+					"id":                sessionID,
+					"name":              "Original Name",
+					"notes":             "Original notes",
+					"date":              now.Format(time.RFC3339),
+					"is_assessment":     false,
+					"session_type":      1,
+					"duration":          3600,
+					"created_at":        now.Format(time.RFC3339),
+					"updated_at":        now.Format(time.RFC3339),
+					"deleted_at":        nil,
+					"sync_version":      0,
+					"server_updated_at": now.Format(time.RFC3339),
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(pushReq)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sync/push", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	app.Test(req)
+
+	// Second push - update same record with newer timestamp
+	laterTime := now.Add(5 * time.Minute)
+	pushReq["records"] = map[string]interface{}{
+		"sessions": []interface{}{
+			map[string]interface{}{
+				"id":                sessionID,
+				"name":              "Updated Name",
+				"notes":             "Updated notes",
+				"date":              laterTime.Format(time.RFC3339),
+				"is_assessment":     false,
+				"session_type":      1,
+				"duration":          7200,
+				"created_at":        now.Format(time.RFC3339),
+				"updated_at":        laterTime.Format(time.RFC3339),
+				"deleted_at":        nil,
+				"sync_version":      0,
+				"server_updated_at": laterTime.Format(time.RFC3339),
+			},
+		},
+	}
+
+	body, _ = json.Marshal(pushReq)
+	req = testutil.NewJSONRequest(http.MethodPost, "/api/sync/push", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var pushResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pushResp)
+
+	accepted := pushResp["accepted"].([]interface{})
+	if len(accepted) != 1 {
+		t.Errorf("Expected 1 accepted record (update), got %d", len(accepted))
+	}
+
+	// Pull to verify the update
+	req = testutil.NewRequest(http.MethodGet, "/api/sync/pull?since_version=0", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, _ = app.Test(req)
+	var pullResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pullResp)
+
+	records := pullResp["records"].(map[string]interface{})
+	sessions := records["sessions"].([]interface{})
+
+	if len(sessions) != 1 {
+		t.Fatalf("Expected 1 session, got %d", len(sessions))
+	}
+
+	session := sessions[0].(map[string]interface{})
+	if session["name"] != "Updated Name" {
+		t.Errorf("Expected name 'Updated Name', got %v", session["name"])
+	}
+}
+
+func TestSyncHandler_Migrate_BulkUpload(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync8@test.com")
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Bulk migrate multiple sessions
+	migrateReq := map[string]interface{}{
+		"records": map[string]interface{}{
+			"sessions": []interface{}{
+				map[string]interface{}{
+					"id":                uuid.New().String(),
+					"name":              "Session 1",
+					"notes":             "",
+					"date":              now,
+					"is_assessment":     false,
+					"session_type":      1,
+					"duration":          3600,
+					"created_at":        now,
+					"updated_at":        now,
+					"deleted_at":        nil,
+					"sync_version":      0,
+					"server_updated_at": now,
+				},
+				map[string]interface{}{
+					"id":                uuid.New().String(),
+					"name":              "Session 2",
+					"notes":             "",
+					"date":              now,
+					"is_assessment":     false,
+					"session_type":      1,
+					"duration":          3600,
+					"created_at":        now,
+					"updated_at":        now,
+					"deleted_at":        nil,
+					"sync_version":      0,
+					"server_updated_at": now,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(migrateReq)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sync/migrate", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var migrateResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&migrateResp)
+
+	accepted := migrateResp["accepted"].([]interface{})
+	if len(accepted) != 2 {
+		t.Errorf("Expected 2 accepted records, got %d", len(accepted))
+	}
+
+	// Verify via summary
+	req = testutil.NewRequest(http.MethodGet, "/api/sync/summary", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, _ = app.Test(req)
+	var summary map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&summary)
+
+	collections := summary["collections"].(map[string]interface{})
+	if collections["sessions"].(float64) != 2 {
+		t.Errorf("Expected 2 sessions after migrate, got %v", collections["sessions"])
+	}
+}
+
+func TestSyncHandler_Pull_IncrementalSync(t *testing.T) {
+	os.Setenv("JWT_SECRET", "test-secret-key")
+	defer os.Unsetenv("JWT_SECRET")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "sync9@test.com")
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Push first session
+	pushReq := map[string]interface{}{
+		"records": map[string]interface{}{
+			"sessions": []interface{}{
+				map[string]interface{}{
+					"id":                uuid.New().String(),
+					"name":              "First Session",
+					"notes":             "",
+					"date":              now,
+					"is_assessment":     false,
+					"session_type":      1,
+					"duration":          3600,
+					"created_at":        now,
+					"updated_at":        now,
+					"deleted_at":        nil,
+					"sync_version":      0,
+					"server_updated_at": now,
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(pushReq)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sync/push", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, _ := app.Test(req)
+	var firstPush map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&firstPush)
+	firstVersion := int64(firstPush["server_version"].(float64))
+
+	// Pull from version 0 should get the session
+	req = testutil.NewRequest(http.MethodGet, "/api/sync/pull?since_version=0", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, _ = app.Test(req)
+	var pullResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pullResp)
+
+	records := pullResp["records"].(map[string]interface{})
+	sessions := records["sessions"].([]interface{})
+
+	if len(sessions) != 1 {
+		t.Errorf("Expected 1 session from version 0, got %d", len(sessions))
+	}
+
+	// Pull from current version should get nothing new
+	req = testutil.NewRequest(http.MethodGet, "/api/sync/pull?since_version="+string(rune(firstVersion)), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, _ = app.Test(req)
+	var pullResp2 map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pullResp2)
+
+	records2 := pullResp2["records"].(map[string]interface{})
+	sessions2 := records2["sessions"].([]interface{})
+
+	if len(sessions2) != 0 {
+		t.Errorf("Expected 0 sessions from current version, got %d", len(sessions2))
+	}
+}
+
+func TestSyncHandler_Push_Unauthorized(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	syncHandler := sync.NewSyncHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SyncHandler: syncHandler,
+	})
+
+	pushReq := map[string]interface{}{
+		"records": map[string]interface{}{
+			"sessions": []interface{}{},
+		},
+	}
+
+	body, _ := json.Marshal(pushReq)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sync/push", body)
+	// No authorization header
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected status %d, got %d", fiber.StatusUnauthorized, resp.StatusCode)
+	}
+}

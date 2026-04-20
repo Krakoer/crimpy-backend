@@ -65,12 +65,15 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(SyncSummaryResponse{
 		UserID: userID,
 		Collections: map[string]int64{
-			"sessions":      summary.SessionsCount,
-			"assessments":   summary.AssessmentsCount,
-			"trainings":     summary.TrainingsCount,
-			"repeaters":     summary.RepeatersCount,
-			"rep_templates": summary.RepTemplatesCount,
-			"rep_datas":     summary.RepDatasCount,
+			"sessions":                 summary.SessionsCount,
+			"assessments":              summary.AssessmentsCount,
+			"trainings":                summary.TrainingsCount,
+			"repeaters":                summary.RepeatersCount,
+			"rep_templates":            summary.RepTemplatesCount,
+			"rep_datas":                summary.RepDatasCount,
+			"pinned_builtin_trainings": summary.PinnedBuiltinTrainingsCount,
+			"sensor_configs":           summary.SensorConfigsCount,
+			"builtin_training_weights": summary.BuiltinTrainingWeightsCount,
 		},
 		LastSyncVersion: lastSyncVersion,
 	})
@@ -164,6 +167,36 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		})
 	}
 
+	pinnedBuiltinTrainings, err := h.queries.GetPinnedBuiltinTrainingsSinceVersion(context.Background(), db.GetPinnedBuiltinTrainingsSinceVersionParams{
+		Column1: userUUID,
+		Column2: int64(sinceVersion),
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch pinned builtin trainings",
+		})
+	}
+
+	sensorConfigs, err := h.queries.GetSensorConfigsSinceVersion(context.Background(), db.GetSensorConfigsSinceVersionParams{
+		Column1: userUUID,
+		Column2: int64(sinceVersion),
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sensor configs",
+		})
+	}
+
+	builtinTrainingWeights, err := h.queries.GetBuiltinTrainingWeightsSinceVersion(context.Background(), db.GetBuiltinTrainingWeightsSinceVersionParams{
+		Column1: userUUID,
+		Column2: int64(sinceVersion),
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch builtin training weights",
+		})
+	}
+
 	summary, err := h.queries.GetSyncSummary(context.Background(), userUUID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -201,6 +234,21 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		repDataRecords[i] = convertRepDataToRecord(rd)
 	}
 
+	pinnedBuiltinTrainingRecords := make([]PinnedBuiltinTrainingRecord, len(pinnedBuiltinTrainings))
+	for i, pbt := range pinnedBuiltinTrainings {
+		pinnedBuiltinTrainingRecords[i] = convertPinnedBuiltinTrainingToRecord(pbt)
+	}
+
+	sensorConfigRecords := make([]SensorConfigRecord, len(sensorConfigs))
+	for i, sc := range sensorConfigs {
+		sensorConfigRecords[i] = convertSensorConfigToRecord(sc)
+	}
+
+	builtinTrainingWeightRecords := make([]BuiltinTrainingWeightRecord, len(builtinTrainingWeights))
+	for i, btw := range builtinTrainingWeights {
+		builtinTrainingWeightRecords[i] = convertBuiltinTrainingWeightToRecord(btw)
+	}
+
 	lastSyncVersion := int64(0)
 	if summary.LastSyncVersion != nil {
 		if v, ok := summary.LastSyncVersion.(int64); ok {
@@ -211,12 +259,15 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(PullResponse{
 		ServerVersion: lastSyncVersion,
 		Records: map[string]interface{}{
-			"sessions":      sessionRecords,
-			"assessments":   assessmentRecords,
-			"trainings":     trainingRecords,
-			"repeaters":     repeaterRecords,
-			"rep_templates": repTemplateRecords,
-			"rep_datas":     repDataRecords,
+			"sessions":                 sessionRecords,
+			"assessments":              assessmentRecords,
+			"trainings":                trainingRecords,
+			"repeaters":                repeaterRecords,
+			"rep_templates":            repTemplateRecords,
+			"rep_datas":                repDataRecords,
+			"pinned_builtin_trainings": pinnedBuiltinTrainingRecords,
+			"sensor_configs":           sensorConfigRecords,
+			"builtin_training_weights": builtinTrainingWeightRecords,
 		},
 	})
 }
@@ -323,6 +374,45 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 		if repDatas, ok := repDatasData.([]interface{}); ok {
 			for _, rd := range repDatas {
 				recordID, err := h.upsertRepData(ctx, userUUID, rd)
+				if err != nil {
+					rejected = append(rejected, recordID)
+				} else {
+					accepted = append(accepted, recordID)
+				}
+			}
+		}
+	}
+
+	if pinnedBuiltinTrainingsData, ok := req.Records["pinned_builtin_trainings"]; ok {
+		if pinnedBuiltinTrainings, ok := pinnedBuiltinTrainingsData.([]interface{}); ok {
+			for _, pbt := range pinnedBuiltinTrainings {
+				recordID, err := h.upsertPinnedBuiltinTraining(ctx, userUUID, pbt)
+				if err != nil {
+					rejected = append(rejected, recordID)
+				} else {
+					accepted = append(accepted, recordID)
+				}
+			}
+		}
+	}
+
+	if sensorConfigsData, ok := req.Records["sensor_configs"]; ok {
+		if sensorConfigs, ok := sensorConfigsData.([]interface{}); ok {
+			for _, sc := range sensorConfigs {
+				recordID, err := h.upsertSensorConfig(ctx, userUUID, sc)
+				if err != nil {
+					rejected = append(rejected, recordID)
+				} else {
+					accepted = append(accepted, recordID)
+				}
+			}
+		}
+	}
+
+	if builtinTrainingWeightsData, ok := req.Records["builtin_training_weights"]; ok {
+		if builtinTrainingWeights, ok := builtinTrainingWeightsData.([]interface{}); ok {
+			for _, btw := range builtinTrainingWeights {
+				recordID, err := h.upsertBuiltinTrainingWeight(ctx, userUUID, btw)
 				if err != nil {
 					rejected = append(rejected, recordID)
 				} else {
