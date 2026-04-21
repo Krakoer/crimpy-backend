@@ -10,40 +10,42 @@ import (
 
 type Assessment struct {
 	ID              pgtype.UUID
+	UserID          pgtype.UUID
 	Type            int32
 	RightValue      pgtype.Float4
 	LeftValue       pgtype.Float4
 	SessionID       pgtype.UUID
 	GripPosition    pgtype.Int4
-	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
-	UserID          pgtype.UUID
 }
 
 type BuiltinTrainingWeight struct {
 	ID                pgtype.UUID
 	UserID            pgtype.UUID
 	BuiltinTraningID  pgtype.UUID
-	SyncVersion       int64
+	CustomWeightLeft  float32
+	CustomWeightRight float32
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
-	CustomWeightRight float32
-	CustomWeightLeft  float32
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type PinnedBuiltinTraining struct {
 	BuiltinTrainingID pgtype.UUID
 	UserID            pgtype.UUID
-	SyncVersion       int64
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type RepData struct {
 	ID              pgtype.UUID
+	UserID          pgtype.UUID
 	AverageWeight   float32
 	SessionID       pgtype.UUID
 	IsRest          bool
@@ -52,16 +54,15 @@ type RepData struct {
 	TargetWeight    float32
 	Index           int32
 	GripPosition    int32
-	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
-	UserID          pgtype.UUID
 }
 
 type RepTemplate struct {
 	ID              pgtype.UUID
+	UserID          pgtype.UUID
 	IsRest          bool
 	RightHand       bool
 	Duration        int32
@@ -69,16 +70,15 @@ type RepTemplate struct {
 	TargetWeight    float32
 	Index           int32
 	GripPosition    int32
-	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
 	SyncVersion     int64
 	ServerUpdatedAt pgtype.Timestamptz
-	UserID          pgtype.UUID
 }
 
 type Repeater struct {
 	ID                pgtype.UUID
+	UserID            pgtype.UUID
 	Sets              int32
 	Reps              int32
 	Worktime          int32
@@ -88,24 +88,23 @@ type Repeater struct {
 	TargetWeightLeft  pgtype.Float4
 	SplitHand         bool
 	GripPosition      int32
-	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
 	SyncVersion       int64
 	ServerUpdatedAt   pgtype.Timestamptz
-	UserID            pgtype.UUID
 }
 
 type SensorConfig struct {
-	ID          pgtype.UUID
-	UserID      pgtype.UUID
-	SyncVersion int64
-	UpdatedAt   pgtype.Timestamptz
-	DeletedAt   pgtype.Timestamptz
-	Name        string
-	Index       int64
-	Tare        float32
-	Coef        float32
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	Name            string
+	Index           int64
+	Tare            float32
+	Coef            float32
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
 }
 
 type Session struct {
@@ -123,7 +122,6 @@ type Session struct {
 	RepeaterRestTime  pgtype.Int4
 	RepeaterSetRest   pgtype.Int4
 	RepeaterSplitHand pgtype.Bool
-	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
 	SyncVersion       int64
@@ -137,7 +135,6 @@ type Training struct {
 	RepeaterID      pgtype.UUID
 	IsFavorite      bool
 	IsAssessment    bool
-	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
 	SyncVersion     int64

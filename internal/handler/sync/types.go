@@ -35,7 +35,6 @@ type SessionRecord struct {
 	RepeaterRestTime  *int32  `json:"repeater_rest_time"`
 	RepeaterSetRest   *int32  `json:"repeater_set_rest"`
 	RepeaterSplitHand *bool   `json:"repeater_split_hand"`
-	CreatedAt         string  `json:"created_at"`
 	UpdatedAt         string  `json:"updated_at"`
 	DeletedAt         *string `json:"deleted_at"`
 	SyncVersion       int64   `json:"sync_version"`
@@ -49,7 +48,6 @@ type AssessmentRecord struct {
 	LeftValue       *float32 `json:"left_value"`
 	SessionID       string   `json:"session_id"`
 	GripPosition    int32    `json:"grip_position"`
-	CreatedAt       string   `json:"created_at"`
 	UpdatedAt       string   `json:"updated_at"`
 	DeletedAt       *string  `json:"deleted_at"`
 	SyncVersion     int64    `json:"sync_version"`
@@ -62,7 +60,6 @@ type TrainingRecord struct {
 	RepeaterID      *string `json:"repeater_id"`
 	IsFavorite      bool    `json:"is_favorite"`
 	IsAssessment    bool    `json:"is_assessment"`
-	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
 	DeletedAt       *string `json:"deleted_at"`
 	SyncVersion     int64   `json:"sync_version"`
@@ -80,7 +77,6 @@ type RepeaterRecord struct {
 	TargetWeightLeft  *float32 `json:"target_weight_left"`
 	SplitHand         bool     `json:"split_hand"`
 	GripPosition      int32    `json:"grip_position"`
-	CreatedAt         string   `json:"created_at"`
 	UpdatedAt         string   `json:"updated_at"`
 	DeletedAt         *string  `json:"deleted_at"`
 	SyncVersion       int64    `json:"sync_version"`
@@ -96,7 +92,6 @@ type RepTemplateRecord struct {
 	TargetWeight    float32 `json:"target_weight"`
 	Index           int32   `json:"index"`
 	GripPosition    int32   `json:"grip_position"`
-	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
 	DeletedAt       *string `json:"deleted_at"`
 	SyncVersion     int64   `json:"sync_version"`
@@ -113,7 +108,6 @@ type RepDataRecord struct {
 	TargetWeight    float32 `json:"target_weight"`
 	Index           int32   `json:"index"`
 	GripPosition    int32   `json:"grip_position"`
-	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
 	DeletedAt       *string `json:"deleted_at"`
 	SyncVersion     int64   `json:"sync_version"`
@@ -125,17 +119,19 @@ type PinnedBuiltinTrainingRecord struct {
 	UpdatedAt         string  `json:"updated_at"`
 	DeletedAt         *string `json:"deleted_at"`
 	SyncVersion       int64   `json:"sync_version"`
+	ServerUpdatedAt   string  `json:"server_updated_at"`
 }
 
 type SensorConfigRecord struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Index       int64   `json:"index"`
-	Tare        float32 `json:"tare"`
-	Coef        float32 `json:"coef"`
-	UpdatedAt   string  `json:"updated_at"`
-	DeletedAt   *string `json:"deleted_at"`
-	SyncVersion int64   `json:"sync_version"`
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	Index           int64   `json:"index"`
+	Tare            float32 `json:"tare"`
+	Coef            float32 `json:"coef"`
+	UpdatedAt       string  `json:"updated_at"`
+	DeletedAt       *string `json:"deleted_at"`
+	SyncVersion     int64   `json:"sync_version"`
+	ServerUpdatedAt string  `json:"server_updated_at"`
 }
 
 type BuiltinTrainingWeightRecord struct {
@@ -146,4 +142,5 @@ type BuiltinTrainingWeightRecord struct {
 	UpdatedAt         string  `json:"updated_at"`
 	DeletedAt         *string `json:"deleted_at"`
 	SyncVersion       int64   `json:"sync_version"`
+	ServerUpdatedAt   string  `json:"server_updated_at"`
 }

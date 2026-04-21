@@ -15,7 +15,7 @@ const createRepData = `-- name: CreateRepData :one
 INSERT INTO rep_datas (
   average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id
+RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type CreateRepDataParams struct {
@@ -43,6 +43,7 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 	var i RepData
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.AverageWeight,
 		&i.SessionID,
 		&i.IsRest,
@@ -51,12 +52,10 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
@@ -80,7 +79,7 @@ func (q *Queries) DeleteSessionRepDatas(ctx context.Context, sessionID pgtype.UU
 }
 
 const getRepData = `-- name: GetRepData :one
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas WHERE id = $1
+SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_datas WHERE id = $1
 `
 
 func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, error) {
@@ -88,6 +87,7 @@ func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, erro
 	var i RepData
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.AverageWeight,
 		&i.SessionID,
 		&i.IsRest,
@@ -96,18 +96,16 @@ func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, erro
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
 
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas WHERE session_id = $1 ORDER BY index
+SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
 `
 
 func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) ([]RepData, error) {
@@ -121,6 +119,7 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 		var i RepData
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.AverageWeight,
 			&i.SessionID,
 			&i.IsRest,
@@ -129,12 +128,10 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 			&i.TargetWeight,
 			&i.Index,
 			&i.GripPosition,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
-			&i.UserID,
 		); err != nil {
 			return nil, err
 		}

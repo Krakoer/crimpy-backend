@@ -12,7 +12,7 @@ import (
 )
 
 const getAssessmentByID = `-- name: GetAssessmentByID :one
-SELECT id, type, right_value, left_value, session_id, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM assessments WHERE id = $1::uuid AND user_id = $2::uuid
+SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM assessments WHERE id = $1::uuid AND user_id = $2::uuid
 `
 
 type GetAssessmentByIDParams struct {
@@ -25,23 +25,22 @@ func (q *Queries) GetAssessmentByID(ctx context.Context, arg GetAssessmentByIDPa
 	var i Assessment
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Type,
 		&i.RightValue,
 		&i.LeftValue,
 		&i.SessionID,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
 
 const getAssessmentsSinceVersion = `-- name: GetAssessmentsSinceVersion :many
-SELECT id, type, right_value, left_value, session_id, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM assessments
+SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM assessments
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -63,17 +62,16 @@ func (q *Queries) GetAssessmentsSinceVersion(ctx context.Context, arg GetAssessm
 		var i Assessment
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Type,
 			&i.RightValue,
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
-			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -86,7 +84,7 @@ func (q *Queries) GetAssessmentsSinceVersion(ctx context.Context, arg GetAssessm
 }
 
 const getBuiltinTrainingWeightsSinceVersion = `-- name: GetBuiltinTrainingWeightsSinceVersion :many
-SELECT id, user_id, builtin_traning_id, sync_version, updated_at, deleted_at, custom_weight_right, custom_weight_left FROM builtin_training_weights
+SELECT id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right, updated_at, deleted_at, sync_version, server_updated_at FROM builtin_training_weights
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -110,11 +108,12 @@ func (q *Queries) GetBuiltinTrainingWeightsSinceVersion(ctx context.Context, arg
 			&i.ID,
 			&i.UserID,
 			&i.BuiltinTraningID,
-			&i.SyncVersion,
+			&i.CustomWeightLeft,
+			&i.CustomWeightRight,
 			&i.UpdatedAt,
 			&i.DeletedAt,
-			&i.CustomWeightRight,
-			&i.CustomWeightLeft,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -127,7 +126,7 @@ func (q *Queries) GetBuiltinTrainingWeightsSinceVersion(ctx context.Context, arg
 }
 
 const getPinnedBuiltinTrainingsSinceVersion = `-- name: GetPinnedBuiltinTrainingsSinceVersion :many
-SELECT builtin_training_id, user_id, sync_version, updated_at, deleted_at FROM pinned_builtin_trainings
+SELECT builtin_training_id, user_id, updated_at, deleted_at, sync_version, server_updated_at FROM pinned_builtin_trainings
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -150,9 +149,10 @@ func (q *Queries) GetPinnedBuiltinTrainingsSinceVersion(ctx context.Context, arg
 		if err := rows.Scan(
 			&i.BuiltinTrainingID,
 			&i.UserID,
-			&i.SyncVersion,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -165,7 +165,7 @@ func (q *Queries) GetPinnedBuiltinTrainingsSinceVersion(ctx context.Context, arg
 }
 
 const getRepDataByID = `-- name: GetRepDataByID :one
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas WHERE id = $1::uuid AND user_id = $2::uuid
+SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_datas WHERE id = $1::uuid AND user_id = $2::uuid
 `
 
 type GetRepDataByIDParams struct {
@@ -178,6 +178,7 @@ func (q *Queries) GetRepDataByID(ctx context.Context, arg GetRepDataByIDParams) 
 	var i RepData
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.AverageWeight,
 		&i.SessionID,
 		&i.IsRest,
@@ -186,18 +187,16 @@ func (q *Queries) GetRepDataByID(ctx context.Context, arg GetRepDataByIDParams) 
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
 
 const getRepDatasSinceVersion = `-- name: GetRepDatasSinceVersion :many
-SELECT id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_datas
+SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_datas
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -219,6 +218,7 @@ func (q *Queries) GetRepDatasSinceVersion(ctx context.Context, arg GetRepDatasSi
 		var i RepData
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.AverageWeight,
 			&i.SessionID,
 			&i.IsRest,
@@ -227,12 +227,10 @@ func (q *Queries) GetRepDatasSinceVersion(ctx context.Context, arg GetRepDatasSi
 			&i.TargetWeight,
 			&i.Index,
 			&i.GripPosition,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
-			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -245,7 +243,7 @@ func (q *Queries) GetRepDatasSinceVersion(ctx context.Context, arg GetRepDatasSi
 }
 
 const getRepTemplateByID = `-- name: GetRepTemplateByID :one
-SELECT id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_templates WHERE id = $1::uuid AND user_id = $2::uuid
+SELECT id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_templates WHERE id = $1::uuid AND user_id = $2::uuid
 `
 
 type GetRepTemplateByIDParams struct {
@@ -258,6 +256,7 @@ func (q *Queries) GetRepTemplateByID(ctx context.Context, arg GetRepTemplateByID
 	var i RepTemplate
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.IsRest,
 		&i.RightHand,
 		&i.Duration,
@@ -265,18 +264,16 @@ func (q *Queries) GetRepTemplateByID(ctx context.Context, arg GetRepTemplateByID
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
 
 const getRepTemplatesSinceVersion = `-- name: GetRepTemplatesSinceVersion :many
-SELECT id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM rep_templates
+SELECT id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_templates
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -298,6 +295,7 @@ func (q *Queries) GetRepTemplatesSinceVersion(ctx context.Context, arg GetRepTem
 		var i RepTemplate
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.IsRest,
 			&i.RightHand,
 			&i.Duration,
@@ -305,12 +303,10 @@ func (q *Queries) GetRepTemplatesSinceVersion(ctx context.Context, arg GetRepTem
 			&i.TargetWeight,
 			&i.Index,
 			&i.GripPosition,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
-			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -323,7 +319,7 @@ func (q *Queries) GetRepTemplatesSinceVersion(ctx context.Context, arg GetRepTem
 }
 
 const getRepeaterByID = `-- name: GetRepeaterByID :one
-SELECT id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM repeaters WHERE id = $1::uuid AND user_id = $2::uuid
+SELECT id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM repeaters WHERE id = $1::uuid AND user_id = $2::uuid
 `
 
 type GetRepeaterByIDParams struct {
@@ -336,6 +332,7 @@ func (q *Queries) GetRepeaterByID(ctx context.Context, arg GetRepeaterByIDParams
 	var i Repeater
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Sets,
 		&i.Reps,
 		&i.Worktime,
@@ -345,18 +342,16 @@ func (q *Queries) GetRepeaterByID(ctx context.Context, arg GetRepeaterByIDParams
 		&i.TargetWeightLeft,
 		&i.SplitHand,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
 
 const getRepeatersSinceVersion = `-- name: GetRepeatersSinceVersion :many
-SELECT id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id FROM repeaters
+SELECT id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM repeaters
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -378,6 +373,7 @@ func (q *Queries) GetRepeatersSinceVersion(ctx context.Context, arg GetRepeaters
 		var i Repeater
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Sets,
 			&i.Reps,
 			&i.Worktime,
@@ -387,12 +383,10 @@ func (q *Queries) GetRepeatersSinceVersion(ctx context.Context, arg GetRepeaters
 			&i.TargetWeightLeft,
 			&i.SplitHand,
 			&i.GripPosition,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
 			&i.ServerUpdatedAt,
-			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -405,7 +399,7 @@ func (q *Queries) GetRepeatersSinceVersion(ctx context.Context, arg GetRepeaters
 }
 
 const getSensorConfigsSinceVersion = `-- name: GetSensorConfigsSinceVersion :many
-SELECT id, user_id, sync_version, updated_at, deleted_at, name, index, tare, coef FROM sensor_configs
+SELECT id, user_id, name, index, tare, coef, updated_at, deleted_at, sync_version, server_updated_at FROM sensor_configs
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -428,13 +422,14 @@ func (q *Queries) GetSensorConfigsSinceVersion(ctx context.Context, arg GetSenso
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.SyncVersion,
-			&i.UpdatedAt,
-			&i.DeletedAt,
 			&i.Name,
 			&i.Index,
 			&i.Tare,
 			&i.Coef,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -447,7 +442,7 @@ func (q *Queries) GetSensorConfigsSinceVersion(ctx context.Context, arg GetSenso
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM sessions WHERE id = $1::uuid AND user_id = $2::uuid
+SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at, deleted_at, sync_version, server_updated_at FROM sessions WHERE id = $1::uuid AND user_id = $2::uuid
 `
 
 type GetSessionByIDParams struct {
@@ -473,7 +468,6 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 		&i.RepeaterRestTime,
 		&i.RepeaterSetRest,
 		&i.RepeaterSplitHand,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
@@ -483,7 +477,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 }
 
 const getSessionsSinceVersion = `-- name: GetSessionsSinceVersion :many
-SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM sessions
+SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at, deleted_at, sync_version, server_updated_at FROM sessions
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -518,7 +512,6 @@ func (q *Queries) GetSessionsSinceVersion(ctx context.Context, arg GetSessionsSi
 			&i.RepeaterRestTime,
 			&i.RepeaterSetRest,
 			&i.RepeaterSplitHand,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
@@ -603,7 +596,7 @@ func (q *Queries) GetSyncSummary(ctx context.Context, dollar_1 pgtype.UUID) (Get
 }
 
 const getTrainingByID = `-- name: GetTrainingByID :one
-SELECT id, user_id, name, repeater_id, is_favorite, is_assessment, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM trainings WHERE id = $1::uuid AND user_id = $2::uuid
+SELECT id, user_id, name, repeater_id, is_favorite, is_assessment, updated_at, deleted_at, sync_version, server_updated_at FROM trainings WHERE id = $1::uuid AND user_id = $2::uuid
 `
 
 type GetTrainingByIDParams struct {
@@ -621,7 +614,6 @@ func (q *Queries) GetTrainingByID(ctx context.Context, arg GetTrainingByIDParams
 		&i.RepeaterID,
 		&i.IsFavorite,
 		&i.IsAssessment,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
@@ -631,7 +623,7 @@ func (q *Queries) GetTrainingByID(ctx context.Context, arg GetTrainingByIDParams
 }
 
 const getTrainingsSinceVersion = `-- name: GetTrainingsSinceVersion :many
-SELECT id, user_id, name, repeater_id, is_favorite, is_assessment, created_at, updated_at, deleted_at, sync_version, server_updated_at FROM trainings
+SELECT id, user_id, name, repeater_id, is_favorite, is_assessment, updated_at, deleted_at, sync_version, server_updated_at FROM trainings
 WHERE user_id = $1::uuid
 AND sync_version > $2::bigint
 ORDER BY sync_version ASC
@@ -658,7 +650,6 @@ func (q *Queries) GetTrainingsSinceVersion(ctx context.Context, arg GetTrainings
 			&i.RepeaterID,
 			&i.IsFavorite,
 			&i.IsAssessment,
-			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.SyncVersion,
@@ -686,9 +677,9 @@ func (q *Queries) UpdateUserLastSeen(ctx context.Context, dollar_1 pgtype.UUID) 
 const upsertAssessment = `-- name: UpsertAssessment :one
 INSERT INTO assessments (
   id, user_id, type, right_value, left_value, session_id, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+  $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO UPDATE SET
   type = EXCLUDED.type,
@@ -705,7 +696,7 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE assessments.user_id = $2::uuid AND EXCLUDED.updated_at > assessments.server_updated_at
-RETURNING id, type, right_value, left_value, session_id, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id
+RETURNING id, user_id, type, right_value, left_value, session_id, grip_position, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertAssessmentParams struct {
@@ -716,7 +707,6 @@ type UpsertAssessmentParams struct {
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
-	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 	DeletedAt    pgtype.Timestamptz
 }
@@ -730,24 +720,22 @@ func (q *Queries) UpsertAssessment(ctx context.Context, arg UpsertAssessmentPara
 		arg.LeftValue,
 		arg.SessionID,
 		arg.GripPosition,
-		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
 	)
 	var i Assessment
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Type,
 		&i.RightValue,
 		&i.LeftValue,
 		&i.SessionID,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
@@ -764,13 +752,14 @@ ON CONFLICT (id) DO UPDATE SET
   custom_weight_left = EXCLUDED.custom_weight_left,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
+  server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
     FROM builtin_training_weights
     WHERE user_id = $2::uuid
   )
-WHERE builtin_training_weights.user_id = $2::uuid AND EXCLUDED.updated_at > builtin_training_weights.updated_at
-RETURNING id, user_id, builtin_traning_id, sync_version, updated_at, deleted_at, custom_weight_right, custom_weight_left
+WHERE builtin_training_weights.user_id = $2::uuid AND EXCLUDED.updated_at > builtin_training_weights.server_updated_at
+RETURNING id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertBuiltinTrainingWeightParams struct {
@@ -798,11 +787,12 @@ func (q *Queries) UpsertBuiltinTrainingWeight(ctx context.Context, arg UpsertBui
 		&i.ID,
 		&i.UserID,
 		&i.BuiltinTraningID,
-		&i.SyncVersion,
+		&i.CustomWeightLeft,
+		&i.CustomWeightRight,
 		&i.UpdatedAt,
 		&i.DeletedAt,
-		&i.CustomWeightRight,
-		&i.CustomWeightLeft,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -816,13 +806,14 @@ INSERT INTO pinned_builtin_trainings (
 ON CONFLICT (builtin_training_id) DO UPDATE SET
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
+  server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
     FROM pinned_builtin_trainings
     WHERE user_id = $2::uuid
   )
-WHERE pinned_builtin_trainings.user_id = $2::uuid AND EXCLUDED.updated_at > pinned_builtin_trainings.updated_at
-RETURNING builtin_training_id, user_id, sync_version, updated_at, deleted_at
+WHERE pinned_builtin_trainings.user_id = $2::uuid AND EXCLUDED.updated_at > pinned_builtin_trainings.server_updated_at
+RETURNING builtin_training_id, user_id, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertPinnedBuiltinTrainingParams struct {
@@ -843,9 +834,10 @@ func (q *Queries) UpsertPinnedBuiltinTraining(ctx context.Context, arg UpsertPin
 	err := row.Scan(
 		&i.BuiltinTrainingID,
 		&i.UserID,
-		&i.SyncVersion,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -853,9 +845,9 @@ func (q *Queries) UpsertPinnedBuiltinTraining(ctx context.Context, arg UpsertPin
 const upsertRepData = `-- name: UpsertRepData :one
 INSERT INTO rep_datas (
   id, user_id, session_id, average_weight, is_rest, right_hand, duration, target_weight, index, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 )
 ON CONFLICT (id) DO UPDATE SET
   session_id = EXCLUDED.session_id,
@@ -875,7 +867,7 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE rep_datas.user_id = $2::uuid AND EXCLUDED.updated_at > rep_datas.server_updated_at
-RETURNING id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id
+RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertRepDataParams struct {
@@ -889,7 +881,6 @@ type UpsertRepDataParams struct {
 	TargetWeight  float32
 	Index         int32
 	GripPosition  int32
-	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
 	DeletedAt     pgtype.Timestamptz
 }
@@ -906,13 +897,13 @@ func (q *Queries) UpsertRepData(ctx context.Context, arg UpsertRepDataParams) (R
 		arg.TargetWeight,
 		arg.Index,
 		arg.GripPosition,
-		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
 	)
 	var i RepData
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.AverageWeight,
 		&i.SessionID,
 		&i.IsRest,
@@ -921,12 +912,10 @@ func (q *Queries) UpsertRepData(ctx context.Context, arg UpsertRepDataParams) (R
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
@@ -934,9 +923,9 @@ func (q *Queries) UpsertRepData(ctx context.Context, arg UpsertRepDataParams) (R
 const upsertRepTemplate = `-- name: UpsertRepTemplate :one
 INSERT INTO rep_templates (
   id, user_id, training_id, is_rest, right_hand, duration, target_weight, index, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 )
 ON CONFLICT (id) DO UPDATE SET
   training_id = EXCLUDED.training_id,
@@ -955,7 +944,7 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE rep_templates.user_id = $2::uuid AND EXCLUDED.updated_at > rep_templates.server_updated_at
-RETURNING id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id
+RETURNING id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertRepTemplateParams struct {
@@ -968,7 +957,6 @@ type UpsertRepTemplateParams struct {
 	TargetWeight float32
 	Index        int32
 	GripPosition int32
-	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 	DeletedAt    pgtype.Timestamptz
 }
@@ -984,13 +972,13 @@ func (q *Queries) UpsertRepTemplate(ctx context.Context, arg UpsertRepTemplatePa
 		arg.TargetWeight,
 		arg.Index,
 		arg.GripPosition,
-		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
 	)
 	var i RepTemplate
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.IsRest,
 		&i.RightHand,
 		&i.Duration,
@@ -998,12 +986,10 @@ func (q *Queries) UpsertRepTemplate(ctx context.Context, arg UpsertRepTemplatePa
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
@@ -1012,9 +998,9 @@ const upsertRepeater = `-- name: UpsertRepeater :one
 INSERT INTO repeaters (
   id, user_id, sets, reps, worktime, resttime, set_rest,
   target_weight_right, target_weight_left, split_hand, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
 ON CONFLICT (id) DO UPDATE SET
   sets = EXCLUDED.sets,
@@ -1035,7 +1021,7 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE repeaters.user_id = $2::uuid AND EXCLUDED.updated_at > repeaters.server_updated_at
-RETURNING id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, created_at, updated_at, deleted_at, sync_version, server_updated_at, user_id
+RETURNING id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertRepeaterParams struct {
@@ -1050,7 +1036,6 @@ type UpsertRepeaterParams struct {
 	TargetWeightLeft  pgtype.Float4
 	SplitHand         bool
 	GripPosition      int32
-	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
 }
@@ -1068,13 +1053,13 @@ func (q *Queries) UpsertRepeater(ctx context.Context, arg UpsertRepeaterParams) 
 		arg.TargetWeightLeft,
 		arg.SplitHand,
 		arg.GripPosition,
-		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
 	)
 	var i Repeater
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Sets,
 		&i.Reps,
 		&i.Worktime,
@@ -1084,12 +1069,10 @@ func (q *Queries) UpsertRepeater(ctx context.Context, arg UpsertRepeaterParams) 
 		&i.TargetWeightLeft,
 		&i.SplitHand,
 		&i.GripPosition,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
 		&i.ServerUpdatedAt,
-		&i.UserID,
 	)
 	return i, err
 }
@@ -1107,13 +1090,14 @@ ON CONFLICT (id) DO UPDATE SET
   coef = EXCLUDED.coef,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
+  server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
     FROM sensor_configs
     WHERE user_id = $2::uuid
   )
-WHERE sensor_configs.user_id = $2::uuid AND EXCLUDED.updated_at > sensor_configs.updated_at
-RETURNING id, user_id, sync_version, updated_at, deleted_at, name, index, tare, coef
+WHERE sensor_configs.user_id = $2::uuid AND EXCLUDED.updated_at > sensor_configs.server_updated_at
+RETURNING id, user_id, name, index, tare, coef, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertSensorConfigParams struct {
@@ -1142,13 +1126,14 @@ func (q *Queries) UpsertSensorConfig(ctx context.Context, arg UpsertSensorConfig
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.SyncVersion,
-		&i.UpdatedAt,
-		&i.DeletedAt,
 		&i.Name,
 		&i.Index,
 		&i.Tare,
 		&i.Coef,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.SyncVersion,
+		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -1157,9 +1142,9 @@ const upsertSession = `-- name: UpsertSession :one
 INSERT INTO sessions (
   id, user_id, name, notes, date, is_assessment, session_type, duration,
   repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
-  repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at
+  repeater_set_rest, repeater_split_hand, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
 )
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
@@ -1183,7 +1168,7 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE sessions.user_id = $2::uuid AND EXCLUDED.updated_at > sessions.server_updated_at
-RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at, sync_version, server_updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertSessionParams struct {
@@ -1201,7 +1186,6 @@ type UpsertSessionParams struct {
 	RepeaterRestTime  pgtype.Int4
 	RepeaterSetRest   pgtype.Int4
 	RepeaterSplitHand pgtype.Bool
-	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 	DeletedAt         pgtype.Timestamptz
 }
@@ -1222,7 +1206,6 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) (S
 		arg.RepeaterRestTime,
 		arg.RepeaterSetRest,
 		arg.RepeaterSplitHand,
-		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
 	)
@@ -1242,7 +1225,6 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) (S
 		&i.RepeaterRestTime,
 		&i.RepeaterSetRest,
 		&i.RepeaterSplitHand,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,
@@ -1254,9 +1236,9 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) (S
 const upsertTraining = `-- name: UpsertTraining :one
 INSERT INTO trainings (
   id, user_id, name, repeater_id, is_favorite, is_assessment,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9
+  $1, $2, $3, $4, $5, $6, $7, $8
 )
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
@@ -1272,7 +1254,7 @@ ON CONFLICT (id) DO UPDATE SET
     WHERE user_id = $2::uuid
   )
 WHERE trainings.user_id = $2::uuid AND EXCLUDED.updated_at > trainings.server_updated_at
-RETURNING id, user_id, name, repeater_id, is_favorite, is_assessment, created_at, updated_at, deleted_at, sync_version, server_updated_at
+RETURNING id, user_id, name, repeater_id, is_favorite, is_assessment, updated_at, deleted_at, sync_version, server_updated_at
 `
 
 type UpsertTrainingParams struct {
@@ -1282,7 +1264,6 @@ type UpsertTrainingParams struct {
 	RepeaterID   pgtype.UUID
 	IsFavorite   bool
 	IsAssessment bool
-	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 	DeletedAt    pgtype.Timestamptz
 }
@@ -1295,7 +1276,6 @@ func (q *Queries) UpsertTraining(ctx context.Context, arg UpsertTrainingParams) 
 		arg.RepeaterID,
 		arg.IsFavorite,
 		arg.IsAssessment,
-		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
 	)
@@ -1307,7 +1287,6 @@ func (q *Queries) UpsertTraining(ctx context.Context, arg UpsertTrainingParams) 
 		&i.RepeaterID,
 		&i.IsFavorite,
 		&i.IsAssessment,
-		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.SyncVersion,

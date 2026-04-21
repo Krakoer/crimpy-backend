@@ -108,9 +108,9 @@ SELECT * FROM rep_datas WHERE id = $1::uuid AND user_id = $2::uuid;
 INSERT INTO sessions (
   id, user_id, name, notes, date, is_assessment, session_type, duration,
   repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
-  repeater_set_rest, repeater_split_hand, created_at, updated_at, deleted_at
+  repeater_set_rest, repeater_split_hand, updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
 )
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
@@ -139,9 +139,9 @@ RETURNING *;
 -- name: UpsertAssessment :one
 INSERT INTO assessments (
   id, user_id, type, right_value, left_value, session_id, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+  $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO UPDATE SET
   type = EXCLUDED.type,
@@ -163,9 +163,9 @@ RETURNING *;
 -- name: UpsertTraining :one
 INSERT INTO trainings (
   id, user_id, name, repeater_id, is_favorite, is_assessment,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9
+  $1, $2, $3, $4, $5, $6, $7, $8
 )
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
@@ -187,9 +187,9 @@ RETURNING *;
 INSERT INTO repeaters (
   id, user_id, sets, reps, worktime, resttime, set_rest,
   target_weight_right, target_weight_left, split_hand, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
 ON CONFLICT (id) DO UPDATE SET
   sets = EXCLUDED.sets,
@@ -215,9 +215,9 @@ RETURNING *;
 -- name: UpsertRepTemplate :one
 INSERT INTO rep_templates (
   id, user_id, training_id, is_rest, right_hand, duration, target_weight, index, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 )
 ON CONFLICT (id) DO UPDATE SET
   training_id = EXCLUDED.training_id,
@@ -241,9 +241,9 @@ RETURNING *;
 -- name: UpsertRepData :one
 INSERT INTO rep_datas (
   id, user_id, session_id, average_weight, is_rest, right_hand, duration, target_weight, index, grip_position,
-  created_at, updated_at, deleted_at
+  updated_at, deleted_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 )
 ON CONFLICT (id) DO UPDATE SET
   session_id = EXCLUDED.session_id,
@@ -274,12 +274,13 @@ INSERT INTO pinned_builtin_trainings (
 ON CONFLICT (builtin_training_id) DO UPDATE SET
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
+  server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
     FROM pinned_builtin_trainings
     WHERE user_id = $2::uuid
   )
-WHERE pinned_builtin_trainings.user_id = $2::uuid AND EXCLUDED.updated_at > pinned_builtin_trainings.updated_at
+WHERE pinned_builtin_trainings.user_id = $2::uuid AND EXCLUDED.updated_at > pinned_builtin_trainings.server_updated_at
 RETURNING *;
 
 -- name: UpsertSensorConfig :one
@@ -295,12 +296,13 @@ ON CONFLICT (id) DO UPDATE SET
   coef = EXCLUDED.coef,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
+  server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
     FROM sensor_configs
     WHERE user_id = $2::uuid
   )
-WHERE sensor_configs.user_id = $2::uuid AND EXCLUDED.updated_at > sensor_configs.updated_at
+WHERE sensor_configs.user_id = $2::uuid AND EXCLUDED.updated_at > sensor_configs.server_updated_at
 RETURNING *;
 
 -- name: UpsertBuiltinTrainingWeight :one
@@ -315,12 +317,13 @@ ON CONFLICT (id) DO UPDATE SET
   custom_weight_left = EXCLUDED.custom_weight_left,
   updated_at = EXCLUDED.updated_at,
   deleted_at = EXCLUDED.deleted_at,
+  server_updated_at = now(),
   sync_version = (
     SELECT COALESCE(MAX(sync_version), 0) + 1
     FROM builtin_training_weights
     WHERE user_id = $2::uuid
   )
-WHERE builtin_training_weights.user_id = $2::uuid AND EXCLUDED.updated_at > builtin_training_weights.updated_at
+WHERE builtin_training_weights.user_id = $2::uuid AND EXCLUDED.updated_at > builtin_training_weights.server_updated_at
 RETURNING *;
 
 -- name: UpdateUserLastSeen :exec

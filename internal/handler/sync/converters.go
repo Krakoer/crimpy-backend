@@ -29,7 +29,6 @@ func convertSessionToRecord(s db.Session) SessionRecord {
 		RepeaterRestTime:  convertInt32Ptr(s.RepeaterRestTime),
 		RepeaterSetRest:   convertInt32Ptr(s.RepeaterSetRest),
 		RepeaterSplitHand: convertBoolPtr(s.RepeaterSplitHand),
-		CreatedAt:         s.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:         s.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
 		SyncVersion:       s.SyncVersion,
@@ -51,7 +50,6 @@ func convertAssessmentToRecord(a db.Assessment) AssessmentRecord {
 		LeftValue:       convertFloat32Ptr(a.LeftValue),
 		SessionID:       uuidToString(a.SessionID),
 		GripPosition:    a.GripPosition.Int32,
-		CreatedAt:       a.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       a.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
 		SyncVersion:     a.SyncVersion,
@@ -72,7 +70,6 @@ func convertTrainingToRecord(t db.Training) TrainingRecord {
 		RepeaterID:      uuidPtrToString(t.RepeaterID),
 		IsFavorite:      t.IsFavorite,
 		IsAssessment:    t.IsAssessment,
-		CreatedAt:       t.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       t.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
 		SyncVersion:     t.SyncVersion,
@@ -98,7 +95,6 @@ func convertRepeaterToRecord(r db.Repeater) RepeaterRecord {
 		TargetWeightLeft:  convertFloat32Ptr(r.TargetWeightLeft),
 		SplitHand:         r.SplitHand,
 		GripPosition:      r.GripPosition,
-		CreatedAt:         r.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:         r.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
 		SyncVersion:       r.SyncVersion,
@@ -122,7 +118,6 @@ func convertRepTemplateToRecord(rt db.RepTemplate) RepTemplateRecord {
 		TargetWeight:    rt.TargetWeight,
 		Index:           rt.Index,
 		GripPosition:    rt.GripPosition,
-		CreatedAt:       rt.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       rt.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
 		SyncVersion:     rt.SyncVersion,
@@ -147,7 +142,6 @@ func convertRepDataToRecord(rd db.RepData) RepDataRecord {
 		TargetWeight:    rd.TargetWeight,
 		Index:           rd.Index,
 		GripPosition:    rd.GripPosition,
-		CreatedAt:       rd.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:       rd.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:       deletedAt,
 		SyncVersion:     rd.SyncVersion,
@@ -222,6 +216,7 @@ func convertPinnedBuiltinTrainingToRecord(pbt db.PinnedBuiltinTraining) PinnedBu
 		UpdatedAt:         pbt.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
 		SyncVersion:       pbt.SyncVersion,
+		ServerUpdatedAt:   pbt.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
 }
 
@@ -233,14 +228,15 @@ func convertSensorConfigToRecord(sc db.SensorConfig) SensorConfigRecord {
 	}
 
 	return SensorConfigRecord{
-		ID:          uuidToString(sc.ID),
-		Name:        sc.Name,
-		Index:       sc.Index,
-		Tare:        sc.Tare,
-		Coef:        sc.Coef,
-		UpdatedAt:   sc.UpdatedAt.Time.Format(time.RFC3339),
-		DeletedAt:   deletedAt,
-		SyncVersion: sc.SyncVersion,
+		ID:              uuidToString(sc.ID),
+		Name:            sc.Name,
+		Index:           sc.Index,
+		Tare:            sc.Tare,
+		Coef:            sc.Coef,
+		UpdatedAt:       sc.UpdatedAt.Time.Format(time.RFC3339),
+		DeletedAt:       deletedAt,
+		SyncVersion:     sc.SyncVersion,
+		ServerUpdatedAt: sc.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
 }
 
@@ -259,5 +255,6 @@ func convertBuiltinTrainingWeightToRecord(btw db.BuiltinTrainingWeight) BuiltinT
 		UpdatedAt:         btw.UpdatedAt.Time.Format(time.RFC3339),
 		DeletedAt:         deletedAt,
 		SyncVersion:       btw.SyncVersion,
+		ServerUpdatedAt:   btw.ServerUpdatedAt.Time.Format(time.RFC3339),
 	}
 }

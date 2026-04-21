@@ -36,12 +36,6 @@ func (h *SyncHandler) upsertSession(ctx context.Context, userUUID pgtype.UUID, d
 		return id, err
 	}
 
-	createdAtStr, _ := m["created_at"].(string)
-	createdAt, err := parseTimestamp(createdAtStr)
-	if err != nil {
-		return id, err
-	}
-
 	updatedAtStr, _ := m["updated_at"].(string)
 	updatedAt, err := parseTimestamp(updatedAtStr)
 	if err != nil {
@@ -99,7 +93,6 @@ func (h *SyncHandler) upsertSession(ctx context.Context, userUUID pgtype.UUID, d
 		RepeaterRestTime:  repeaterRestTime,
 		RepeaterSetRest:   repeaterSetRest,
 		RepeaterSplitHand: repeaterSplitHand,
-		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 		DeletedAt:         deletedAt,
 	})
@@ -145,12 +138,6 @@ func (h *SyncHandler) upsertAssessment(ctx context.Context, userUUID pgtype.UUID
 		leftValue.Valid = true
 	}
 
-	createdAtStr, _ := m["created_at"].(string)
-	createdAt, err := parseTimestamp(createdAtStr)
-	if err != nil {
-		return id, err
-	}
-
 	updatedAtStr, _ := m["updated_at"].(string)
 	updatedAt, err := parseTimestamp(updatedAtStr)
 	if err != nil {
@@ -177,7 +164,6 @@ func (h *SyncHandler) upsertAssessment(ctx context.Context, userUUID pgtype.UUID
 		LeftValue:    leftValue,
 		SessionID:    sessionID,
 		GripPosition: gripPos,
-		CreatedAt:    createdAt,
 		UpdatedAt:    updatedAt,
 		DeletedAt:    deletedAt,
 	})
@@ -213,12 +199,6 @@ func (h *SyncHandler) upsertTraining(ctx context.Context, userUUID pgtype.UUID, 
 		repeaterID, _ = parseUUID(repeaterIDStr)
 	}
 
-	createdAtStr, _ := m["created_at"].(string)
-	createdAt, err := parseTimestamp(createdAtStr)
-	if err != nil {
-		return id, err
-	}
-
 	updatedAtStr, _ := m["updated_at"].(string)
 	updatedAt, err := parseTimestamp(updatedAtStr)
 	if err != nil {
@@ -240,7 +220,6 @@ func (h *SyncHandler) upsertTraining(ctx context.Context, userUUID pgtype.UUID, 
 		RepeaterID:   repeaterID,
 		IsFavorite:   isFavorite,
 		IsAssessment: isAssessment,
-		CreatedAt:    createdAt,
 		UpdatedAt:    updatedAt,
 		DeletedAt:    deletedAt,
 	})
@@ -285,12 +264,6 @@ func (h *SyncHandler) upsertRepeater(ctx context.Context, userUUID pgtype.UUID, 
 		targetWeightLeft.Valid = true
 	}
 
-	createdAtStr, _ := m["created_at"].(string)
-	createdAt, err := parseTimestamp(createdAtStr)
-	if err != nil {
-		return id, err
-	}
-
 	updatedAtStr, _ := m["updated_at"].(string)
 	updatedAt, err := parseTimestamp(updatedAtStr)
 	if err != nil {
@@ -317,7 +290,6 @@ func (h *SyncHandler) upsertRepeater(ctx context.Context, userUUID pgtype.UUID, 
 		TargetWeightLeft:  targetWeightLeft,
 		SplitHand:         splitHand,
 		GripPosition:      gripPosition,
-		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 		DeletedAt:         deletedAt,
 	})
@@ -357,12 +329,6 @@ func (h *SyncHandler) upsertRepTemplate(ctx context.Context, userUUID pgtype.UUI
 	index := int32(m["index"].(float64))
 	gripPosition := int32(m["grip_position"].(float64))
 
-	createdAtStr, _ := m["created_at"].(string)
-	createdAt, err := parseTimestamp(createdAtStr)
-	if err != nil {
-		return id, err
-	}
-
 	updatedAtStr, _ := m["updated_at"].(string)
 	updatedAt, err := parseTimestamp(updatedAtStr)
 	if err != nil {
@@ -387,7 +353,6 @@ func (h *SyncHandler) upsertRepTemplate(ctx context.Context, userUUID pgtype.UUI
 		TargetWeight: targetWeight,
 		Index:        index,
 		GripPosition: gripPosition,
-		CreatedAt:    createdAt,
 		UpdatedAt:    updatedAt,
 		DeletedAt:    deletedAt,
 	})
@@ -428,12 +393,6 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 	index := int32(m["index"].(float64))
 	gripPosition := int32(m["grip_position"].(float64))
 
-	createdAtStr, _ := m["created_at"].(string)
-	createdAt, err := parseTimestamp(createdAtStr)
-	if err != nil {
-		return id, err
-	}
-
 	updatedAtStr, _ := m["updated_at"].(string)
 	updatedAt, err := parseTimestamp(updatedAtStr)
 	if err != nil {
@@ -459,7 +418,6 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 		TargetWeight:  targetWeight,
 		Index:         index,
 		GripPosition:  gripPosition,
-		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
 		DeletedAt:     deletedAt,
 	})
