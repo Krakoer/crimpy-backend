@@ -20,6 +20,7 @@ func GenerateVerificationToken() (string, error) {
 func SendVerificationEmail(email, firstname, verificationToken string, isCoach bool) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")
+	baseUrl := os.Getenv("BASE_URL")
 
 	// Skip email sending in test environment if credentials not configured
 	if resendAPIKey == "" || emailFrom == "" {
@@ -31,7 +32,7 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 		return fmt.Errorf("RESEND_API_KEY or RESEND_EMAIL_FROM not set")
 	}
 
-	verificationLink := fmt.Sprintf("https://api.portfolio-online.ovh/auth/verify?token=%s", verificationToken)
+	verificationLink := fmt.Sprintf("%s/verify?token=%s", baseUrl, verificationToken)
 
 	templateID := "email-verification-normal"
 	if isCoach {

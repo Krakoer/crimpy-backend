@@ -1,8 +1,8 @@
 -- name: CreateRepeater :one
 INSERT INTO repeaters (
-  sets, reps, worktime, resttime, set_rest,
+  user_id, sets, reps, worktime, resttime, set_rest,
   target_weight_right, target_weight_left, split_hand, grip_position
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetRepeater :one

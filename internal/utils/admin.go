@@ -49,8 +49,8 @@ func InitializeAdminAccount(queries *db.Queries) error {
 	var password string
 	env := os.Getenv("ENV")
 
-	if env == "production" {
-		// Generate random password for production
+	if env == "production" || env == "preproduction" {
+		// Generate random password for (pre-)production
 		randomPass, err := GenerateRandomPassword(16)
 		if err != nil {
 			return err

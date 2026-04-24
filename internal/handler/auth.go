@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -83,9 +84,9 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		})
 	}
 
-	// Hash the password
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
+		slog.Error("failed to hash password during registration", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to process password",
 		})
@@ -110,12 +111,12 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 	}
 
 	if err != nil {
-		// Check for duplicate email
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 				"error": "Email already registered",
 			})
 		}
+		slog.Error("failed to create user", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create user",
 		})
@@ -173,15 +174,14 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		VerificationTokenExpiresAt: expiresAt,
 	})
 	if err != nil {
+		slog.Error("failed to save verification token", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to save verification token",
 		})
 	}
 
-	// Send verification email
 	if err := utils.SendVerificationEmail(user.Email, user.Firstname, verificationToken, req.IsCoach); err != nil {
-		// Log error but don't fail registration
-		// User can request to resend verification email
+		slog.Error("failed to send verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 			"message": "User registered, but verification email failed to send. Please request a new verification email.",
 			"user": UserResponse{
@@ -253,6 +253,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 				"error": "Invalid credentials",
 			})
 		}
+		slog.Error("failed to authenticate user", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to authenticate",
 		})
@@ -273,6 +274,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 
 	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
 	if err != nil {
+		slog.Error("failed to generate JWT", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate token",
 		})
@@ -368,6 +370,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 				"error": "User not found",
 			})
 		}
+		slog.Error("failed to retrieve user for password change", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve user",
 		})
@@ -389,6 +392,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 
 	hashedPassword, err := utils.HashPassword(req.NewPassword)
 	if err != nil {
+		slog.Error("failed to hash new password", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to process password",
 		})
@@ -398,8 +402,8 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		ID:       userUUID,
 		Password: hashedPassword,
 	})
-
 	if err != nil {
+		slog.Error("failed to update password", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update password",
 		})
@@ -439,6 +443,7 @@ func (h *AuthHandler) GetCurrentUser(c fiber.Ctx) error {
 				"error": "User not found",
 			})
 		}
+		slog.Error("failed to retrieve current user", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve user",
 		})
@@ -457,33 +462,44 @@ func (h *AuthHandler) GetCurrentUser(c fiber.Ctx) error {
 	})
 }
 
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
 // VerifyEmail godoc
 // @Summary Verify user email
 // @Description Verify user email using the token sent via email
 // @Tags Authentication
 // @Accept json
 // @Produce json
-// @Param token query string true "Verification token"
+// @Param request body VerifyEmailRequest true "Validation Token"
 // @Success 200 {object} map[string]string "Email verified successfully"
 // @Failure 400 {object} map[string]string "Invalid or missing token"
 // @Failure 404 {object} map[string]string "Invalid or expired token"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/verify [get]
+// @Router /auth/verify [post]
 func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
-	token := c.Query("token")
-	if token == "" {
+	var req VerifyEmailRequest
+	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Verification token is required",
+			"error": "Invalid request body",
 		})
 	}
 
-	user, err := h.queries.GetUserByVerificationToken(context.Background(), pgtype.Text{String: token, Valid: true})
+	if req.Token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Token is required",
+		})
+	}
+
+	user, err := h.queries.GetUserByVerificationToken(context.Background(), pgtype.Text{String: req.Token, Valid: true})
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"error": "Invalid or expired verification token",
 			})
 		}
+		slog.Error("failed to look up verification token", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to verify email",
 		})
@@ -491,13 +507,22 @@ func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
 
 	err = h.queries.VerifyUserEmail(context.Background(), user.ID)
 	if err != nil {
+		slog.Error("failed to update email verification status", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update verification status",
 		})
 	}
 
+	var msg string
+	if user.IsCoach {
+		msg = "Email verified successfully. An admin will validate your account soon."
+	} else {
+		msg = "Email verified successfully."
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Email verified successfully. You can now log in.",
+		"message":  msg,
+		"is_coach": user.IsCoach,
 	})
 }
 
@@ -539,6 +564,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 				"error": "User not found",
 			})
 		}
+		slog.Error("failed to retrieve user for resend verification", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve user",
 		})
@@ -580,13 +606,14 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 		VerificationTokenExpiresAt: expiresAt,
 	})
 	if err != nil {
+		slog.Error("failed to save resend verification token", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to save verification token",
 		})
 	}
 
-	// Send verification email
 	if err := utils.SendVerificationEmail(user.Email, user.Firstname, verificationToken, user.IsCoach); err != nil {
+		slog.Error("failed to resend verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to send verification email",
 		})

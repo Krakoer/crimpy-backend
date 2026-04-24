@@ -81,8 +81,8 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 		t.Logf("Warning: Failed to clean up trainings: %v", err)
 	}
 
-	// Delete repeaters (no user reference)
-	_, err = pool.Exec(ctx, "DELETE FROM repeaters WHERE id > 0")
+	// Delete repeaters
+	_, err = pool.Exec(ctx, "DELETE FROM repeaters WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
 	if err != nil {
 		t.Logf("Warning: Failed to clean up repeaters: %v", err)
 	}

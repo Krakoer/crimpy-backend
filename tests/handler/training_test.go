@@ -196,10 +196,10 @@ func TestTrainingHandler_GetTraining_Success(t *testing.T) {
 
 	var createdTraining map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdTraining)
-	trainingID := int(createdTraining["ID"].(float64))
+	trainingID := createdTraining["ID"].(string)
 
 	// Get the training
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -250,10 +250,10 @@ func TestTrainingHandler_GetTraining_UserIsolation(t *testing.T) {
 
 	var createdTraining map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdTraining)
-	trainingID := int(createdTraining["ID"].(float64))
+	trainingID := createdTraining["ID"].(string)
 
 	// User 2 tries to access User 1's training
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -296,7 +296,7 @@ func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
 
 	var createdTraining map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdTraining)
-	trainingID := int(createdTraining["ID"].(float64))
+	trainingID := createdTraining["ID"].(string)
 
 	// Update the training
 	updateBody := map[string]interface{}{
@@ -304,7 +304,7 @@ func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ = json.Marshal(updateBody)
-	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%d", trainingID), body)
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%s", trainingID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -359,7 +359,7 @@ func TestTrainingHandler_UpdateTraining_UserIsolation(t *testing.T) {
 
 	var createdTraining map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdTraining)
-	trainingID := int(createdTraining["ID"].(float64))
+	trainingID := createdTraining["ID"].(string)
 
 	// User 2 tries to update User 1's training
 	updateBody := map[string]interface{}{
@@ -367,7 +367,7 @@ func TestTrainingHandler_UpdateTraining_UserIsolation(t *testing.T) {
 		"is_favorite": true,
 	}
 	body, _ = json.Marshal(updateBody)
-	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%d", trainingID), body)
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%s", trainingID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -410,10 +410,10 @@ func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
 
 	var createdTraining map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdTraining)
-	trainingID := int(createdTraining["ID"].(float64))
+	trainingID := createdTraining["ID"].(string)
 
 	// Delete the training
-	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err = app.Test(req)
@@ -426,7 +426,7 @@ func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
 	}
 
 	// Try to get the deleted training
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -466,10 +466,10 @@ func TestTrainingHandler_DeleteTraining_UserIsolation(t *testing.T) {
 
 	var createdTraining map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdTraining)
-	trainingID := int(createdTraining["ID"].(float64))
+	trainingID := createdTraining["ID"].(string)
 
 	// User 2 tries to delete User 1's training
-	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 
 	resp, err = app.Test(req)
@@ -483,7 +483,7 @@ func TestTrainingHandler_DeleteTraining_UserIsolation(t *testing.T) {
 	}
 
 	// Verify training still exists for user 1
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%d", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, _ = app.Test(req)
 

@@ -5,9 +5,12 @@ import (
 	"crimpy/backend/internal/database"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
+	"crimpy/backend/internal/handler/sync"
+	applogger "crimpy/backend/internal/logger"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"log"
+	"log/slog"
 	"os"
 
 	_ "crimpy/backend/docs"
@@ -41,6 +44,10 @@ import (
 // @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
+	env := os.Getenv("ENV")
+	logCloser := applogger.Init(env)
+	defer logCloser.Close()
+
 	// Initialize database connection
 	pool, err := database.NewConnection()
 	if err != nil {
@@ -62,17 +69,34 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
+	syncHandler := sync.NewSyncHandler(queries)
 
 	// Create Fiber app
 	app := fiber.New()
 
 	// Register global middleware
-	app.Use(logger.New())
+	app.Use(logger.New(logger.Config{
+		Stream: applogger.Output,
+		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
+	}))
 	app.Use(recover.New())
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		if status := c.Response().StatusCode(); status >= 400 {
+			slog.Warn("request failed",
+				"status", status,
+				"method", c.Method(),
+				"path", c.Path(),
+				"ip", c.IP(),
+				"body", string(c.Response().Body()),
+			)
+		}
+		return err
+	})
 
 	// CORS middleware - allow frontend to connect
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     []string{"http://localhost:5173", "https://crimpy.app", "https://*.crimpy.app"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
@@ -95,7 +119,7 @@ func main() {
 	// Auth routes (public)
 	app.Post("/auth/register", authHandler.Register)
 	app.Post("/auth/login", authHandler.Login)
-	app.Get("/auth/verify", authHandler.VerifyEmail)
+	app.Post("/auth/verify", authHandler.VerifyEmail)
 	app.Post("/auth/resend-verification", authHandler.ResendVerificationEmail)
 
 	// Protected routes - require authentication
@@ -131,6 +155,12 @@ func main() {
 	api.Put("/admin/coaches/:id/reject", adminHandler.RejectCoach)
 	api.Get("/admin/users", adminHandler.ListUsers)
 	api.Delete("/admin/users/:id", adminHandler.DeleteUser)
+
+	// Sync routes
+	api.Get("/sync/summary", syncHandler.GetSummary)
+	api.Get("/sync/pull", syncHandler.Pull)
+	api.Post("/sync/push", syncHandler.Push)
+	api.Post("/sync/migrate", syncHandler.Migrate)
 
 	// Read port from environment or default to 3000
 	port := os.Getenv("PORT")

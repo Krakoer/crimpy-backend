@@ -4,6 +4,7 @@ import (
 	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -43,6 +44,7 @@ type CoachResponse struct {
 // @Router /api/admin/coaches/pending [get]
 func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 	if !middleware.IsAdmin(c) {
+		slog.Warn("unauthorized admin access", "user_id", middleware.GetUserID(c), "path", c.Path())
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Admin access required",
 		})
@@ -50,6 +52,7 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 
 	coaches, err := h.queries.GetPendingCoaches(context.Background())
 	if err != nil {
+		slog.Error("failed to retrieve pending coaches", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve pending coaches",
 		})
@@ -87,6 +90,7 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 // @Router /api/admin/coaches/{id}/validate [put]
 func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 	if !middleware.IsAdmin(c) {
+		slog.Warn("unauthorized admin access", "user_id", middleware.GetUserID(c), "path", c.Path())
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Admin access required",
 		})
@@ -100,9 +104,9 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		})
 	}
 
-	// Check if coach has verified their email first
 	coach, err := h.queries.GetUserByID(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to retrieve coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve coach",
 		})
@@ -116,6 +120,7 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 
 	err = h.queries.ValidateCoach(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to validate coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to validate coach",
 		})
@@ -141,6 +146,7 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 // @Router /api/admin/coaches/{id}/reject [put]
 func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 	if !middleware.IsAdmin(c) {
+		slog.Warn("unauthorized admin access", "user_id", middleware.GetUserID(c), "path", c.Path())
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Admin access required",
 		})
@@ -156,6 +162,7 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 
 	err := h.queries.RejectCoach(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to reject coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to reject coach",
 		})
@@ -179,6 +186,7 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 // @Router /api/admin/users [get]
 func (h *AdminHandler) ListUsers(c fiber.Ctx) error {
 	if !middleware.IsAdmin(c) {
+		slog.Warn("unauthorized admin access", "user_id", middleware.GetUserID(c), "path", c.Path())
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Admin access required",
 		})
@@ -186,6 +194,7 @@ func (h *AdminHandler) ListUsers(c fiber.Ctx) error {
 
 	users, err := h.queries.ListAllUsers(context.Background())
 	if err != nil {
+		slog.Error("failed to retrieve users", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve users",
 		})
@@ -225,6 +234,7 @@ func (h *AdminHandler) ListUsers(c fiber.Ctx) error {
 // @Router /api/admin/users/{id} [delete]
 func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
 	if !middleware.IsAdmin(c) {
+		slog.Warn("unauthorized admin access", "user_id", middleware.GetUserID(c), "path", c.Path())
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Admin access required",
 		})
@@ -238,7 +248,6 @@ func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
 		})
 	}
 
-	// Check if user exists and is not an admin
 	user, err := h.queries.GetUserByID(context.Background(), userUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -246,7 +255,6 @@ func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
 		})
 	}
 
-	// Prevent deletion of admin users
 	if user.IsAdmin {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Cannot delete admin users",
@@ -255,6 +263,7 @@ func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
 
 	err = h.queries.DeleteUser(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to delete user", "target_user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to delete user",
 		})

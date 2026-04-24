@@ -495,8 +495,8 @@ const docTemplate = `{
                 "summary": "Get a repeater by ID",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Repeater ID",
+                        "type": "string",
+                        "description": "Repeater ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -548,8 +548,8 @@ const docTemplate = `{
                 "summary": "Update a repeater configuration",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Repeater ID",
+                        "type": "string",
+                        "description": "Repeater ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -610,8 +610,8 @@ const docTemplate = `{
                 "summary": "Delete a repeater configuration",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Repeater ID",
+                        "type": "string",
+                        "description": "Repeater ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -781,8 +781,8 @@ const docTemplate = `{
                 "summary": "Get a session by ID",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Session ID",
+                        "type": "string",
+                        "description": "Session ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -844,8 +844,8 @@ const docTemplate = `{
                 "summary": "Update a session",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Session ID",
+                        "type": "string",
+                        "description": "Session ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -924,8 +924,8 @@ const docTemplate = `{
                 "summary": "Delete a session",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Session ID",
+                        "type": "string",
+                        "description": "Session ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -961,6 +961,221 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sync/migrate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Bulk uploads all local data when cloud account is empty (called once at first login)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sync"
+                ],
+                "summary": "Migrate local data to cloud on first sync",
+                "parameters": [
+                    {
+                        "description": "All local records to migrate",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/sync.PushRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Migration results with accepted and rejected IDs",
+                        "schema": {
+                            "$ref": "#/definitions/sync.PushResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or user ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sync/pull": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all records modified after the specified sync version for incremental sync",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sync"
+                ],
+                "summary": "Pull sync changes",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Sync version to pull changes since",
+                        "name": "since_version",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Records and current server version",
+                        "schema": {
+                            "$ref": "#/definitions/sync.PullResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sync/push": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepts a batch of locally changed records and applies last-write-wins conflict resolution",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sync"
+                ],
+                "summary": "Push local changes to cloud",
+                "parameters": [
+                    {
+                        "description": "Records to push",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/sync.PushRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Push results with accepted and rejected IDs",
+                        "schema": {
+                            "$ref": "#/definitions/sync.PushResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or user ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sync/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns count of records per collection and last sync version for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sync"
+                ],
+                "summary": "Get sync summary",
+                "responses": {
+                    "200": {
+                        "description": "Sync summary",
+                        "schema": {
+                            "$ref": "#/definitions/sync.SyncSummaryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1113,8 +1328,8 @@ const docTemplate = `{
                 "summary": "Get a training by ID",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Training ID",
+                        "type": "string",
+                        "description": "Training ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1175,8 +1390,8 @@ const docTemplate = `{
                 "summary": "Update a training",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Training ID",
+                        "type": "string",
+                        "description": "Training ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1255,8 +1470,8 @@ const docTemplate = `{
                 "summary": "Delete a training",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Training ID",
+                        "type": "string",
+                        "description": "Training ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1564,7 +1779,7 @@ const docTemplate = `{
             }
         },
         "/auth/verify": {
-            "get": {
+            "post": {
                 "description": "Verify user email using the token sent via email",
                 "consumes": [
                     "application/json"
@@ -1578,11 +1793,13 @@ const docTemplate = `{
                 "summary": "Verify user email",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Verification token",
-                        "name": "token",
-                        "in": "query",
-                        "required": true
+                        "description": "Validation Token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.VerifyEmailRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -1788,7 +2005,7 @@ const docTemplate = `{
                     }
                 },
                 "repeater_id": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },
@@ -2070,6 +2287,73 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "lastname": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.VerifyEmailRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "sync.PullResponse": {
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "server_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "sync.PushRequest": {
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "sync.PushResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rejected": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "server_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "sync.SyncSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "collections": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "last_sync_version": {
+                    "type": "integer"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
