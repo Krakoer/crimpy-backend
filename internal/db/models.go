@@ -9,39 +9,76 @@ import (
 )
 
 type Assessment struct {
-	ID           int32
-	Type         int32
-	RightValue   pgtype.Float4
-	LeftValue    pgtype.Float4
-	SessionID    int32
-	GripPosition pgtype.Int4
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	Type            int32
+	RightValue      pgtype.Float4
+	LeftValue       pgtype.Float4
+	SessionID       pgtype.UUID
+	GripPosition    pgtype.Int4
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
+}
+
+type BuiltinTrainingWeight struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	BuiltinTraningID  pgtype.UUID
+	CustomWeightLeft  float32
+	CustomWeightRight float32
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
+}
+
+type PinnedBuiltinTraining struct {
+	BuiltinTrainingID pgtype.UUID
+	UserID            pgtype.UUID
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type RepData struct {
-	ID            int32
-	AverageWeight float32
-	SessionID     int32
-	IsRest        bool
-	RightHand     bool
-	Duration      int32
-	TargetWeight  float32
-	Index         int32
-	GripPosition  int32
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	AverageWeight   float32
+	SessionID       pgtype.UUID
+	IsRest          bool
+	RightHand       bool
+	Duration        int32
+	TargetWeight    float32
+	Index           int32
+	GripPosition    int32
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
 }
 
 type RepTemplate struct {
-	ID           int32
-	IsRest       bool
-	RightHand    bool
-	Duration     int32
-	TrainingID   int32
-	TargetWeight float32
-	Index        int32
-	GripPosition int32
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	IsRest          bool
+	RightHand       bool
+	Duration        int32
+	TrainingID      pgtype.UUID
+	TargetWeight    float32
+	Index           int32
+	GripPosition    int32
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
 }
 
 type Repeater struct {
-	ID                int32
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
 	Sets              int32
 	Reps              int32
 	Worktime          int32
@@ -51,10 +88,27 @@ type Repeater struct {
 	TargetWeightLeft  pgtype.Float4
 	SplitHand         bool
 	GripPosition      int32
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
+}
+
+type SensorConfig struct {
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	Name            string
+	Index           int64
+	Tare            float32
+	Coef            float32
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
 }
 
 type Session struct {
-	ID                int32
+	ID                pgtype.UUID
 	UserID            pgtype.UUID
 	Name              string
 	Notes             string
@@ -68,15 +122,23 @@ type Session struct {
 	RepeaterRestTime  pgtype.Int4
 	RepeaterSetRest   pgtype.Int4
 	RepeaterSplitHand pgtype.Bool
+	UpdatedAt         pgtype.Timestamptz
+	DeletedAt         pgtype.Timestamptz
+	SyncVersion       int64
+	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type Training struct {
-	ID           int32
-	UserID       pgtype.UUID
-	Name         string
-	RepeaterID   pgtype.Int4
-	IsFavorite   bool
-	IsAssessment bool
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	Name            string
+	RepeaterID      pgtype.UUID
+	IsFavorite      bool
+	IsAssessment    bool
+	UpdatedAt       pgtype.Timestamptz
+	DeletedAt       pgtype.Timestamptz
+	SyncVersion     int64
+	ServerUpdatedAt pgtype.Timestamptz
 }
 
 type User struct {
@@ -93,4 +155,5 @@ type User struct {
 	VerificationTokenExpiresAt pgtype.Timestamptz
 	VerificationEmailSentAt    pgtype.Timestamptz
 	CreatedAt                  pgtype.Timestamptz
+	LastSeenAt                 pgtype.Timestamptz
 }

@@ -37,7 +37,7 @@ services:
       - proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.crimpypg.rule=Host(`crimpypg.portfolio-online.ovh`)
+      - traefik.http.routers.crimpypg.rule=Host(`pg.crimpy.app`)
       - traefik.http.routers.crimpypg.entrypoints=websecure
       - traefik.http.routers.crimpypg.tls.certresolver=dnsResolver
       - traefik.http.routers.crimpypg.middlewares=traefik-ip
@@ -83,11 +83,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       PORT: ${PORT:-3000}
       ENV: production
+      LOG_FILE: /logs/app.log
     expose:
       - ${PORT:-3000}
+    volumes:
+      - ./logs:/logs
     labels:
       - traefik.enable=true
-      - traefik.http.routers.crimpy-api.rule=Host(`api.portfolio-online.ovh`)
+      - traefik.http.routers.crimpy-api.rule=Host(`api.crimpy.app`)
       - traefik.http.routers.crimpy-api.entrypoints=websecure
       - traefik.http.routers.crimpy-api.tls.certresolver=dnsResolver
     networks:

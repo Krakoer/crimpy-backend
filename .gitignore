@@ -2,5 +2,6 @@ tmp/
 testdata/
 pgdata/
 .env.prod
+.env.preprod
 coverage.out
 coverage.html
