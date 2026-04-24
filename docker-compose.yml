@@ -83,8 +83,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       PORT: ${PORT:-3000}
       ENV: production
+      LOG_FILE: /logs/app.log
     expose:
       - ${PORT:-3000}
+    volumes:
+      - ./logs:/logs
     labels:
       - traefik.enable=true
       - traefik.http.routers.crimpy-api.rule=Host(`api.crimpy.app`)

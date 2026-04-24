@@ -4,6 +4,7 @@ import (
 	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"log/slog"
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
@@ -43,6 +44,7 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 
 	summary, err := h.queries.GetSyncSummary(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to get sync summary", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to get sync summary",
 		})
@@ -50,6 +52,7 @@ func (h *SyncHandler) GetSummary(c fiber.Ctx) error {
 
 	err = h.queries.UpdateUserLastSeen(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to update last seen", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update last seen",
 		})
@@ -100,6 +103,8 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		sinceVersion = v
 	}
 
+	slog.Debug("sync pull", "user_id", userID, "since_version", sinceVersion)
+
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -112,6 +117,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch sessions", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch sessions",
 		})
@@ -122,6 +128,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch assessments", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch assessments",
 		})
@@ -132,6 +139,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch trainings", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch trainings",
 		})
@@ -142,6 +150,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch repeaters", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch repeaters",
 		})
@@ -152,6 +161,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch rep templates", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch rep templates",
 		})
@@ -162,6 +172,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch rep datas", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch rep datas",
 		})
@@ -172,6 +183,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch pinned builtin trainings", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch pinned builtin trainings",
 		})
@@ -182,6 +194,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch sensor configs", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch sensor configs",
 		})
@@ -192,6 +205,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		Column2: int64(sinceVersion),
 	})
 	if err != nil {
+		slog.Error("failed to fetch builtin training weights", "user_id", userID, "since_version", sinceVersion, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch builtin training weights",
 		})
@@ -199,6 +213,7 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 
 	summary, err := h.queries.GetSyncSummary(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to get sync summary", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to get sync summary",
 		})
@@ -256,6 +271,20 @@ func (h *SyncHandler) Pull(c fiber.Ctx) error {
 		}
 	}
 
+	slog.Debug("sync pull completed",
+		"user_id", userID,
+		"since_version", sinceVersion,
+		"sessions", len(sessionRecords),
+		"assessments", len(assessmentRecords),
+		"trainings", len(trainingRecords),
+		"repeaters", len(repeaterRecords),
+		"rep_templates", len(repTemplateRecords),
+		"rep_datas", len(repDataRecords),
+		"pinned_builtin_trainings", len(pinnedBuiltinTrainingRecords),
+		"sensor_configs", len(sensorConfigRecords),
+		"builtin_training_weights", len(builtinTrainingWeightRecords),
+	)
+
 	return c.Status(fiber.StatusOK).JSON(PullResponse{
 		ServerVersion: lastSyncVersion,
 		Records: map[string]interface{}{
@@ -300,6 +329,8 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 			"error": "Invalid request body",
 		})
 	}
+
+	slog.Debug("sync push started", "user_id", userID, "collections", len(req.Records))
 
 	ctx := context.Background()
 	accepted := []string{}
@@ -422,8 +453,20 @@ func (h *SyncHandler) Push(c fiber.Ctx) error {
 		}
 	}
 
+	if len(rejected) > 0 {
+		slog.Warn("sync push completed with rejections",
+			"user_id", userID,
+			"accepted", len(accepted),
+			"rejected", len(rejected),
+			"rejected_ids", rejected,
+		)
+	} else {
+		slog.Debug("sync push completed", "user_id", userID, "accepted", len(accepted))
+	}
+
 	summary, err := h.queries.GetSyncSummary(ctx, userUUID)
 	if err != nil {
+		slog.Error("failed to get sync summary after push", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to get sync summary",
 		})

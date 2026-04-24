@@ -4,6 +4,7 @@ import (
 	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -78,13 +79,11 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
 	}
 
-	// Parse user UUID
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	// Create repeater ID type
 	var repeaterID pgtype.UUID
 	if req.RepeaterID != nil {
 		if err := repeaterID.Scan(*req.RepeaterID); err != nil {
@@ -99,12 +98,11 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		IsFavorite:   req.IsFavorite,
 		IsAssessment: req.IsAssessment,
 	})
-
 	if err != nil {
+		slog.Error("failed to create training", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
 	}
 
-	// Create rep templates if provided
 	if len(req.RepTemplates) > 0 {
 		for _, rt := range req.RepTemplates {
 			_, err := h.queries.CreateRepTemplate(context.Background(), db.CreateRepTemplateParams{
@@ -117,7 +115,7 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 				GripPosition: rt.GripPosition,
 			})
 			if err != nil {
-				// If rep template creation fails, we should delete the training
+				slog.Error("failed to create rep template", "user_id", userID, "training_id", training.ID, "error", err)
 				_ = h.queries.DeleteTraining(context.Background(), training.ID)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create rep templates"})
 			}
@@ -151,6 +149,7 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 
 	trainings, err := h.queries.GetUserTrainings(context.Background(), userUUID)
 	if err != nil {
+		slog.Error("failed to retrieve trainings", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})
 	}
 
@@ -182,7 +181,6 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
 	}
 
-	// Verify the training belongs to the authenticated user (skip for admin)
 	userID := middleware.GetUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
@@ -192,6 +190,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 	}
 
 	if !isAdmin && training.UserID.Bytes != userUUID.Bytes {
+		slog.Warn("access denied to training", "user_id", userID, "training_id", idStr)
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
@@ -225,7 +224,6 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// Verify ownership (skip for admin)
 	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -240,6 +238,7 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	}
 
 	if !isAdmin && training.UserID.Bytes != userUUID.Bytes {
+		slog.Warn("access denied to training", "user_id", userID, "training_id", idStr)
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
@@ -248,8 +247,8 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		Name:       req.Name,
 		IsFavorite: req.IsFavorite,
 	})
-
 	if err != nil {
+		slog.Error("failed to update training", "user_id", userID, "training_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
@@ -277,7 +276,6 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	// Verify ownership (skip for admin)
 	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -292,10 +290,12 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	}
 
 	if !isAdmin && training.UserID.Bytes != userUUID.Bytes {
+		slog.Warn("access denied to training", "user_id", userID, "training_id", idStr)
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
 	if err := h.queries.DeleteTraining(context.Background(), trainingUUID); err != nil {
+		slog.Error("failed to delete training", "user_id", userID, "training_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete training"})
 	}
 

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crimpy/backend/internal/utils"
+	"log/slog"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -12,6 +13,7 @@ func AuthMiddleware() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
+			slog.Warn("auth rejected", "reason", "missing authorization header", "ip", c.IP(), "path", c.Path())
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Missing authorization header",
 			})
@@ -20,6 +22,7 @@ func AuthMiddleware() fiber.Handler {
 		// Extract token from "Bearer <token>"
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
+			slog.Warn("auth rejected", "reason", "invalid authorization header format", "ip", c.IP(), "path", c.Path())
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Invalid authorization header format",
 			})
@@ -28,6 +31,7 @@ func AuthMiddleware() fiber.Handler {
 		token := parts[1]
 		claims, err := utils.ValidateJWT(token)
 		if err != nil {
+			slog.Warn("auth rejected", "reason", "invalid or expired token", "error", err.Error(), "ip", c.IP(), "path", c.Path())
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Invalid or expired token",
 			})

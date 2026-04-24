@@ -4,6 +4,7 @@ import (
 	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -103,8 +104,8 @@ func (h *RepeaterHandler) CreateRepeater(c fiber.Ctx) error {
 		SplitHand:         req.SplitHand,
 		GripPosition:      req.GripPosition,
 	})
-
 	if err != nil {
+		slog.Error("failed to create repeater", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create repeater"})
 	}
 
@@ -152,6 +153,8 @@ func (h *RepeaterHandler) GetRepeater(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/repeaters/{id} [put]
 func (h *RepeaterHandler) UpdateRepeater(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
 	idStr := c.Params("id")
 	var repeaterUUID pgtype.UUID
 	if err := repeaterUUID.Scan(idStr); err != nil {
@@ -185,8 +188,8 @@ func (h *RepeaterHandler) UpdateRepeater(c fiber.Ctx) error {
 		SplitHand:         req.SplitHand,
 		GripPosition:      req.GripPosition,
 	})
-
 	if err != nil {
+		slog.Error("failed to update repeater", "user_id", userID, "repeater_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update repeater"})
 	}
 
@@ -206,6 +209,8 @@ func (h *RepeaterHandler) UpdateRepeater(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/repeaters/{id} [delete]
 func (h *RepeaterHandler) DeleteRepeater(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+
 	idStr := c.Params("id")
 	var repeaterUUID pgtype.UUID
 	if err := repeaterUUID.Scan(idStr); err != nil {
@@ -213,6 +218,7 @@ func (h *RepeaterHandler) DeleteRepeater(c fiber.Ctx) error {
 	}
 
 	if err := h.queries.DeleteRepeater(context.Background(), repeaterUUID); err != nil {
+		slog.Error("failed to delete repeater", "user_id", userID, "repeater_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete repeater"})
 	}
 

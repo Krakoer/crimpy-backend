@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"crimpy/backend/internal/db"
+	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -78,6 +79,7 @@ func (h *SyncHandler) upsertSession(ctx context.Context, userUUID pgtype.UUID, d
 		repeaterSplitHand.Valid = true
 	}
 
+	slog.Debug("upserting session", "id", id)
 	_, err = h.queries.UpsertSession(ctx, db.UpsertSessionParams{
 		ID:                sessionUUID,
 		UserID:            userUUID,
@@ -97,6 +99,7 @@ func (h *SyncHandler) upsertSession(ctx context.Context, userUUID pgtype.UUID, d
 		DeletedAt:         deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert session", "id", id, "error", err)
 		return id, err
 	}
 
@@ -156,6 +159,7 @@ func (h *SyncHandler) upsertAssessment(ctx context.Context, userUUID pgtype.UUID
 	gripPos.Int32 = gripPosition
 	gripPos.Valid = true
 
+	slog.Debug("upserting assessment", "id", id)
 	_, err = h.queries.UpsertAssessment(ctx, db.UpsertAssessmentParams{
 		ID:           assessmentUUID,
 		UserID:       userUUID,
@@ -168,6 +172,7 @@ func (h *SyncHandler) upsertAssessment(ctx context.Context, userUUID pgtype.UUID
 		DeletedAt:    deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert assessment", "id", id, "error", err)
 		return id, err
 	}
 
@@ -213,6 +218,7 @@ func (h *SyncHandler) upsertTraining(ctx context.Context, userUUID pgtype.UUID, 
 		}
 	}
 
+	slog.Debug("upserting training", "id", id)
 	_, err = h.queries.UpsertTraining(ctx, db.UpsertTrainingParams{
 		ID:           trainingUUID,
 		UserID:       userUUID,
@@ -224,6 +230,7 @@ func (h *SyncHandler) upsertTraining(ctx context.Context, userUUID pgtype.UUID, 
 		DeletedAt:    deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert training", "id", id, "error", err)
 		return id, err
 	}
 
@@ -278,6 +285,7 @@ func (h *SyncHandler) upsertRepeater(ctx context.Context, userUUID pgtype.UUID, 
 		}
 	}
 
+	slog.Debug("upserting repeater", "id", id)
 	_, err = h.queries.UpsertRepeater(ctx, db.UpsertRepeaterParams{
 		ID:                repeaterUUID,
 		UserID:            userUUID,
@@ -294,6 +302,7 @@ func (h *SyncHandler) upsertRepeater(ctx context.Context, userUUID pgtype.UUID, 
 		DeletedAt:         deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert repeater", "id", id, "error", err)
 		return id, err
 	}
 
@@ -343,6 +352,7 @@ func (h *SyncHandler) upsertRepTemplate(ctx context.Context, userUUID pgtype.UUI
 		}
 	}
 
+	slog.Debug("upserting rep template", "id", id)
 	_, err = h.queries.UpsertRepTemplate(ctx, db.UpsertRepTemplateParams{
 		ID:           repTemplateUUID,
 		UserID:       userUUID,
@@ -357,6 +367,7 @@ func (h *SyncHandler) upsertRepTemplate(ctx context.Context, userUUID pgtype.UUI
 		DeletedAt:    deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert rep template", "id", id, "error", err)
 		return id, err
 	}
 
@@ -407,6 +418,7 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 		}
 	}
 
+	slog.Debug("upserting rep data", "id", id)
 	_, err = h.queries.UpsertRepData(ctx, db.UpsertRepDataParams{
 		ID:            repDataUUID,
 		UserID:        userUUID,
@@ -422,6 +434,7 @@ func (h *SyncHandler) upsertRepData(ctx context.Context, userUUID pgtype.UUID, d
 		DeletedAt:     deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert rep data", "id", id, "error", err)
 		return id, err
 	}
 
@@ -458,6 +471,7 @@ func (h *SyncHandler) upsertPinnedBuiltinTraining(ctx context.Context, userUUID 
 		}
 	}
 
+	slog.Debug("upserting pinned builtin training", "id", builtinTrainingID)
 	_, err = h.queries.UpsertPinnedBuiltinTraining(ctx, db.UpsertPinnedBuiltinTrainingParams{
 		BuiltinTrainingID: builtinTrainingUUID,
 		UserID:            userUUID,
@@ -465,6 +479,7 @@ func (h *SyncHandler) upsertPinnedBuiltinTraining(ctx context.Context, userUUID 
 		DeletedAt:         deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert pinned builtin training", "id", builtinTrainingID, "error", err)
 		return builtinTrainingID, err
 	}
 
@@ -506,6 +521,7 @@ func (h *SyncHandler) upsertSensorConfig(ctx context.Context, userUUID pgtype.UU
 		}
 	}
 
+	slog.Debug("upserting sensor config", "id", id)
 	_, err = h.queries.UpsertSensorConfig(ctx, db.UpsertSensorConfigParams{
 		ID:        sensorConfigUUID,
 		UserID:    userUUID,
@@ -517,6 +533,7 @@ func (h *SyncHandler) upsertSensorConfig(ctx context.Context, userUUID pgtype.UU
 		DeletedAt: deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert sensor config", "id", id, "error", err)
 		return id, err
 	}
 
@@ -562,6 +579,7 @@ func (h *SyncHandler) upsertBuiltinTrainingWeight(ctx context.Context, userUUID 
 		}
 	}
 
+	slog.Debug("upserting builtin training weight", "id", id)
 	_, err = h.queries.UpsertBuiltinTrainingWeight(ctx, db.UpsertBuiltinTrainingWeightParams{
 		ID:                builtinTrainingWeightUUID,
 		UserID:            userUUID,
@@ -572,6 +590,7 @@ func (h *SyncHandler) upsertBuiltinTrainingWeight(ctx context.Context, userUUID 
 		DeletedAt:         deletedAt,
 	})
 	if err != nil {
+		slog.Error("failed to upsert builtin training weight", "id", id, "error", err)
 		return id, err
 	}
 

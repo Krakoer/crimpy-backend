@@ -6,9 +6,11 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/internal/handler/sync"
+	applogger "crimpy/backend/internal/logger"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"log"
+	"log/slog"
 	"os"
 
 	_ "crimpy/backend/docs"
@@ -42,6 +44,10 @@ import (
 // @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
+	env := os.Getenv("ENV")
+	logCloser := applogger.Init(env)
+	defer logCloser.Close()
+
 	// Initialize database connection
 	pool, err := database.NewConnection()
 	if err != nil {
@@ -69,8 +75,24 @@ func main() {
 	app := fiber.New()
 
 	// Register global middleware
-	app.Use(logger.New())
+	app.Use(logger.New(logger.Config{
+		Stream: applogger.Output,
+		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
+	}))
 	app.Use(recover.New())
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		if status := c.Response().StatusCode(); status >= 400 {
+			slog.Warn("request failed",
+				"status", status,
+				"method", c.Method(),
+				"path", c.Path(),
+				"ip", c.IP(),
+				"body", string(c.Response().Body()),
+			)
+		}
+		return err
+	})
 
 	// CORS middleware - allow frontend to connect
 	app.Use(cors.New(cors.Config{
