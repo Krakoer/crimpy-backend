@@ -418,6 +418,254 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/coach/enrollment-token": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generate a one-time enrollment link token (valid 7 days). Requires a validated coach account.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Generate an enrollment token",
+                "responses": {
+                    "201": {
+                        "description": "Token generated",
+                        "schema": {
+                            "$ref": "#/definitions/handler.EnrollmentTokenResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/enrollments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all users enrolled under the authenticated coach.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "List coach's enrolled clients",
+                "responses": {
+                    "200": {
+                        "description": "List of enrolled users",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.EnrolledUserResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/enrollments/{user_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove a user from the coach's enrolled clients.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Coach removes a client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID to unenroll",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User unenrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/enrollment/{token}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Validate a token and return the coach's info. Used before accepting enrollment.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Get enrollment token info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Enrollment token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Token info",
+                        "schema": {
+                            "$ref": "#/definitions/handler.EnrollmentTokenInfoResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Token expired or already used",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Token not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/enrollment/{token}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accept a coach enrollment using a one-time token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Accept enrollment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Enrollment token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Enrolled successfully",
+                        "schema": {
+                            "$ref": "#/definitions/handler.UserEnrollmentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Token expired, already used, or user already enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Coach cannot enroll themselves",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Token not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Already enrolled with a coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/repeaters": {
             "post": {
                 "security": [
@@ -1581,6 +1829,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/user/enrollment": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the coach the authenticated user is currently enrolled with.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Get user's current coach enrollment",
+                "responses": {
+                    "200": {
+                        "description": "Current enrollment",
+                        "schema": {
+                            "$ref": "#/definitions/handler.UserEnrollmentResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not enrolled with any coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove the authenticated user from their current coach enrollment.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "User leaves their coach",
+                "responses": {
+                    "200": {
+                        "description": "Left coach successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not enrolled with any coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate user and return JWT token",
@@ -2009,6 +2326,60 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.EnrolledUserResponse": {
+            "type": "object",
+            "properties": {
+                "enrolled_at": {
+                    "type": "string"
+                },
+                "enrollment_id": {
+                    "type": "string"
+                },
+                "user_email": {
+                    "type": "string"
+                },
+                "user_firstname": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_lastname": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.EnrollmentTokenInfoResponse": {
+            "type": "object",
+            "properties": {
+                "coach_email": {
+                    "type": "string"
+                },
+                "coach_firstname": {
+                    "type": "string"
+                },
+                "coach_id": {
+                    "type": "string"
+                },
+                "coach_lastname": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.EnrollmentTokenResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.LoginRequest": {
             "type": "object",
             "properties": {
@@ -2255,6 +2626,29 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UserEnrollmentResponse": {
+            "type": "object",
+            "properties": {
+                "coach_email": {
+                    "type": "string"
+                },
+                "coach_firstname": {
+                    "type": "string"
+                },
+                "coach_id": {
+                    "type": "string"
+                },
+                "coach_lastname": {
+                    "type": "string"
+                },
+                "enrolled_at": {
+                    "type": "string"
+                },
+                "enrollment_id": {
                     "type": "string"
                 }
             }

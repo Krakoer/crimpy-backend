@@ -108,6 +108,41 @@ definitions:
       repeater_id:
         type: string
     type: object
+  handler.EnrolledUserResponse:
+    properties:
+      enrolled_at:
+        type: string
+      enrollment_id:
+        type: string
+      user_email:
+        type: string
+      user_firstname:
+        type: string
+      user_id:
+        type: string
+      user_lastname:
+        type: string
+    type: object
+  handler.EnrollmentTokenInfoResponse:
+    properties:
+      coach_email:
+        type: string
+      coach_firstname:
+        type: string
+      coach_id:
+        type: string
+      coach_lastname:
+        type: string
+      expires_at:
+        type: string
+    type: object
+  handler.EnrollmentTokenResponse:
+    properties:
+      expires_at:
+        type: string
+      token:
+        type: string
+    type: object
   handler.LoginRequest:
     properties:
       email:
@@ -269,6 +304,21 @@ definitions:
       is_favorite:
         type: boolean
       name:
+        type: string
+    type: object
+  handler.UserEnrollmentResponse:
+    properties:
+      coach_email:
+        type: string
+      coach_firstname:
+        type: string
+      coach_id:
+        type: string
+      coach_lastname:
+        type: string
+      enrolled_at:
+        type: string
+      enrollment_id:
         type: string
     type: object
   handler.UserResponse:
@@ -604,6 +654,165 @@ paths:
       summary: Change user password
       tags:
       - Authentication
+  /api/coach/enrollment-token:
+    post:
+      description: Generate a one-time enrollment link token (valid 7 days). Requires
+        a validated coach account.
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Token generated
+          schema:
+            $ref: '#/definitions/handler.EnrollmentTokenResponse'
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate an enrollment token
+      tags:
+      - Enrollment
+  /api/coach/enrollments:
+    get:
+      description: Get all users enrolled under the authenticated coach.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of enrolled users
+          schema:
+            items:
+              $ref: '#/definitions/handler.EnrolledUserResponse'
+            type: array
+        "403":
+          description: Not a coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List coach's enrolled clients
+      tags:
+      - Enrollment
+  /api/coach/enrollments/{user_id}:
+    delete:
+      description: Remove a user from the coach's enrolled clients.
+      parameters:
+      - description: User ID to unenroll
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User unenrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Coach removes a client
+      tags:
+      - Enrollment
+  /api/enrollment/{token}:
+    get:
+      description: Validate a token and return the coach's info. Used before accepting
+        enrollment.
+      parameters:
+      - description: Enrollment token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token info
+          schema:
+            $ref: '#/definitions/handler.EnrollmentTokenInfoResponse'
+        "400":
+          description: Token expired or already used
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Token not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get enrollment token info
+      tags:
+      - Enrollment
+  /api/enrollment/{token}/accept:
+    post:
+      description: Accept a coach enrollment using a one-time token.
+      parameters:
+      - description: Enrollment token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Enrolled successfully
+          schema:
+            $ref: '#/definitions/handler.UserEnrollmentResponse'
+        "400":
+          description: Token expired, already used, or user already enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Coach cannot enroll themselves
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Token not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Already enrolled with a coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Accept enrollment
+      tags:
+      - Enrollment
   /api/repeaters:
     post:
       consumes:
@@ -1362,6 +1571,49 @@ paths:
       summary: Get current user information
       tags:
       - Authentication
+  /api/user/enrollment:
+    delete:
+      description: Remove the authenticated user from their current coach enrollment.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Left coach successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not enrolled with any coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: User leaves their coach
+      tags:
+      - Enrollment
+    get:
+      description: Get the coach the authenticated user is currently enrolled with.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Current enrollment
+          schema:
+            $ref: '#/definitions/handler.UserEnrollmentResponse'
+        "404":
+          description: Not enrolled with any coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user's current coach enrollment
+      tags:
+      - Enrollment
   /auth/login:
     post:
       consumes:
