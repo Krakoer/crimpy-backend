@@ -70,6 +70,7 @@ func main() {
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
 	syncHandler := sync.NewSyncHandler(queries)
+	coachHandler := handler.NewCoachHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -148,6 +149,15 @@ func main() {
 	api.Get("/repeaters/:id", repeaterHandler.GetRepeater)
 	api.Put("/repeaters/:id", repeaterHandler.UpdateRepeater)
 	api.Delete("/repeaters/:id", repeaterHandler.DeleteRepeater)
+
+	// Enrollment routes
+	api.Post("/coach/enrollment-token", coachHandler.GenerateEnrollmentToken)
+	api.Get("/enrollment/:token", coachHandler.GetEnrollmentTokenInfo)
+	api.Post("/enrollment/:token/accept", coachHandler.AcceptEnrollment)
+	api.Get("/coach/enrollments", coachHandler.GetCoachEnrollments)
+	api.Get("/user/enrollment", coachHandler.GetUserEnrollment)
+	api.Delete("/coach/enrollments/:user_id", coachHandler.UnenrollUser)
+	api.Delete("/user/enrollment", coachHandler.LeaveCoach)
 
 	// Admin routes
 	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)
