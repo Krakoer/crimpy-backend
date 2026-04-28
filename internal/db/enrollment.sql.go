@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -60,7 +61,7 @@ func (q *Queries) CreateEnrollmentToken(ctx context.Context, arg CreateEnrollmen
 	return i, err
 }
 
-const deleteCoachEnrollment = `-- name: DeleteCoachEnrollment :exec
+const deleteCoachEnrollment = `-- name: DeleteCoachEnrollment :execresult
 DELETE FROM coach_enrollments WHERE coach_id = $1 AND user_id = $2
 `
 
@@ -69,18 +70,16 @@ type DeleteCoachEnrollmentParams struct {
 	UserID  pgtype.UUID
 }
 
-func (q *Queries) DeleteCoachEnrollment(ctx context.Context, arg DeleteCoachEnrollmentParams) error {
-	_, err := q.db.Exec(ctx, deleteCoachEnrollment, arg.CoachID, arg.UserID)
-	return err
+func (q *Queries) DeleteCoachEnrollment(ctx context.Context, arg DeleteCoachEnrollmentParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, deleteCoachEnrollment, arg.CoachID, arg.UserID)
 }
 
-const deleteUserEnrollment = `-- name: DeleteUserEnrollment :exec
+const deleteUserEnrollment = `-- name: DeleteUserEnrollment :execresult
 DELETE FROM coach_enrollments WHERE user_id = $1
 `
 
-func (q *Queries) DeleteUserEnrollment(ctx context.Context, userID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteUserEnrollment, userID)
-	return err
+func (q *Queries) DeleteUserEnrollment(ctx context.Context, userID pgtype.UUID) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, deleteUserEnrollment, userID)
 }
 
 const getCoachEnrollmentTokens = `-- name: GetCoachEnrollmentTokens :many

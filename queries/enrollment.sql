@@ -60,8 +60,8 @@ JOIN users u ON u.id = ce.user_id
 WHERE ce.coach_id = $1
 ORDER BY ce.enrolled_at DESC;
 
--- name: DeleteCoachEnrollment :exec
+-- name: DeleteCoachEnrollment :execresult
 DELETE FROM coach_enrollments WHERE coach_id = $1 AND user_id = $2;
 
--- name: DeleteUserEnrollment :exec
+-- name: DeleteUserEnrollment :execresult
 DELETE FROM coach_enrollments WHERE user_id = $1;

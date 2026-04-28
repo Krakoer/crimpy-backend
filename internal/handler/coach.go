@@ -335,6 +335,7 @@ func (h *CoachHandler) GetUserEnrollment(c fiber.Ctx) error {
 // @Param user_id path string true "User ID to unenroll"
 // @Success 200 {object} map[string]string "User unenrolled"
 // @Failure 403 {object} map[string]string "Not a coach"
+// @Failure 404 {object} map[string]string "User not enrolled by this coach"
 // @Router /api/coach/enrollments/{user_id} [delete]
 func (h *CoachHandler) UnenrollUser(c fiber.Ctx) error {
 	if !middleware.IsCoach(c) {
@@ -353,12 +354,17 @@ func (h *CoachHandler) UnenrollUser(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	if err := h.queries.DeleteCoachEnrollment(context.Background(), db.DeleteCoachEnrollmentParams{
+	tag, err := h.queries.DeleteCoachEnrollment(context.Background(), db.DeleteCoachEnrollmentParams{
 		CoachID: coachUUID,
 		UserID:  targetUUID,
-	}); err != nil {
+	})
+	if err != nil {
 		slog.Error("failed to delete coach enrollment", "coach_id", coachID, "user_id", c.Params("user_id"), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to unenroll user"})
+	}
+
+	if tag.RowsAffected() == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not enrolled by this coach"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "User unenrolled successfully"})
@@ -381,9 +387,14 @@ func (h *CoachHandler) LeaveCoach(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	if err := h.queries.DeleteUserEnrollment(context.Background(), userUUID); err != nil {
+	tag, err := h.queries.DeleteUserEnrollment(context.Background(), userUUID)
+	if err != nil {
 		slog.Error("failed to delete user enrollment", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to leave coach"})
+	}
+
+	if tag.RowsAffected() == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not enrolled with any coach"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Left coach successfully"})
