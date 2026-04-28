@@ -272,7 +272,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
 	if err != nil {
 		slog.Error("failed to generate JWT", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

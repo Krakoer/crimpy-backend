@@ -206,7 +206,7 @@ func CreateTestUser(t *testing.T, queries *db.Queries, email string) (string, st
 		t.Fatalf("Failed to verify test user email: %v", err)
 	}
 
-	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
 	if err != nil {
 		t.Fatalf("Failed to generate JWT: %v", err)
 	}
@@ -234,7 +234,7 @@ func CreateTestAdminUser(t *testing.T, queries *db.Queries, email string) (strin
 		t.Fatalf("Failed to create test admin user: %v", err)
 	}
 
-	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
 	if err != nil {
 		t.Fatalf("Failed to generate JWT: %v", err)
 	}
@@ -268,7 +268,7 @@ func CreateTestCoachUser(t *testing.T, queries *db.Queries, email string) (strin
 		t.Fatalf("Failed to verify test coach email: %v", err)
 	}
 
-	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin)
+	token, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
 	if err != nil {
 		t.Fatalf("Failed to generate JWT: %v", err)
 	}

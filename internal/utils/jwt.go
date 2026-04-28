@@ -12,11 +12,12 @@ type Claims struct {
 	UserID  string `json:"user_id"`
 	Email   string `json:"email"`
 	IsAdmin bool   `json:"is_admin"`
+	IsCoach bool   `json:"is_coach"`
 	jwt.RegisteredClaims
 }
 
 // GenerateJWT generates a JWT token for a user
-func GenerateJWT(userID, email string, isAdmin bool) (string, error) {
+func GenerateJWT(userID, email string, isAdmin, isCoach bool) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		return "", errors.New("JWT_SECRET not set")
@@ -26,6 +27,7 @@ func GenerateJWT(userID, email string, isAdmin bool) (string, error) {
 		UserID:  userID,
 		Email:   email,
 		IsAdmin: isAdmin,
+		IsCoach: isCoach,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour * 7)), // 7 days
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
