@@ -34,6 +34,22 @@ type BuiltinTrainingWeight struct {
 	ServerUpdatedAt   pgtype.Timestamptz
 }
 
+type CoachEnrollment struct {
+	ID         pgtype.UUID
+	CoachID    pgtype.UUID
+	UserID     pgtype.UUID
+	EnrolledAt pgtype.Timestamptz
+}
+
+type EnrollmentToken struct {
+	ID        pgtype.UUID
+	CoachID   pgtype.UUID
+	Token     string
+	ExpiresAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+	UsedBy    pgtype.UUID
+}
+
 type PinnedBuiltinTraining struct {
 	BuiltinTrainingID pgtype.UUID
 	UserID            pgtype.UUID
