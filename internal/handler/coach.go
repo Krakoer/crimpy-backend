@@ -399,3 +399,135 @@ func (h *CoachHandler) LeaveCoach(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Left coach successfully"})
 }
+
+// verifyCoachClientRelationship checks that the caller is a coach and that the given user is enrolled with them.
+// Returns the parsed client UUID and an error response already written to c, or a zero-value UUID if ok is false.
+func (h *CoachHandler) verifyCoachClientRelationship(c fiber.Ctx, clientIDStr string) (pgtype.UUID, bool) {
+	if !middleware.IsCoach(c) {
+		c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Coach account required"})
+		return pgtype.UUID{}, false
+	}
+
+	coachID := middleware.GetUserID(c)
+
+	var coachUUID pgtype.UUID
+	if err := coachUUID.Scan(coachID); err != nil {
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid coach ID"})
+		return pgtype.UUID{}, false
+	}
+
+	var clientUUID pgtype.UUID
+	if err := clientUUID.Scan(clientIDStr); err != nil {
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid client ID"})
+		return pgtype.UUID{}, false
+	}
+
+	_, err := h.queries.GetCoachEnrollment(context.Background(), db.GetCoachEnrollmentParams{
+		CoachID: coachUUID,
+		UserID:  clientUUID,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "User is not enrolled with this coach"})
+			return pgtype.UUID{}, false
+		}
+		slog.Error("failed to verify coach-client relationship", "coach_id", coachID, "client_id", clientIDStr, "error", err)
+		c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to verify enrollment"})
+		return pgtype.UUID{}, false
+	}
+
+	return clientUUID, true
+}
+
+// GetClientSessions godoc
+// @Summary Get a client's sessions
+// @Description Retrieve all sessions for a user enrolled with the authenticated coach.
+// @Tags Coaching
+// @Produce json
+// @Security BearerAuth
+// @Param user_id path string true "Client user ID"
+// @Success 200 {array} db.Session "List of sessions"
+// @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
+// @Router /api/coach/clients/{user_id}/sessions [get]
+func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
+	clientUUID, ok := h.verifyCoachClientRelationship(c, c.Params("user_id"))
+	if !ok {
+		return nil
+	}
+
+	sessions, err := h.queries.GetUserSessions(context.Background(), clientUUID)
+	if err != nil {
+		slog.Error("failed to retrieve client sessions", "client_id", c.Params("user_id"), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(sessions)
+}
+
+// GetClientSession godoc
+// @Summary Get a client's session details
+// @Description Retrieve a specific session with its rep data and assessments for a user enrolled with the authenticated coach.
+// @Tags Coaching
+// @Produce json
+// @Security BearerAuth
+// @Param user_id path string true "Client user ID"
+// @Param session_id path string true "Session ID"
+// @Success 200 {object} map[string]interface{} "Session details with rep_datas and assessments"
+// @Failure 400 {object} map[string]string "Invalid session ID"
+// @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
+// @Failure 404 {object} map[string]string "Session not found or does not belong to client"
+// @Router /api/coach/clients/{user_id}/sessions/{session_id} [get]
+func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
+	clientUUID, ok := h.verifyCoachClientRelationship(c, c.Params("user_id"))
+	if !ok {
+		return nil
+	}
+
+	var sessionUUID pgtype.UUID
+	if err := sessionUUID.Scan(c.Params("session_id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
+	}
+
+	session, err := h.queries.GetSession(context.Background(), sessionUUID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
+	}
+
+	if session.UserID.Bytes != clientUUID.Bytes {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
+	}
+
+	repDatas, _ := h.queries.GetSessionRepDatas(context.Background(), session.ID)
+	assessments, _ := h.queries.GetSessionAssessments(context.Background(), session.ID)
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"session":     session,
+		"rep_datas":   repDatas,
+		"assessments": assessments,
+	})
+}
+
+// GetClientAssessments godoc
+// @Summary Get a client's assessments
+// @Description Retrieve all assessments for a user enrolled with the authenticated coach.
+// @Tags Coaching
+// @Produce json
+// @Security BearerAuth
+// @Param user_id path string true "Client user ID"
+// @Success 200 {array} db.Assessment "List of assessments"
+// @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
+// @Router /api/coach/clients/{user_id}/assessments [get]
+func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {
+	clientUUID, ok := h.verifyCoachClientRelationship(c, c.Params("user_id"))
+	if !ok {
+		return nil
+	}
+
+	assessments, err := h.queries.GetUserAssessments(context.Background(), clientUUID)
+	if err != nil {
+		slog.Error("failed to retrieve client assessments", "client_id", c.Params("user_id"), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(assessments)
+}

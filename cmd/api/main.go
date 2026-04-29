@@ -159,6 +159,11 @@ func main() {
 	api.Delete("/coach/enrollments/:user_id", coachHandler.UnenrollUser)
 	api.Delete("/user/enrollment", coachHandler.LeaveCoach)
 
+	// Coaching panel routes
+	api.Get("/coach/clients/:user_id/sessions", coachHandler.GetClientSessions)
+	api.Get("/coach/clients/:user_id/sessions/:session_id", coachHandler.GetClientSession)
+	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
+
 	// Admin routes
 	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)
 	api.Put("/admin/coaches/:id/validate", adminHandler.ValidateCoach)
