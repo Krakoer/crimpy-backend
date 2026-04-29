@@ -446,7 +446,7 @@ func (h *CoachHandler) verifyCoachClientRelationship(c fiber.Ctx, clientIDStr st
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
-// @Success 200 {array} db.Session "List of sessions"
+// @Success 200 {array} map[string]interface{} "List of sessions"
 // @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
 // @Router /api/coach/clients/{user_id}/sessions [get]
 func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
@@ -514,7 +514,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
-// @Success 200 {array} db.Assessment "List of assessments"
+// @Success 200 {array} map[string]interface{} "List of assessments"
 // @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
 // @Router /api/coach/clients/{user_id}/assessments [get]
 func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {

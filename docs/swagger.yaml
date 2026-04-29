@@ -654,6 +654,114 @@ paths:
       summary: Change user password
       tags:
       - Authentication
+  /api/coach/clients/{user_id}/assessments:
+    get:
+      description: Retrieve all assessments for a user enrolled with the authenticated
+        coach.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of assessments
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: Not a coach or user not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a client's assessments
+      tags:
+      - Coaching
+  /api/coach/clients/{user_id}/sessions:
+    get:
+      description: Retrieve all sessions for a user enrolled with the authenticated
+        coach.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of sessions
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: Not a coach or user not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a client's sessions
+      tags:
+      - Coaching
+  /api/coach/clients/{user_id}/sessions/{session_id}:
+    get:
+      description: Retrieve a specific session with its rep data and assessments for
+        a user enrolled with the authenticated coach.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session details with rep_datas and assessments
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a coach or user not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found or does not belong to client
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a client's session details
+      tags:
+      - Coaching
   /api/coach/enrollment-token:
     post:
       description: Generate a one-time enrollment link token (valid 7 days). Requires
@@ -725,6 +833,12 @@ paths:
             type: object
         "403":
           description: Not a coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not enrolled by this coach
           schema:
             additionalProperties:
               type: string
