@@ -28,6 +28,11 @@ SELECT * FROM enrollment_tokens
 WHERE coach_id = $1
 ORDER BY expires_at DESC;
 
+-- name: GetCoachEnrollment :one
+SELECT id, coach_id, user_id, enrolled_at
+FROM coach_enrollments
+WHERE coach_id = $1 AND user_id = $2;
+
 -- name: CreateCoachEnrollment :one
 INSERT INTO coach_enrollments (coach_id, user_id)
 VALUES ($1, $2)

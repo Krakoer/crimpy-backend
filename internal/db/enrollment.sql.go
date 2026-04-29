@@ -82,6 +82,29 @@ func (q *Queries) DeleteUserEnrollment(ctx context.Context, userID pgtype.UUID) 
 	return q.db.Exec(ctx, deleteUserEnrollment, userID)
 }
 
+const getCoachEnrollment = `-- name: GetCoachEnrollment :one
+SELECT id, coach_id, user_id, enrolled_at
+FROM coach_enrollments
+WHERE coach_id = $1 AND user_id = $2
+`
+
+type GetCoachEnrollmentParams struct {
+	CoachID pgtype.UUID
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) GetCoachEnrollment(ctx context.Context, arg GetCoachEnrollmentParams) (CoachEnrollment, error) {
+	row := q.db.QueryRow(ctx, getCoachEnrollment, arg.CoachID, arg.UserID)
+	var i CoachEnrollment
+	err := row.Scan(
+		&i.ID,
+		&i.CoachID,
+		&i.UserID,
+		&i.EnrolledAt,
+	)
+	return i, err
+}
+
 const getCoachEnrollmentTokens = `-- name: GetCoachEnrollmentTokens :many
 SELECT id, coach_id, token, expires_at, used_at, used_by FROM enrollment_tokens
 WHERE coach_id = $1

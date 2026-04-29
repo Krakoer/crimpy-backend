@@ -118,6 +118,45 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 	return items, nil
 }
 
+const getUserAssessments = `-- name: GetUserAssessments :many
+SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, a.deleted_at, a.sync_version, a.server_updated_at FROM assessments a
+JOIN sessions s ON a.session_id = s.id
+WHERE s.user_id = $1
+ORDER BY s.date DESC
+`
+
+func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([]Assessment, error) {
+	rows, err := q.db.Query(ctx, getUserAssessments, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Assessment
+	for rows.Next() {
+		var i Assessment
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Type,
+			&i.RightValue,
+			&i.LeftValue,
+			&i.SessionID,
+			&i.GripPosition,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SyncVersion,
+			&i.ServerUpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserAssessmentsByType = `-- name: GetUserAssessmentsByType :many
 SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, a.deleted_at, a.sync_version, a.server_updated_at FROM assessments a
 JOIN sessions s ON a.session_id = s.id
