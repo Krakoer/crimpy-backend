@@ -1011,6 +1011,301 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/coach/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all session templates for the authenticated coach (without items).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CoachSessions"
+                ],
+                "summary": "List coach's session templates",
+                "responses": {
+                    "200": {
+                        "description": "List of sessions",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.CoachSessionListItem"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new session template with a structured item tree. Requires a validated coach account.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CoachSessions"
+                ],
+                "summary": "Create a coach session template",
+                "parameters": [
+                    {
+                        "description": "Session data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateCoachSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Session created",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/sessions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a session template with its full item tree. Only the owning coach can access.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CoachSessions"
+                ],
+                "summary": "Get a coach session template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session with items",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid session ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach or not owner",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replace the session metadata and items tree. Only the owning coach can update.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CoachSessions"
+                ],
+                "summary": "Update a coach session template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated session data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateCoachSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated session",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach or not owner",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a session template and all its items. Only the owning coach can delete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CoachSessions"
+                ],
+                "summary": "Delete a coach session template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid session ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach or not owner",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/enrollment/{token}": {
             "get": {
                 "security": [
@@ -2688,6 +2983,75 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CoachSessionListItem": {
+            "type": "object",
+            "properties": {
+                "coach_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CoachSessionResponse": {
+            "type": "object",
+            "properties": {
+                "coach_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemResponse"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateCoachSessionRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemRequest"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.CreateExerciseRequest": {
             "type": "object",
             "properties": {
@@ -3016,6 +3380,130 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.SessionItemRequest": {
+            "type": "object",
+            "properties": {
+                "both_hands": {
+                    "type": "boolean"
+                },
+                "cycle_rest_seconds": {
+                    "type": "integer"
+                },
+                "cycles": {
+                    "type": "integer"
+                },
+                "edge_sizes_mm": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "exercise_id": {
+                    "type": "string"
+                },
+                "hand_positions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "hb_worktime_seconds": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemRequest"
+                    }
+                },
+                "loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "reps_unit": {
+                    "type": "string"
+                },
+                "rest_seconds": {
+                    "type": "integer"
+                },
+                "section_title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.SessionItemResponse": {
+            "type": "object",
+            "properties": {
+                "both_hands": {
+                    "type": "boolean"
+                },
+                "cycle_rest_seconds": {
+                    "type": "integer"
+                },
+                "cycles": {
+                    "type": "integer"
+                },
+                "edge_sizes_mm": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "exercise_id": {
+                    "type": "string"
+                },
+                "hand_positions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "hb_worktime_seconds": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemResponse"
+                    }
+                },
+                "loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "reps_unit": {
+                    "type": "string"
+                },
+                "rest_seconds": {
+                    "type": "integer"
+                },
+                "section_title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.SessionResponse": {
             "type": "object",
             "properties": {
@@ -3082,6 +3570,23 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateCoachSessionRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemRequest"
+                    }
+                },
+                "title": {
                     "type": "string"
                 }
             }

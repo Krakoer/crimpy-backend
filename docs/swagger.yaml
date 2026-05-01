@@ -39,6 +39,51 @@ definitions:
       lastname:
         type: string
     type: object
+  handler.CoachSessionListItem:
+    properties:
+      coach_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  handler.CoachSessionResponse:
+    properties:
+      coach_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/handler.SessionItemResponse'
+        type: array
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  handler.CreateCoachSessionRequest:
+    properties:
+      description:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/handler.SessionItemRequest'
+        type: array
+      title:
+        type: string
+    type: object
   handler.CreateExerciseRequest:
     properties:
       comment:
@@ -253,6 +298,88 @@ definitions:
       email:
         type: string
     type: object
+  handler.SessionItemRequest:
+    properties:
+      both_hands:
+        type: boolean
+      cycle_rest_seconds:
+        type: integer
+      cycles:
+        type: integer
+      edge_sizes_mm:
+        items:
+          type: integer
+        type: array
+      exercise_id:
+        type: string
+      hand_positions:
+        items:
+          type: object
+        type: array
+      hb_worktime_seconds:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/handler.SessionItemRequest'
+        type: array
+      loads:
+        items:
+          type: object
+        type: array
+      reps:
+        type: integer
+      reps_unit:
+        type: string
+      rest_seconds:
+        type: integer
+      section_title:
+        type: string
+      type:
+        type: string
+    type: object
+  handler.SessionItemResponse:
+    properties:
+      both_hands:
+        type: boolean
+      cycle_rest_seconds:
+        type: integer
+      cycles:
+        type: integer
+      edge_sizes_mm:
+        items:
+          type: integer
+        type: array
+      exercise_id:
+        type: string
+      hand_positions:
+        items:
+          type: object
+        type: array
+      hb_worktime_seconds:
+        type: integer
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/handler.SessionItemResponse'
+        type: array
+      loads:
+        items:
+          type: object
+        type: array
+      position:
+        type: integer
+      reps:
+        type: integer
+      reps_unit:
+        type: string
+      rest_seconds:
+        type: integer
+      section_title:
+        type: string
+      type:
+        type: string
+    type: object
   handler.SessionResponse:
     properties:
       date:
@@ -297,6 +424,17 @@ definitions:
       repeater_id:
         type: integer
       user_id:
+        type: string
+    type: object
+  handler.UpdateCoachSessionRequest:
+    properties:
+      description:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/handler.SessionItemRequest'
+        type: array
+      title:
         type: string
     type: object
   handler.UpdateExerciseRequest:
@@ -1081,6 +1219,200 @@ paths:
       summary: Update an exercise
       tags:
       - Exercises
+  /api/coach/sessions:
+    get:
+      description: Get all session templates for the authenticated coach (without
+        items).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of sessions
+          schema:
+            items:
+              $ref: '#/definitions/handler.CoachSessionListItem'
+            type: array
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List coach's session templates
+      tags:
+      - CoachSessions
+    post:
+      consumes:
+      - application/json
+      description: Create a new session template with a structured item tree. Requires
+        a validated coach account.
+      parameters:
+      - description: Session data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateCoachSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Session created
+          schema:
+            $ref: '#/definitions/handler.CoachSessionResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a coach session template
+      tags:
+      - CoachSessions
+  /api/coach/sessions/{id}:
+    delete:
+      description: Delete a session template and all its items. Only the owning coach
+        can delete.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a coach session template
+      tags:
+      - CoachSessions
+    get:
+      description: Get a session template with its full item tree. Only the owning
+        coach can access.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session with items
+          schema:
+            $ref: '#/definitions/handler.CoachSessionResponse'
+        "400":
+          description: Invalid session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a coach session template
+      tags:
+      - CoachSessions
+    put:
+      consumes:
+      - application/json
+      description: Replace the session metadata and items tree. Only the owning coach
+        can update.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated session data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateCoachSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated session
+          schema:
+            $ref: '#/definitions/handler.CoachSessionResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a coach session template
+      tags:
+      - CoachSessions
   /api/enrollment/{token}:
     get:
       description: Validate a token and return the coach's info. Used before accepting
