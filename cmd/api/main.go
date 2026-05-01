@@ -71,6 +71,7 @@ func main() {
 	repeaterHandler := handler.NewRepeaterHandler(queries)
 	syncHandler := sync.NewSyncHandler(queries)
 	coachHandler := handler.NewCoachHandler(queries, pool)
+	exerciseHandler := handler.NewExerciseHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -158,6 +159,13 @@ func main() {
 	api.Get("/user/enrollment", coachHandler.GetUserEnrollment)
 	api.Delete("/coach/enrollments/:user_id", coachHandler.UnenrollUser)
 	api.Delete("/user/enrollment", coachHandler.LeaveCoach)
+
+	// Exercise library routes (coach only)
+	api.Post("/coach/exercises", exerciseHandler.CreateExercise)
+	api.Get("/coach/exercises", exerciseHandler.GetExercises)
+	api.Get("/coach/exercises/:id", exerciseHandler.GetExercise)
+	api.Put("/coach/exercises/:id", exerciseHandler.UpdateExercise)
+	api.Delete("/coach/exercises/:id", exerciseHandler.DeleteExercise)
 
 	// Coaching panel routes
 	api.Get("/coach/clients/:user_id/sessions", coachHandler.GetClientSessions)

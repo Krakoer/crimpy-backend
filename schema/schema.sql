@@ -192,6 +192,21 @@ CREATE TABLE "enrollment_tokens" (
 CREATE UNIQUE INDEX "enrollment_tokens_token_key" ON "enrollment_tokens" ("token");
 CREATE INDEX "enrollment_tokens_coach_id_idx" ON "enrollment_tokens" ("coach_id");
 
+-- Stores exercises created by coaches for use in programs.
+CREATE TABLE "exercises" (
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "coach_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "name"        TEXT        NOT NULL,
+  "description" TEXT,
+  "comment"     TEXT,
+  "video_link"  TEXT,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "exercises_coach_id_idx" ON "exercises"("coach_id");
+
 -- Stores active coach-client relationships. A user may only be enrolled with one coach at a time.
 CREATE TABLE "coach_enrollments" (
   "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),

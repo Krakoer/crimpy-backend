@@ -1,0 +1,329 @@
+package handler
+
+import (
+	"context"
+	"crimpy/backend/internal/db"
+	"crimpy/backend/internal/middleware"
+	"log/slog"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type ExerciseHandler struct {
+	queries *db.Queries
+	pool    *pgxpool.Pool
+}
+
+func NewExerciseHandler(queries *db.Queries, pool *pgxpool.Pool) *ExerciseHandler {
+	return &ExerciseHandler{queries: queries, pool: pool}
+}
+
+type CreateExerciseRequest struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Comment     *string `json:"comment"`
+	VideoLink   *string `json:"video_link"`
+}
+
+type UpdateExerciseRequest struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Comment     *string `json:"comment"`
+	VideoLink   *string `json:"video_link"`
+}
+
+type ExerciseResponse struct {
+	ID          string  `json:"id"`
+	CoachID     string  `json:"coach_id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Comment     *string `json:"comment"`
+	VideoLink   *string `json:"video_link"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+}
+
+func exerciseToResponse(e db.Exercise) ExerciseResponse {
+	resp := ExerciseResponse{
+		ID:        e.ID.String(),
+		CoachID:   e.CoachID.String(),
+		Name:      e.Name,
+		CreatedAt: e.CreatedAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt: e.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if e.Description.Valid {
+		resp.Description = &e.Description.String
+	}
+	if e.Comment.Valid {
+		resp.Comment = &e.Comment.String
+	}
+	if e.VideoLink.Valid {
+		resp.VideoLink = &e.VideoLink.String
+	}
+	return resp
+}
+
+func requireValidatedCoach(c fiber.Ctx, queries *db.Queries) (pgtype.UUID, bool) {
+	if !middleware.IsCoach(c) {
+		c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Coach account required"})
+		return pgtype.UUID{}, false
+	}
+
+	userID := middleware.GetUserID(c)
+
+	var coachUUID pgtype.UUID
+	if err := coachUUID.Scan(userID); err != nil {
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
+		return pgtype.UUID{}, false
+	}
+
+	coach, err := queries.GetUserByID(context.Background(), coachUUID)
+	if err != nil {
+		c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve coach"})
+		return pgtype.UUID{}, false
+	}
+
+	if !coach.CoachValidated {
+		c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Coach account not yet validated by admin"})
+		return pgtype.UUID{}, false
+	}
+
+	return coachUUID, true
+}
+
+// CreateExercise godoc
+// @Summary Create an exercise
+// @Description Create a new exercise in the coach's exercise library. Requires a validated coach account.
+// @Tags Exercises
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateExerciseRequest true "Exercise data"
+// @Success 201 {object} ExerciseResponse "Exercise created"
+// @Failure 400 {object} map[string]string "Invalid request body"
+// @Failure 403 {object} map[string]string "Not a validated coach"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/coach/exercises [post]
+func (h *ExerciseHandler) CreateExercise(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	var req CreateExerciseRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
+	}
+
+	params := db.CreateExerciseParams{
+		CoachID: coachUUID,
+		Name:    req.Name,
+	}
+	if req.Description != nil {
+		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+	}
+	if req.Comment != nil {
+		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
+	}
+	if req.VideoLink != nil {
+		params.VideoLink = pgtype.Text{String: *req.VideoLink, Valid: true}
+	}
+
+	exercise, err := h.queries.CreateExercise(context.Background(), params)
+	if err != nil {
+		slog.Error("failed to create exercise", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create exercise"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(exerciseToResponse(exercise))
+}
+
+// GetExercises godoc
+// @Summary List coach's exercises
+// @Description Get all exercises in the authenticated coach's library.
+// @Tags Exercises
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} ExerciseResponse "List of exercises"
+// @Failure 403 {object} map[string]string "Not a validated coach"
+// @Router /api/coach/exercises [get]
+func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	exercises, err := h.queries.GetCoachExercises(context.Background(), coachUUID)
+	if err != nil {
+		slog.Error("failed to retrieve exercises", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
+	}
+
+	result := make([]ExerciseResponse, 0, len(exercises))
+	for _, e := range exercises {
+		result = append(result, exerciseToResponse(e))
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+// GetExercise godoc
+// @Summary Get an exercise
+// @Description Get a specific exercise by ID. Only accessible by the owning coach.
+// @Tags Exercises
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Exercise ID"
+// @Success 200 {object} ExerciseResponse "Exercise details"
+// @Failure 400 {object} map[string]string "Invalid exercise ID"
+// @Failure 403 {object} map[string]string "Not a validated coach or not owner"
+// @Failure 404 {object} map[string]string "Exercise not found"
+// @Router /api/coach/exercises/{id} [get]
+func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	var exerciseUUID pgtype.UUID
+	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
+	}
+
+	exercise, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
+		}
+		slog.Error("failed to retrieve exercise", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
+	}
+
+	if exercise.CoachID.Bytes != coachUUID.Bytes {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(exercise))
+}
+
+// UpdateExercise godoc
+// @Summary Update an exercise
+// @Description Update an exercise in the coach's library. Only the owning coach can update.
+// @Tags Exercises
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Exercise ID"
+// @Param request body UpdateExerciseRequest true "Updated exercise data"
+// @Success 200 {object} ExerciseResponse "Updated exercise"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 403 {object} map[string]string "Not a validated coach or not owner"
+// @Failure 404 {object} map[string]string "Exercise not found"
+// @Router /api/coach/exercises/{id} [put]
+func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	var exerciseUUID pgtype.UUID
+	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
+	}
+
+	existing, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
+		}
+		slog.Error("failed to retrieve exercise for update", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
+	}
+
+	if existing.CoachID.Bytes != coachUUID.Bytes {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	}
+
+	var req UpdateExerciseRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
+	}
+
+	params := db.UpdateExerciseParams{
+		ID:   exerciseUUID,
+		Name: req.Name,
+	}
+	if req.Description != nil {
+		params.Description = pgtype.Text{String: *req.Description, Valid: true}
+	}
+	if req.Comment != nil {
+		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
+	}
+	if req.VideoLink != nil {
+		params.VideoLink = pgtype.Text{String: *req.VideoLink, Valid: true}
+	}
+
+	updated, err := h.queries.UpdateExercise(context.Background(), params)
+	if err != nil {
+		slog.Error("failed to update exercise", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(updated))
+}
+
+// DeleteExercise godoc
+// @Summary Delete an exercise
+// @Description Delete an exercise from the coach's library. Only the owning coach can delete.
+// @Tags Exercises
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Exercise ID"
+// @Success 200 {object} map[string]string "Exercise deleted"
+// @Failure 400 {object} map[string]string "Invalid exercise ID"
+// @Failure 403 {object} map[string]string "Not a validated coach or not owner"
+// @Failure 404 {object} map[string]string "Exercise not found"
+// @Router /api/coach/exercises/{id} [delete]
+func (h *ExerciseHandler) DeleteExercise(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	var exerciseUUID pgtype.UUID
+	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
+	}
+
+	exercise, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
+		}
+		slog.Error("failed to retrieve exercise for delete", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
+	}
+
+	if exercise.CoachID.Bytes != coachUUID.Bytes {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	}
+
+	if err := h.queries.DeleteExercise(context.Background(), exerciseUUID); err != nil {
+		slog.Error("failed to delete exercise", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete exercise"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Exercise deleted successfully"})
+}

@@ -50,6 +50,17 @@ type EnrollmentToken struct {
 	UsedBy    pgtype.UUID
 }
 
+type Exercise struct {
+	ID          pgtype.UUID
+	CoachID     pgtype.UUID
+	Name        string
+	Description pgtype.Text
+	Comment     pgtype.Text
+	VideoLink   pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type PinnedBuiltinTraining struct {
 	BuiltinTrainingID pgtype.UUID
 	UserID            pgtype.UUID
