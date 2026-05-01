@@ -41,6 +41,37 @@ type CoachEnrollment struct {
 	EnrolledAt pgtype.Timestamptz
 }
 
+type CoachSession struct {
+	ID          pgtype.UUID
+	CoachID     pgtype.UUID
+	Title       string
+	Description pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type CoachSessionItem struct {
+	ID                pgtype.UUID
+	SessionID         pgtype.UUID
+	ParentID          pgtype.UUID
+	Type              string
+	Position          int32
+	Cycles            pgtype.Int4
+	CycleRestSeconds  pgtype.Int4
+	Reps              pgtype.Int4
+	RepsUnit          pgtype.Text
+	RestSeconds       pgtype.Int4
+	ExerciseID        pgtype.UUID
+	HbWorktimeSeconds pgtype.Int4
+	BothHands         pgtype.Bool
+	Loads             []byte
+	HandPositions     []byte
+	EdgeSizesMm       []byte
+	SectionTitle      pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type EnrollmentToken struct {
 	ID        pgtype.UUID
 	CoachID   pgtype.UUID
