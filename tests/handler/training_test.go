@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,8 +13,7 @@ import (
 
 func TestTrainingHandler_CreateTraining_Success(t *testing.T) {
 	// Set JWT secret for testing
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -61,8 +59,7 @@ func TestTrainingHandler_CreateTraining_Success(t *testing.T) {
 }
 
 func TestTrainingHandler_CreateTraining_MissingName(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -120,8 +117,7 @@ func TestTrainingHandler_CreateTraining_Unauthorized(t *testing.T) {
 }
 
 func TestTrainingHandler_GetTrainings_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -168,8 +164,7 @@ func TestTrainingHandler_GetTrainings_Success(t *testing.T) {
 }
 
 func TestTrainingHandler_GetTraining_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -220,8 +215,7 @@ func TestTrainingHandler_GetTraining_Success(t *testing.T) {
 }
 
 func TestTrainingHandler_GetTraining_UserIsolation(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -268,8 +262,7 @@ func TestTrainingHandler_GetTraining_UserIsolation(t *testing.T) {
 }
 
 func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -329,8 +322,7 @@ func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
 }
 
 func TestTrainingHandler_UpdateTraining_UserIsolation(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -382,8 +374,7 @@ func TestTrainingHandler_UpdateTraining_UserIsolation(t *testing.T) {
 }
 
 func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -436,8 +427,7 @@ func TestTrainingHandler_DeleteTraining_Success(t *testing.T) {
 }
 
 func TestTrainingHandler_DeleteTraining_UserIsolation(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)

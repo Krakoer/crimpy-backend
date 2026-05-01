@@ -129,6 +129,20 @@ type HandlerConfig struct {
 		UpdateRepeater(fiber.Ctx) error
 		DeleteRepeater(fiber.Ctx) error
 	}
+	ExerciseHandler interface {
+		CreateExercise(fiber.Ctx) error
+		GetExercises(fiber.Ctx) error
+		GetExercise(fiber.Ctx) error
+		UpdateExercise(fiber.Ctx) error
+		DeleteExercise(fiber.Ctx) error
+	}
+	CoachSessionHandler interface {
+		CreateCoachSession(fiber.Ctx) error
+		GetCoachSessions(fiber.Ctx) error
+		GetCoachSession(fiber.Ctx) error
+		UpdateCoachSession(fiber.Ctx) error
+		DeleteCoachSession(fiber.Ctx) error
+	}
 }
 
 func SetupFiberApp(config HandlerConfig) *fiber.App {
@@ -175,6 +189,22 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/admin/coaches/pending", config.AdminHandler.GetPendingCoaches)
 		api.Put("/admin/coaches/:id/validate", config.AdminHandler.ValidateCoach)
 		api.Put("/admin/coaches/:id/reject", config.AdminHandler.RejectCoach)
+	}
+
+	if config.ExerciseHandler != nil {
+		api.Post("/coach/exercises", config.ExerciseHandler.CreateExercise)
+		api.Get("/coach/exercises", config.ExerciseHandler.GetExercises)
+		api.Get("/coach/exercises/:id", config.ExerciseHandler.GetExercise)
+		api.Put("/coach/exercises/:id", config.ExerciseHandler.UpdateExercise)
+		api.Delete("/coach/exercises/:id", config.ExerciseHandler.DeleteExercise)
+	}
+
+	if config.CoachSessionHandler != nil {
+		api.Post("/coach/sessions", config.CoachSessionHandler.CreateCoachSession)
+		api.Get("/coach/sessions", config.CoachSessionHandler.GetCoachSessions)
+		api.Get("/coach/sessions/:id", config.CoachSessionHandler.GetCoachSession)
+		api.Put("/coach/sessions/:id", config.CoachSessionHandler.UpdateCoachSession)
+		api.Delete("/coach/sessions/:id", config.CoachSessionHandler.DeleteCoachSession)
 	}
 
 	return app
@@ -274,6 +304,20 @@ func CreateTestCoachUser(t *testing.T, queries *db.Queries, email string) (strin
 	}
 
 	return user.ID.String(), token
+}
+
+// CreateTestValidatedCoachUser creates a validated coach user and returns the user ID and JWT token
+func CreateTestValidatedCoachUser(t *testing.T, pool *pgxpool.Pool, queries *db.Queries, email string) (string, string) {
+	t.Helper()
+
+	userID, token := CreateTestCoachUser(t, queries, email)
+
+	_, err := pool.Exec(context.Background(), "UPDATE users SET coach_validated = true WHERE id = $1", userID)
+	if err != nil {
+		t.Fatalf("Failed to validate test coach: %v", err)
+	}
+
+	return userID, token
 }
 
 // GetAuthHeader returns a Bearer token header

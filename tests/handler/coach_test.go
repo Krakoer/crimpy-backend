@@ -11,6 +11,7 @@ import (
 )
 
 func TestAuthHandler_RegisterCoach_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -65,6 +66,7 @@ func TestAuthHandler_RegisterCoach_Success(t *testing.T) {
 }
 
 func TestAuthHandler_RegisterRegularUser_CoachFieldsFalse(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -115,6 +117,7 @@ func TestAuthHandler_RegisterRegularUser_CoachFieldsFalse(t *testing.T) {
 }
 
 func TestAuthHandler_LoginCoach_ReturnsCoachFields(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -174,6 +177,7 @@ func TestAuthHandler_LoginCoach_ReturnsCoachFields(t *testing.T) {
 }
 
 func TestAdminHandler_GetPendingCoaches_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -217,6 +221,7 @@ func TestAdminHandler_GetPendingCoaches_Success(t *testing.T) {
 }
 
 func TestAdminHandler_GetPendingCoaches_NonAdminForbidden(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -248,6 +253,7 @@ func TestAdminHandler_GetPendingCoaches_NonAdminForbidden(t *testing.T) {
 }
 
 func TestAdminHandler_ValidateCoach_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -280,6 +286,7 @@ func TestAdminHandler_ValidateCoach_Success(t *testing.T) {
 }
 
 func TestAdminHandler_ValidateCoach_NonAdminForbidden(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -312,6 +319,7 @@ func TestAdminHandler_ValidateCoach_NonAdminForbidden(t *testing.T) {
 }
 
 func TestAdminHandler_ValidateCoach_InvalidID(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -343,6 +351,7 @@ func TestAdminHandler_ValidateCoach_InvalidID(t *testing.T) {
 }
 
 func TestAdminHandler_RejectCoach_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -375,6 +384,7 @@ func TestAdminHandler_RejectCoach_Success(t *testing.T) {
 }
 
 func TestAdminHandler_RejectCoach_NonAdminForbidden(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
@@ -407,6 +417,7 @@ func TestAdminHandler_RejectCoach_NonAdminForbidden(t *testing.T) {
 }
 
 func TestAdminHandler_RejectCoach_InvalidID(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 

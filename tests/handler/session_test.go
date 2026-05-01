@@ -6,15 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 func TestSessionHandler_CreateSession_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -60,8 +58,7 @@ func TestSessionHandler_CreateSession_Success(t *testing.T) {
 }
 
 func TestSessionHandler_CreateSession_MissingName(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -122,8 +119,7 @@ func TestSessionHandler_CreateSession_Unauthorized(t *testing.T) {
 }
 
 func TestSessionHandler_GetSessions_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -171,8 +167,7 @@ func TestSessionHandler_GetSessions_Success(t *testing.T) {
 }
 
 func TestSessionHandler_GetSession_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -230,8 +225,7 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 }
 
 func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -279,8 +273,7 @@ func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
 }
 
 func TestSessionHandler_UpdateSession_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -343,8 +336,7 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 }
 
 func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -398,8 +390,7 @@ func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
 }
 
 func TestSessionHandler_DeleteSession_Success(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -453,8 +444,7 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 }
 
 func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	defer os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
