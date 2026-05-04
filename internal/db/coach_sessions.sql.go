@@ -44,7 +44,7 @@ INSERT INTO coach_session_items (
   reps, duration, rest_seconds,
   exercise_id,
   hb_worktime_seconds, both_hands,
-  loads, hand_positions, edge_sizes_mm,
+  loads, left_loads, hand_positions, edge_sizes_mm,
   section_title
 ) VALUES (
   $1, $2, $3, $4,
@@ -52,10 +52,10 @@ INSERT INTO coach_session_items (
   $7, $8, $9,
   $10,
   $11, $12,
-  $13, $14, $15,
-  $16
+  $13, $14, $15, $16,
+  $17
 )
-RETURNING id, session_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, hb_worktime_seconds, both_hands, loads, hand_positions, edge_sizes_mm, section_title, created_at, updated_at
+RETURNING id, session_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, hb_worktime_seconds, both_hands, loads, left_loads, hand_positions, edge_sizes_mm, section_title, created_at, updated_at
 `
 
 type CreateCoachSessionItemParams struct {
@@ -72,6 +72,7 @@ type CreateCoachSessionItemParams struct {
 	HbWorktimeSeconds pgtype.Int4
 	BothHands         pgtype.Bool
 	Loads             []byte
+	LeftLoads         []byte
 	HandPositions     []byte
 	EdgeSizesMm       []byte
 	SectionTitle      pgtype.Text
@@ -92,6 +93,7 @@ func (q *Queries) CreateCoachSessionItem(ctx context.Context, arg CreateCoachSes
 		arg.HbWorktimeSeconds,
 		arg.BothHands,
 		arg.Loads,
+		arg.LeftLoads,
 		arg.HandPositions,
 		arg.EdgeSizesMm,
 		arg.SectionTitle,
@@ -112,6 +114,7 @@ func (q *Queries) CreateCoachSessionItem(ctx context.Context, arg CreateCoachSes
 		&i.HbWorktimeSeconds,
 		&i.BothHands,
 		&i.Loads,
+		&i.LeftLoads,
 		&i.HandPositions,
 		&i.EdgeSizesMm,
 		&i.SectionTitle,
@@ -158,7 +161,7 @@ func (q *Queries) GetCoachSession(ctx context.Context, id pgtype.UUID) (CoachSes
 }
 
 const getCoachSessionItems = `-- name: GetCoachSessionItems :many
-SELECT id, session_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, hb_worktime_seconds, both_hands, loads, hand_positions, edge_sizes_mm, section_title, created_at, updated_at FROM coach_session_items WHERE session_id = $1 ORDER BY position
+SELECT id, session_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, hb_worktime_seconds, both_hands, loads, left_loads, hand_positions, edge_sizes_mm, section_title, created_at, updated_at FROM coach_session_items WHERE session_id = $1 ORDER BY position
 `
 
 func (q *Queries) GetCoachSessionItems(ctx context.Context, sessionID pgtype.UUID) ([]CoachSessionItem, error) {
@@ -185,6 +188,7 @@ func (q *Queries) GetCoachSessionItems(ctx context.Context, sessionID pgtype.UUI
 			&i.HbWorktimeSeconds,
 			&i.BothHands,
 			&i.Loads,
+			&i.LeftLoads,
 			&i.HandPositions,
 			&i.EdgeSizesMm,
 			&i.SectionTitle,

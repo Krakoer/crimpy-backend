@@ -324,6 +324,10 @@ definitions:
         items:
           $ref: '#/definitions/handler.SessionItemRequest'
         type: array
+      left_loads:
+        items:
+          type: object
+        type: array
       loads:
         items:
           type: object
@@ -364,6 +368,10 @@ definitions:
       items:
         items:
           $ref: '#/definitions/handler.SessionItemResponse'
+        type: array
+      left_loads:
+        items:
+          type: object
         type: array
       loads:
         items:

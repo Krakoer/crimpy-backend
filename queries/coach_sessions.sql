@@ -25,7 +25,7 @@ INSERT INTO coach_session_items (
   reps, duration, rest_seconds,
   exercise_id,
   hb_worktime_seconds, both_hands,
-  loads, hand_positions, edge_sizes_mm,
+  loads, left_loads, hand_positions, edge_sizes_mm,
   section_title
 ) VALUES (
   @session_id, @parent_id, @type, @position,
@@ -33,7 +33,7 @@ INSERT INTO coach_session_items (
   @reps, @duration, @rest_seconds,
   @exercise_id,
   @hb_worktime_seconds, @both_hands,
-  @loads, @hand_positions, @edge_sizes_mm,
+  @loads, @left_loads, @hand_positions, @edge_sizes_mm,
   @section_title
 )
 RETURNING *;

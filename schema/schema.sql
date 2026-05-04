@@ -228,8 +228,10 @@ CREATE TABLE "coach_session_items" (
   "hb_worktime_seconds"  INTEGER,
   "both_hands"           BOOLEAN,
   -- Per-rep configurable fields (JSONB arrays sized by reps)
-  -- loads: [{value: float, unit: string}] per rep
+  -- loads: [{value: float, unit: string}] per rep; carries right-hand loads in split mode
   "loads"                JSONB,
+  -- left_loads: [{value: float, unit: string}] per rep; only set when both_hands is false
+  "left_loads"           JSONB,
   -- hand_positions: [string] per rep for exercise; [[string]] per cycle per rep for hangboard
   "hand_positions"       JSONB,
   -- edge_sizes_mm: [int] per rep (hangboard)

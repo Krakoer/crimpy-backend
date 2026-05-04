@@ -34,7 +34,8 @@ type SessionItemRequest struct {
 	ExerciseID        *string              `json:"exercise_id"`
 	HbWorktimeSeconds *int32               `json:"hb_worktime_seconds"`
 	BothHands         *bool                `json:"both_hands"`
-	Loads             json.RawMessage      `json:"loads"          swaggertype:"array,object"`
+	Loads             json.RawMessage      `json:"loads"           swaggertype:"array,object"`
+	LeftLoads         json.RawMessage      `json:"left_loads"      swaggertype:"array,object"`
 	HandPositions     json.RawMessage      `json:"hand_positions"  swaggertype:"array,object"`
 	EdgeSizesMm       json.RawMessage      `json:"edge_sizes_mm"   swaggertype:"array,integer"`
 	SectionTitle      *string              `json:"section_title"`
@@ -66,7 +67,8 @@ type SessionItemResponse struct {
 	ExerciseID        *string               `json:"exercise_id,omitempty"`
 	HbWorktimeSeconds *int32                `json:"hb_worktime_seconds,omitempty"`
 	BothHands         *bool                 `json:"both_hands,omitempty"`
-	Loads             json.RawMessage       `json:"loads,omitempty"          swaggertype:"array,object"`
+	Loads             json.RawMessage       `json:"loads,omitempty"           swaggertype:"array,object"`
+	LeftLoads         json.RawMessage       `json:"left_loads,omitempty"      swaggertype:"array,object"`
 	HandPositions     json.RawMessage       `json:"hand_positions,omitempty"  swaggertype:"array,object"`
 	EdgeSizesMm       json.RawMessage       `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
 	SectionTitle      *string               `json:"section_title,omitempty"`
@@ -154,6 +156,9 @@ func insertItemsRecursive(
 		if len(req.Loads) > 0 && string(req.Loads) != "null" {
 			params.Loads = req.Loads
 		}
+		if len(req.LeftLoads) > 0 && string(req.LeftLoads) != "null" {
+			params.LeftLoads = req.LeftLoads
+		}
 		if len(req.HandPositions) > 0 && string(req.HandPositions) != "null" {
 			params.HandPositions = req.HandPositions
 		}
@@ -218,6 +223,9 @@ func dbItemToResponse(r db.CoachSessionItem) SessionItemResponse {
 	}
 	if len(r.Loads) > 0 {
 		resp.Loads = json.RawMessage(r.Loads)
+	}
+	if len(r.LeftLoads) > 0 {
+		resp.LeftLoads = json.RawMessage(r.LeftLoads)
 	}
 	if len(r.HandPositions) > 0 {
 		resp.HandPositions = json.RawMessage(r.HandPositions)

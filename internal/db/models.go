@@ -65,6 +65,7 @@ type CoachSessionItem struct {
 	HbWorktimeSeconds pgtype.Int4
 	BothHands         pgtype.Bool
 	Loads             []byte
+	LeftLoads         []byte
 	HandPositions     []byte
 	EdgeSizesMm       []byte
 	SectionTitle      pgtype.Text

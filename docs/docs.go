@@ -3419,6 +3419,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.SessionItemRequest"
                     }
                 },
+                "left_loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
                 "loads": {
                     "type": "array",
                     "items": {
@@ -3479,6 +3485,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.SessionItemResponse"
+                    }
+                },
+                "left_loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
                     }
                 },
                 "loads": {
