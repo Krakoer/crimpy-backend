@@ -220,10 +220,10 @@ CREATE TABLE "coach_session_items" (
   "cycle_rest_seconds"   INTEGER,
   -- Exercise and hangboard reps (scalar)
   "reps"                 INTEGER,
-  "reps_unit"            TEXT,
+  "duration"             INTEGER,
   "rest_seconds"         INTEGER,
   -- Exercise-specific (scalar)
-  "exercise_id"          UUID        REFERENCES "exercises"("id") ON DELETE SET NULL,
+  "exercise_id"          UUID        REFERENCES "exercises"("id") ON DELETE CASCADE,
   -- Hangboard-specific (scalar)
   "hb_worktime_seconds"  INTEGER,
   "both_hands"           BOOLEAN,

@@ -3392,6 +3392,9 @@ const docTemplate = `{
                 "cycles": {
                     "type": "integer"
                 },
+                "duration": {
+                    "type": "integer"
+                },
                 "edge_sizes_mm": {
                     "type": "array",
                     "items": {
@@ -3425,9 +3428,6 @@ const docTemplate = `{
                 "reps": {
                     "type": "integer"
                 },
-                "reps_unit": {
-                    "type": "string"
-                },
                 "rest_seconds": {
                     "type": "integer"
                 },
@@ -3449,6 +3449,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "cycles": {
+                    "type": "integer"
+                },
+                "duration": {
                     "type": "integer"
                 },
                 "edge_sizes_mm": {
@@ -3489,9 +3492,6 @@ const docTemplate = `{
                 },
                 "reps": {
                     "type": "integer"
-                },
-                "reps_unit": {
-                    "type": "string"
                 },
                 "rest_seconds": {
                     "type": "integer"

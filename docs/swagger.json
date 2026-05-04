@@ -3389,6 +3389,9 @@
                 "cycles": {
                     "type": "integer"
                 },
+                "duration": {
+                    "type": "integer"
+                },
                 "edge_sizes_mm": {
                     "type": "array",
                     "items": {
@@ -3422,9 +3425,6 @@
                 "reps": {
                     "type": "integer"
                 },
-                "reps_unit": {
-                    "type": "string"
-                },
                 "rest_seconds": {
                     "type": "integer"
                 },
@@ -3446,6 +3446,9 @@
                     "type": "integer"
                 },
                 "cycles": {
+                    "type": "integer"
+                },
+                "duration": {
                     "type": "integer"
                 },
                 "edge_sizes_mm": {
@@ -3486,9 +3489,6 @@
                 },
                 "reps": {
                     "type": "integer"
-                },
-                "reps_unit": {
-                    "type": "string"
                 },
                 "rest_seconds": {
                     "type": "integer"

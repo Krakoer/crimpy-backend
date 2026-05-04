@@ -22,7 +22,7 @@ DELETE FROM coach_sessions WHERE id = @id;
 INSERT INTO coach_session_items (
   session_id, parent_id, type, position,
   cycles, cycle_rest_seconds,
-  reps, reps_unit, rest_seconds,
+  reps, duration, rest_seconds,
   exercise_id,
   hb_worktime_seconds, both_hands,
   loads, hand_positions, edge_sizes_mm,
@@ -30,7 +30,7 @@ INSERT INTO coach_session_items (
 ) VALUES (
   @session_id, @parent_id, @type, @position,
   @cycles, @cycle_rest_seconds,
-  @reps, @reps_unit, @rest_seconds,
+  @reps, @duration, @rest_seconds,
   @exercise_id,
   @hb_worktime_seconds, @both_hands,
   @loads, @hand_positions, @edge_sizes_mm,

@@ -29,7 +29,7 @@ type SessionItemRequest struct {
 	Cycles            *int32               `json:"cycles"`
 	CycleRestSeconds  *int32               `json:"cycle_rest_seconds"`
 	Reps              *int32               `json:"reps"`
-	RepsUnit          *string              `json:"reps_unit"`
+	Duration          *int32               `json:"duration"`
 	RestSeconds       *int32               `json:"rest_seconds"`
 	ExerciseID        *string              `json:"exercise_id"`
 	HbWorktimeSeconds *int32               `json:"hb_worktime_seconds"`
@@ -61,7 +61,7 @@ type SessionItemResponse struct {
 	Cycles            *int32                `json:"cycles,omitempty"`
 	CycleRestSeconds  *int32                `json:"cycle_rest_seconds,omitempty"`
 	Reps              *int32                `json:"reps,omitempty"`
-	RepsUnit          *string               `json:"reps_unit,omitempty"`
+	Duration          *int32                `json:"duration,omitempty"`
 	RestSeconds       *int32                `json:"rest_seconds,omitempty"`
 	ExerciseID        *string               `json:"exercise_id,omitempty"`
 	HbWorktimeSeconds *int32                `json:"hb_worktime_seconds,omitempty"`
@@ -133,8 +133,8 @@ func insertItemsRecursive(
 		if req.Reps != nil {
 			params.Reps = pgtype.Int4{Int32: *req.Reps, Valid: true}
 		}
-		if req.RepsUnit != nil {
-			params.RepsUnit = pgtype.Text{String: *req.RepsUnit, Valid: true}
+		if req.Duration != nil {
+			params.Duration = pgtype.Int4{Int32: *req.Duration, Valid: true}
 		}
 		if req.RestSeconds != nil {
 			params.RestSeconds = pgtype.Int4{Int32: *req.RestSeconds, Valid: true}
@@ -200,8 +200,8 @@ func dbItemToResponse(r db.CoachSessionItem) SessionItemResponse {
 	if r.Reps.Valid {
 		resp.Reps = &r.Reps.Int32
 	}
-	if r.RepsUnit.Valid {
-		resp.RepsUnit = &r.RepsUnit.String
+	if r.Duration.Valid {
+		resp.Duration = &r.Duration.Int32
 	}
 	if r.RestSeconds.Valid {
 		resp.RestSeconds = &r.RestSeconds.Int32

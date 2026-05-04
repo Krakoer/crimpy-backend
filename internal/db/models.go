@@ -59,7 +59,7 @@ type CoachSessionItem struct {
 	Cycles            pgtype.Int4
 	CycleRestSeconds  pgtype.Int4
 	Reps              pgtype.Int4
-	RepsUnit          pgtype.Text
+	Duration          pgtype.Int4
 	RestSeconds       pgtype.Int4
 	ExerciseID        pgtype.UUID
 	HbWorktimeSeconds pgtype.Int4
