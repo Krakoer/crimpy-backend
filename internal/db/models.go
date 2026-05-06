@@ -41,7 +41,7 @@ type CoachEnrollment struct {
 	EnrolledAt pgtype.Timestamptz
 }
 
-type CoachSession struct {
+type CoachTraining struct {
 	ID          pgtype.UUID
 	CoachID     pgtype.UUID
 	Title       string
@@ -50,9 +50,9 @@ type CoachSession struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
-type CoachSessionItem struct {
+type CoachTrainingItem struct {
 	ID                pgtype.UUID
-	SessionID         pgtype.UUID
+	TrainingID        pgtype.UUID
 	ParentID          pgtype.UUID
 	Type              string
 	Position          int32

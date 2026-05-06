@@ -1011,28 +1011,28 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/coach/sessions": {
+        "/api/coach/trainings": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all session templates for the authenticated coach (without items).",
+                "description": "Get all training templates for the authenticated coach (without items).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "CoachSessions"
+                    "CoachTrainings"
                 ],
-                "summary": "List coach's session templates",
+                "summary": "List coach's training templates",
                 "responses": {
                     "200": {
-                        "description": "List of sessions",
+                        "description": "List of trainings",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handler.CoachSessionListItem"
+                                "$ref": "#/definitions/handler.CoachTrainingListItem"
                             }
                         }
                     },
@@ -1053,7 +1053,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new session template with a structured item tree. Requires a validated coach account.",
+                "description": "Create a new training template with a structured item tree. Requires a validated coach account.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1061,25 +1061,25 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CoachSessions"
+                    "CoachTrainings"
                 ],
-                "summary": "Create a coach session template",
+                "summary": "Create a coach training template",
                 "parameters": [
                     {
-                        "description": "Session data",
+                        "description": "Training data",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.CreateCoachSessionRequest"
+                            "$ref": "#/definitions/handler.CreateCoachTrainingRequest"
                         }
                     }
                 ],
                 "responses": {
                     "201": {
-                        "description": "Session created",
+                        "description": "Training created",
                         "schema": {
-                            "$ref": "#/definitions/handler.CoachSessionResponse"
+                            "$ref": "#/definitions/handler.CoachTrainingResponse"
                         }
                     },
                     "400": {
@@ -1112,25 +1112,25 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/coach/sessions/{id}": {
+        "/api/coach/trainings/{id}": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a session template with its full item tree. Only the owning coach can access.",
+                "description": "Get a training template with its full item tree. Only the owning coach can access.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "CoachSessions"
+                    "CoachTrainings"
                 ],
-                "summary": "Get a coach session template",
+                "summary": "Get a coach training template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Session ID",
+                        "description": "Training ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1138,13 +1138,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session with items",
+                        "description": "Training with items",
                         "schema": {
-                            "$ref": "#/definitions/handler.CoachSessionResponse"
+                            "$ref": "#/definitions/handler.CoachTrainingResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid session ID",
+                        "description": "Invalid training ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1162,7 +1162,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Session not found",
+                        "description": "Training not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1178,7 +1178,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the session metadata and items tree. Only the owning coach can update.",
+                "description": "Replace the training metadata and items tree. Only the owning coach can update.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1186,32 +1186,32 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "CoachSessions"
+                    "CoachTrainings"
                 ],
-                "summary": "Update a coach session template",
+                "summary": "Update a coach training template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Session ID",
+                        "description": "Training ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Updated session data",
+                        "description": "Updated training data",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.UpdateCoachSessionRequest"
+                            "$ref": "#/definitions/handler.UpdateCoachTrainingRequest"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Updated session",
+                        "description": "Updated training",
                         "schema": {
-                            "$ref": "#/definitions/handler.CoachSessionResponse"
+                            "$ref": "#/definitions/handler.CoachTrainingResponse"
                         }
                     },
                     "400": {
@@ -1233,7 +1233,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Session not found",
+                        "description": "Training not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1249,18 +1249,18 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a session template and all its items. Only the owning coach can delete.",
+                "description": "Delete a training template and all its items. Only the owning coach can delete.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "CoachSessions"
+                    "CoachTrainings"
                 ],
-                "summary": "Delete a coach session template",
+                "summary": "Delete a coach training template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Session ID",
+                        "description": "Training ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1268,7 +1268,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session deleted",
+                        "description": "Training deleted",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1277,7 +1277,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid session ID",
+                        "description": "Invalid training ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1295,7 +1295,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Session not found",
+                        "description": "Training not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2983,7 +2983,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.CoachSessionListItem": {
+        "handler.CoachTrainingListItem": {
             "type": "object",
             "properties": {
                 "coach_id": {
@@ -3006,7 +3006,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.CoachSessionResponse": {
+        "handler.CoachTrainingResponse": {
             "type": "object",
             "properties": {
                 "coach_id": {
@@ -3024,7 +3024,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handler.SessionItemResponse"
+                        "$ref": "#/definitions/handler.TrainingItemResponse"
                     }
                 },
                 "title": {
@@ -3035,7 +3035,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.CreateCoachSessionRequest": {
+        "handler.CreateCoachTrainingRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3044,7 +3044,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handler.SessionItemRequest"
+                        "$ref": "#/definitions/handler.TrainingItemRequest"
                     }
                 },
                 "title": {
@@ -3380,142 +3380,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.SessionItemRequest": {
-            "type": "object",
-            "properties": {
-                "both_hands": {
-                    "type": "boolean"
-                },
-                "cycle_rest_seconds": {
-                    "type": "integer"
-                },
-                "cycles": {
-                    "type": "integer"
-                },
-                "duration": {
-                    "type": "integer"
-                },
-                "edge_sizes_mm": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "exercise_id": {
-                    "type": "string"
-                },
-                "hand_positions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "hb_worktime_seconds": {
-                    "type": "integer"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.SessionItemRequest"
-                    }
-                },
-                "left_loads": {
-                    "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "loads": {
-                    "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "reps": {
-                    "type": "integer"
-                },
-                "rest_seconds": {
-                    "type": "integer"
-                },
-                "section_title": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.SessionItemResponse": {
-            "type": "object",
-            "properties": {
-                "both_hands": {
-                    "type": "boolean"
-                },
-                "cycle_rest_seconds": {
-                    "type": "integer"
-                },
-                "cycles": {
-                    "type": "integer"
-                },
-                "duration": {
-                    "type": "integer"
-                },
-                "edge_sizes_mm": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "exercise_id": {
-                    "type": "string"
-                },
-                "hand_positions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "hb_worktime_seconds": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.SessionItemResponse"
-                    }
-                },
-                "left_loads": {
-                    "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "loads": {
-                    "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "position": {
-                    "type": "integer"
-                },
-                "reps": {
-                    "type": "integer"
-                },
-                "rest_seconds": {
-                    "type": "integer"
-                },
-                "section_title": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
         "handler.SessionResponse": {
             "type": "object",
             "properties": {
@@ -3563,6 +3427,142 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.TrainingItemRequest": {
+            "type": "object",
+            "properties": {
+                "both_hands": {
+                    "type": "boolean"
+                },
+                "cycle_rest_seconds": {
+                    "type": "integer"
+                },
+                "cycles": {
+                    "type": "integer"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "edge_sizes_mm": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "exercise_id": {
+                    "type": "string"
+                },
+                "hand_positions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "hb_worktime_seconds": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingItemRequest"
+                    }
+                },
+                "left_loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "rest_seconds": {
+                    "type": "integer"
+                },
+                "section_title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.TrainingItemResponse": {
+            "type": "object",
+            "properties": {
+                "both_hands": {
+                    "type": "boolean"
+                },
+                "cycle_rest_seconds": {
+                    "type": "integer"
+                },
+                "cycles": {
+                    "type": "integer"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "edge_sizes_mm": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "exercise_id": {
+                    "type": "string"
+                },
+                "hand_positions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "hb_worktime_seconds": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingItemResponse"
+                    }
+                },
+                "left_loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "loads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "rest_seconds": {
+                    "type": "integer"
+                },
+                "section_title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.TrainingResponse": {
             "type": "object",
             "properties": {
@@ -3586,7 +3586,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.UpdateCoachSessionRequest": {
+        "handler.UpdateCoachTrainingRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3595,7 +3595,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handler.SessionItemRequest"
+                        "$ref": "#/definitions/handler.TrainingItemRequest"
                     }
                 },
                 "title": {

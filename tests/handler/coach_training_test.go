@@ -11,16 +11,16 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func TestCoachSessionHandler_Create_Success(t *testing.T) {
+func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "csession1@test.com")
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining1@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachSessionHandler: handler.NewCoachSessionHandler(queries, pool),
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{
@@ -35,7 +35,6 @@ func TestCoachSessionHandler_Create_Success(t *testing.T) {
 					{
 						"type":         "exercise",
 						"reps":         10,
-						"reps_unit":    "count",
 						"rest_seconds": 0,
 						"loads":        []map[string]interface{}{{"value": 0, "unit": "bw"}},
 					},
@@ -44,7 +43,7 @@ func TestCoachSessionHandler_Create_Success(t *testing.T) {
 		},
 	})
 
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/sessions", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -79,20 +78,20 @@ func TestCoachSessionHandler_Create_Success(t *testing.T) {
 	}
 }
 
-func TestCoachSessionHandler_Create_NotCoach(t *testing.T) {
+func TestCoachTrainingHandler_Create_NotCoach(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestUser(t, queries, "csession2@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "ctraining2@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachSessionHandler: handler.NewCoachSessionHandler(queries, pool),
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
 	})
 
-	body, _ := json.Marshal(map[string]interface{}{"title": "Session"})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/sessions", body)
+	body, _ := json.Marshal(map[string]interface{}{"title": "Training"})
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, _ := app.Test(req)
@@ -102,19 +101,18 @@ func TestCoachSessionHandler_Create_NotCoach(t *testing.T) {
 	}
 }
 
-func TestCoachSessionHandler_GetWithItems(t *testing.T) {
+func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "csession3@test.com")
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining3@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachSessionHandler: handler.NewCoachSessionHandler(queries, pool),
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
 	})
 
-	// Create session with nested items
 	body, _ := json.Marshal(map[string]interface{}{
 		"title": "Strength",
 		"items": []map[string]interface{}{
@@ -123,24 +121,22 @@ func TestCoachSessionHandler_GetWithItems(t *testing.T) {
 				"section_title": "Warm-up",
 				"items": []map[string]interface{}{
 					{
-						"type":      "exercise",
-						"reps":      5,
-						"reps_unit": "count",
+						"type": "exercise",
+						"reps": 5,
 					},
 				},
 			},
 		},
 	})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/sessions", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ := app.Test(req)
 
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
-	sessionID := created["id"].(string)
+	trainingID := created["id"].(string)
 
-	// Get session
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/sessions/%s", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -174,31 +170,29 @@ func TestCoachSessionHandler_GetWithItems(t *testing.T) {
 	}
 }
 
-func TestCoachSessionHandler_OwnershipIsolation(t *testing.T) {
+func TestCoachTrainingHandler_OwnershipIsolation(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token1 := testutil.CreateTestValidatedCoachUser(t, pool, queries, "csession4@test.com")
-	_, token2 := testutil.CreateTestValidatedCoachUser(t, pool, queries, "csession5@test.com")
+	_, token1 := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining4@test.com")
+	_, token2 := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining5@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachSessionHandler: handler.NewCoachSessionHandler(queries, pool),
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
 	})
 
-	// Coach 1 creates a session
-	body, _ := json.Marshal(map[string]interface{}{"title": "Coach1 Session"})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/sessions", body)
+	body, _ := json.Marshal(map[string]interface{}{"title": "Coach1 Training"})
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, _ := app.Test(req)
 
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
-	sessionID := created["id"].(string)
+	trainingID := created["id"].(string)
 
-	// Coach 2 tries to get it
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/sessions/%s", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 	resp, _ = app.Test(req)
 
@@ -206,8 +200,7 @@ func TestCoachSessionHandler_OwnershipIsolation(t *testing.T) {
 		t.Errorf("Expected %d for get isolation, got %d", fiber.StatusForbidden, resp.StatusCode)
 	}
 
-	// Coach 2 tries to delete it
-	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/sessions/%s", sessionID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 	resp, _ = app.Test(req)
 
@@ -216,42 +209,40 @@ func TestCoachSessionHandler_OwnershipIsolation(t *testing.T) {
 	}
 }
 
-func TestCoachSessionHandler_Update(t *testing.T) {
+func TestCoachTrainingHandler_Update(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "csession6@test.com")
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining6@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachSessionHandler: handler.NewCoachSessionHandler(queries, pool),
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
 	})
 
-	// Create with one item
 	body, _ := json.Marshal(map[string]interface{}{
 		"title": "Original",
 		"items": []map[string]interface{}{
-			{"type": "exercise", "reps": 5, "reps_unit": "count"},
+			{"type": "exercise", "reps": 5},
 		},
 	})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/sessions", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ := app.Test(req)
 
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
-	sessionID := created["id"].(string)
+	trainingID := created["id"].(string)
 
-	// Update with new title and two items
 	body, _ = json.Marshal(map[string]interface{}{
 		"title": "Updated",
 		"items": []map[string]interface{}{
-			{"type": "exercise", "reps": 10, "reps_unit": "count"},
-			{"type": "exercise", "reps": 15, "reps_unit": "seconds"},
+			{"type": "exercise", "reps": 10},
+			{"type": "exercise", "reps": 15},
 		},
 	})
-	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/coach/sessions/%s", sessionID), body)
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/coach/trainings/%s", trainingID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -276,28 +267,28 @@ func TestCoachSessionHandler_Update(t *testing.T) {
 	}
 }
 
-func TestCoachSessionHandler_Delete(t *testing.T) {
+func TestCoachTrainingHandler_Delete(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "csession7@test.com")
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining7@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachSessionHandler: handler.NewCoachSessionHandler(queries, pool),
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{"title": "To Delete"})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/sessions", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ := app.Test(req)
 
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
-	sessionID := created["id"].(string)
+	trainingID := created["id"].(string)
 
-	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/sessions/%s", sessionID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -305,7 +296,7 @@ func TestCoachSessionHandler_Delete(t *testing.T) {
 		t.Errorf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
 	}
 
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/sessions/%s", sessionID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 

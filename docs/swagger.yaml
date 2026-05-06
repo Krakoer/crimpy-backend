@@ -39,7 +39,7 @@ definitions:
       lastname:
         type: string
     type: object
-  handler.CoachSessionListItem:
+  handler.CoachTrainingListItem:
     properties:
       coach_id:
         type: string
@@ -54,7 +54,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  handler.CoachSessionResponse:
+  handler.CoachTrainingResponse:
     properties:
       coach_id:
         type: string
@@ -66,20 +66,20 @@ definitions:
         type: string
       items:
         items:
-          $ref: '#/definitions/handler.SessionItemResponse'
+          $ref: '#/definitions/handler.TrainingItemResponse'
         type: array
       title:
         type: string
       updated_at:
         type: string
     type: object
-  handler.CreateCoachSessionRequest:
+  handler.CreateCoachTrainingRequest:
     properties:
       description:
         type: string
       items:
         items:
-          $ref: '#/definitions/handler.SessionItemRequest'
+          $ref: '#/definitions/handler.TrainingItemRequest'
         type: array
       title:
         type: string
@@ -298,96 +298,6 @@ definitions:
       email:
         type: string
     type: object
-  handler.SessionItemRequest:
-    properties:
-      both_hands:
-        type: boolean
-      cycle_rest_seconds:
-        type: integer
-      cycles:
-        type: integer
-      duration:
-        type: integer
-      edge_sizes_mm:
-        items:
-          type: integer
-        type: array
-      exercise_id:
-        type: string
-      hand_positions:
-        items:
-          type: object
-        type: array
-      hb_worktime_seconds:
-        type: integer
-      items:
-        items:
-          $ref: '#/definitions/handler.SessionItemRequest'
-        type: array
-      left_loads:
-        items:
-          type: object
-        type: array
-      loads:
-        items:
-          type: object
-        type: array
-      reps:
-        type: integer
-      rest_seconds:
-        type: integer
-      section_title:
-        type: string
-      type:
-        type: string
-    type: object
-  handler.SessionItemResponse:
-    properties:
-      both_hands:
-        type: boolean
-      cycle_rest_seconds:
-        type: integer
-      cycles:
-        type: integer
-      duration:
-        type: integer
-      edge_sizes_mm:
-        items:
-          type: integer
-        type: array
-      exercise_id:
-        type: string
-      hand_positions:
-        items:
-          type: object
-        type: array
-      hb_worktime_seconds:
-        type: integer
-      id:
-        type: string
-      items:
-        items:
-          $ref: '#/definitions/handler.SessionItemResponse'
-        type: array
-      left_loads:
-        items:
-          type: object
-        type: array
-      loads:
-        items:
-          type: object
-        type: array
-      position:
-        type: integer
-      reps:
-        type: integer
-      rest_seconds:
-        type: integer
-      section_title:
-        type: string
-      type:
-        type: string
-    type: object
   handler.SessionResponse:
     properties:
       date:
@@ -419,6 +329,96 @@ definitions:
       user_id:
         type: string
     type: object
+  handler.TrainingItemRequest:
+    properties:
+      both_hands:
+        type: boolean
+      cycle_rest_seconds:
+        type: integer
+      cycles:
+        type: integer
+      duration:
+        type: integer
+      edge_sizes_mm:
+        items:
+          type: integer
+        type: array
+      exercise_id:
+        type: string
+      hand_positions:
+        items:
+          type: object
+        type: array
+      hb_worktime_seconds:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/handler.TrainingItemRequest'
+        type: array
+      left_loads:
+        items:
+          type: object
+        type: array
+      loads:
+        items:
+          type: object
+        type: array
+      reps:
+        type: integer
+      rest_seconds:
+        type: integer
+      section_title:
+        type: string
+      type:
+        type: string
+    type: object
+  handler.TrainingItemResponse:
+    properties:
+      both_hands:
+        type: boolean
+      cycle_rest_seconds:
+        type: integer
+      cycles:
+        type: integer
+      duration:
+        type: integer
+      edge_sizes_mm:
+        items:
+          type: integer
+        type: array
+      exercise_id:
+        type: string
+      hand_positions:
+        items:
+          type: object
+        type: array
+      hb_worktime_seconds:
+        type: integer
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/handler.TrainingItemResponse'
+        type: array
+      left_loads:
+        items:
+          type: object
+        type: array
+      loads:
+        items:
+          type: object
+        type: array
+      position:
+        type: integer
+      reps:
+        type: integer
+      rest_seconds:
+        type: integer
+      section_title:
+        type: string
+      type:
+        type: string
+    type: object
   handler.TrainingResponse:
     properties:
       id:
@@ -434,13 +434,13 @@ definitions:
       user_id:
         type: string
     type: object
-  handler.UpdateCoachSessionRequest:
+  handler.UpdateCoachTrainingRequest:
     properties:
       description:
         type: string
       items:
         items:
-          $ref: '#/definitions/handler.SessionItemRequest'
+          $ref: '#/definitions/handler.TrainingItemRequest'
         type: array
       title:
         type: string
@@ -1227,18 +1227,18 @@ paths:
       summary: Update an exercise
       tags:
       - Exercises
-  /api/coach/sessions:
+  /api/coach/trainings:
     get:
-      description: Get all session templates for the authenticated coach (without
+      description: Get all training templates for the authenticated coach (without
         items).
       produces:
       - application/json
       responses:
         "200":
-          description: List of sessions
+          description: List of trainings
           schema:
             items:
-              $ref: '#/definitions/handler.CoachSessionListItem'
+              $ref: '#/definitions/handler.CoachTrainingListItem'
             type: array
         "403":
           description: Not a validated coach
@@ -1248,28 +1248,28 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: List coach's session templates
+      summary: List coach's training templates
       tags:
-      - CoachSessions
+      - CoachTrainings
     post:
       consumes:
       - application/json
-      description: Create a new session template with a structured item tree. Requires
+      description: Create a new training template with a structured item tree. Requires
         a validated coach account.
       parameters:
-      - description: Session data
+      - description: Training data
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.CreateCoachSessionRequest'
+          $ref: '#/definitions/handler.CreateCoachTrainingRequest'
       produces:
       - application/json
       responses:
         "201":
-          description: Session created
+          description: Training created
           schema:
-            $ref: '#/definitions/handler.CoachSessionResponse'
+            $ref: '#/definitions/handler.CoachTrainingResponse'
         "400":
           description: Invalid request body
           schema:
@@ -1290,15 +1290,15 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Create a coach session template
+      summary: Create a coach training template
       tags:
-      - CoachSessions
-  /api/coach/sessions/{id}:
+      - CoachTrainings
+  /api/coach/trainings/{id}:
     delete:
-      description: Delete a session template and all its items. Only the owning coach
+      description: Delete a training template and all its items. Only the owning coach
         can delete.
       parameters:
-      - description: Session ID
+      - description: Training ID
         in: path
         name: id
         required: true
@@ -1307,13 +1307,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session deleted
+          description: Training deleted
           schema:
             additionalProperties:
               type: string
             type: object
         "400":
-          description: Invalid session ID
+          description: Invalid training ID
           schema:
             additionalProperties:
               type: string
@@ -1325,21 +1325,21 @@ paths:
               type: string
             type: object
         "404":
-          description: Session not found
+          description: Training not found
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Delete a coach session template
+      summary: Delete a coach training template
       tags:
-      - CoachSessions
+      - CoachTrainings
     get:
-      description: Get a session template with its full item tree. Only the owning
+      description: Get a training template with its full item tree. Only the owning
         coach can access.
       parameters:
-      - description: Session ID
+      - description: Training ID
         in: path
         name: id
         required: true
@@ -1348,11 +1348,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session with items
+          description: Training with items
           schema:
-            $ref: '#/definitions/handler.CoachSessionResponse'
+            $ref: '#/definitions/handler.CoachTrainingResponse'
         "400":
-          description: Invalid session ID
+          description: Invalid training ID
           schema:
             additionalProperties:
               type: string
@@ -1364,40 +1364,40 @@ paths:
               type: string
             type: object
         "404":
-          description: Session not found
+          description: Training not found
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Get a coach session template
+      summary: Get a coach training template
       tags:
-      - CoachSessions
+      - CoachTrainings
     put:
       consumes:
       - application/json
-      description: Replace the session metadata and items tree. Only the owning coach
+      description: Replace the training metadata and items tree. Only the owning coach
         can update.
       parameters:
-      - description: Session ID
+      - description: Training ID
         in: path
         name: id
         required: true
         type: string
-      - description: Updated session data
+      - description: Updated training data
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.UpdateCoachSessionRequest'
+          $ref: '#/definitions/handler.UpdateCoachTrainingRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Updated session
+          description: Updated training
           schema:
-            $ref: '#/definitions/handler.CoachSessionResponse'
+            $ref: '#/definitions/handler.CoachTrainingResponse'
         "400":
           description: Invalid request
           schema:
@@ -1411,16 +1411,16 @@ paths:
               type: string
             type: object
         "404":
-          description: Session not found
+          description: Training not found
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Update a coach session template
+      summary: Update a coach training template
       tags:
-      - CoachSessions
+      - CoachTrainings
   /api/enrollment/{token}:
     get:
       description: Validate a token and return the coach's info. Used before accepting

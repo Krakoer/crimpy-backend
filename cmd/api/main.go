@@ -72,7 +72,7 @@ func main() {
 	syncHandler := sync.NewSyncHandler(queries)
 	coachHandler := handler.NewCoachHandler(queries, pool)
 	exerciseHandler := handler.NewExerciseHandler(queries, pool)
-	coachSessionHandler := handler.NewCoachSessionHandler(queries, pool)
+	coachTrainingHandler := handler.NewCoachTrainingHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -161,12 +161,12 @@ func main() {
 	api.Delete("/coach/enrollments/:user_id", coachHandler.UnenrollUser)
 	api.Delete("/user/enrollment", coachHandler.LeaveCoach)
 
-	// Coach session template routes
-	api.Post("/coach/sessions", coachSessionHandler.CreateCoachSession)
-	api.Get("/coach/sessions", coachSessionHandler.GetCoachSessions)
-	api.Get("/coach/sessions/:id", coachSessionHandler.GetCoachSession)
-	api.Put("/coach/sessions/:id", coachSessionHandler.UpdateCoachSession)
-	api.Delete("/coach/sessions/:id", coachSessionHandler.DeleteCoachSession)
+	// Coach training template routes
+	api.Post("/coach/trainings", coachTrainingHandler.CreateCoachTraining)
+	api.Get("/coach/trainings", coachTrainingHandler.GetCoachTrainings)
+	api.Get("/coach/trainings/:id", coachTrainingHandler.GetCoachTraining)
+	api.Put("/coach/trainings/:id", coachTrainingHandler.UpdateCoachTraining)
+	api.Delete("/coach/trainings/:id", coachTrainingHandler.DeleteCoachTraining)
 
 	// Exercise library routes (coach only)
 	api.Post("/coach/exercises", exerciseHandler.CreateExercise)

@@ -136,12 +136,12 @@ type HandlerConfig struct {
 		UpdateExercise(fiber.Ctx) error
 		DeleteExercise(fiber.Ctx) error
 	}
-	CoachSessionHandler interface {
-		CreateCoachSession(fiber.Ctx) error
-		GetCoachSessions(fiber.Ctx) error
-		GetCoachSession(fiber.Ctx) error
-		UpdateCoachSession(fiber.Ctx) error
-		DeleteCoachSession(fiber.Ctx) error
+	CoachTrainingHandler interface {
+		CreateCoachTraining(fiber.Ctx) error
+		GetCoachTrainings(fiber.Ctx) error
+		GetCoachTraining(fiber.Ctx) error
+		UpdateCoachTraining(fiber.Ctx) error
+		DeleteCoachTraining(fiber.Ctx) error
 	}
 }
 
@@ -199,12 +199,12 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Delete("/coach/exercises/:id", config.ExerciseHandler.DeleteExercise)
 	}
 
-	if config.CoachSessionHandler != nil {
-		api.Post("/coach/sessions", config.CoachSessionHandler.CreateCoachSession)
-		api.Get("/coach/sessions", config.CoachSessionHandler.GetCoachSessions)
-		api.Get("/coach/sessions/:id", config.CoachSessionHandler.GetCoachSession)
-		api.Put("/coach/sessions/:id", config.CoachSessionHandler.UpdateCoachSession)
-		api.Delete("/coach/sessions/:id", config.CoachSessionHandler.DeleteCoachSession)
+	if config.CoachTrainingHandler != nil {
+		api.Post("/coach/trainings", config.CoachTrainingHandler.CreateCoachTraining)
+		api.Get("/coach/trainings", config.CoachTrainingHandler.GetCoachTrainings)
+		api.Get("/coach/trainings/:id", config.CoachTrainingHandler.GetCoachTraining)
+		api.Put("/coach/trainings/:id", config.CoachTrainingHandler.UpdateCoachTraining)
+		api.Delete("/coach/trainings/:id", config.CoachTrainingHandler.DeleteCoachTraining)
 	}
 
 	return app
