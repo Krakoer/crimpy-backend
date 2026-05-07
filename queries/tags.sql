@@ -36,3 +36,10 @@ FROM tags t
 JOIN exercise_tags et ON et.tag_id = t.id
 WHERE t.coach_id = @coach_id
 ORDER BY et.exercise_id, t.name;
+
+-- name: GetExerciseTagsByIDs :many
+SELECT et.exercise_id, t.id, t.name, t.color, t.created_at, t.updated_at
+FROM tags t
+JOIN exercise_tags et ON et.tag_id = t.id
+WHERE et.exercise_id = ANY(@exercise_ids::uuid[])
+ORDER BY et.exercise_id, t.name;

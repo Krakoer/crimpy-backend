@@ -11,6 +11,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCoachExercises = `-- name: CountCoachExercises :one
+SELECT COUNT(*) FROM exercises
+WHERE coach_id = $1
+  AND name ILIKE '%' || $2::text || '%'
+  AND (array_length($3::uuid[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM exercise_tags WHERE exercise_id = exercises.id AND tag_id = ANY($3::uuid[])
+  ))
+`
+
+type CountCoachExercisesParams struct {
+	CoachID    pgtype.UUID
+	NameFilter string
+	TagIds     []pgtype.UUID
+}
+
+func (q *Queries) CountCoachExercises(ctx context.Context, arg CountCoachExercisesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoachExercises, arg.CoachID, arg.NameFilter, arg.TagIds)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createExercise = `-- name: CreateExercise :one
 INSERT INTO exercises (coach_id, name, description, comment, video_link)
 VALUES ($1, $2, $3, $4, $5)
@@ -144,6 +166,61 @@ func (q *Queries) GetExercise(ctx context.Context, id pgtype.UUID) (Exercise, er
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const searchCoachExercises = `-- name: SearchCoachExercises :many
+SELECT id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at FROM exercises
+WHERE coach_id = $1
+  AND name ILIKE '%' || $2::text || '%'
+  AND (array_length($3::uuid[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM exercise_tags WHERE exercise_id = exercises.id AND tag_id = ANY($3::uuid[])
+  ))
+ORDER BY name
+LIMIT $5 OFFSET $4
+`
+
+type SearchCoachExercisesParams struct {
+	CoachID    pgtype.UUID
+	NameFilter string
+	TagIds     []pgtype.UUID
+	Off        int32
+	Lim        int32
+}
+
+func (q *Queries) SearchCoachExercises(ctx context.Context, arg SearchCoachExercisesParams) ([]Exercise, error) {
+	rows, err := q.db.Query(ctx, searchCoachExercises,
+		arg.CoachID,
+		arg.NameFilter,
+		arg.TagIds,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Exercise
+	for rows.Next() {
+		var i Exercise
+		if err := rows.Scan(
+			&i.ID,
+			&i.CoachID,
+			&i.Name,
+			&i.Description,
+			&i.Comment,
+			&i.VideoLink,
+			&i.IsFavorite,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setExerciseFavorite = `-- name: SetExerciseFavorite :one

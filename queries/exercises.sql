@@ -25,3 +25,21 @@ RETURNING *;
 
 -- name: GetCoachFavoriteExercises :many
 SELECT * FROM exercises WHERE coach_id = @coach_id AND is_favorite = true ORDER BY name;
+
+-- name: SearchCoachExercises :many
+SELECT * FROM exercises
+WHERE coach_id = @coach_id
+  AND name ILIKE '%' || @name_filter::text || '%'
+  AND (array_length(@tag_ids::uuid[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM exercise_tags WHERE exercise_id = exercises.id AND tag_id = ANY(@tag_ids::uuid[])
+  ))
+ORDER BY name
+LIMIT @lim OFFSET @off;
+
+-- name: CountCoachExercises :one
+SELECT COUNT(*) FROM exercises
+WHERE coach_id = @coach_id
+  AND name ILIKE '%' || @name_filter::text || '%'
+  AND (array_length(@tag_ids::uuid[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM exercise_tags WHERE exercise_id = exercises.id AND tag_id = ANY(@tag_ids::uuid[])
+  ));

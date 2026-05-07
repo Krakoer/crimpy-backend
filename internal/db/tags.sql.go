@@ -170,6 +170,50 @@ func (q *Queries) GetExerciseTags(ctx context.Context, exerciseID pgtype.UUID) (
 	return items, nil
 }
 
+const getExerciseTagsByIDs = `-- name: GetExerciseTagsByIDs :many
+SELECT et.exercise_id, t.id, t.name, t.color, t.created_at, t.updated_at
+FROM tags t
+JOIN exercise_tags et ON et.tag_id = t.id
+WHERE et.exercise_id = ANY($1::uuid[])
+ORDER BY et.exercise_id, t.name
+`
+
+type GetExerciseTagsByIDsRow struct {
+	ExerciseID pgtype.UUID
+	ID         pgtype.UUID
+	Name       string
+	Color      string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) GetExerciseTagsByIDs(ctx context.Context, exerciseIds []pgtype.UUID) ([]GetExerciseTagsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getExerciseTagsByIDs, exerciseIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetExerciseTagsByIDsRow
+	for rows.Next() {
+		var i GetExerciseTagsByIDsRow
+		if err := rows.Scan(
+			&i.ExerciseID,
+			&i.ID,
+			&i.Name,
+			&i.Color,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTag = `-- name: GetTag :one
 SELECT id, coach_id, name, color, created_at, updated_at FROM tags WHERE id = $1
 `
