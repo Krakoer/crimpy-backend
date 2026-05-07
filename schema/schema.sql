@@ -186,6 +186,7 @@ CREATE TABLE "exercises" (
   "description" TEXT,
   "comment"     TEXT,
   "video_link"  TEXT,
+  "is_favorite" BOOLEAN     NOT NULL DEFAULT false,
   "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")

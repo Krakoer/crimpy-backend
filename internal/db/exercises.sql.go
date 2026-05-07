@@ -14,7 +14,7 @@ import (
 const createExercise = `-- name: CreateExercise :one
 INSERT INTO exercises (coach_id, name, description, comment, video_link)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, coach_id, name, description, comment, video_link, created_at, updated_at
+RETURNING id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at
 `
 
 type CreateExerciseParams struct {
@@ -41,6 +41,7 @@ func (q *Queries) CreateExercise(ctx context.Context, arg CreateExerciseParams) 
 		&i.Description,
 		&i.Comment,
 		&i.VideoLink,
+		&i.IsFavorite,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -57,7 +58,7 @@ func (q *Queries) DeleteExercise(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getCoachExercises = `-- name: GetCoachExercises :many
-SELECT id, coach_id, name, description, comment, video_link, created_at, updated_at FROM exercises WHERE coach_id = $1 ORDER BY name
+SELECT id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at FROM exercises WHERE coach_id = $1 ORDER BY name
 `
 
 func (q *Queries) GetCoachExercises(ctx context.Context, coachID pgtype.UUID) ([]Exercise, error) {
@@ -76,6 +77,41 @@ func (q *Queries) GetCoachExercises(ctx context.Context, coachID pgtype.UUID) ([
 			&i.Description,
 			&i.Comment,
 			&i.VideoLink,
+			&i.IsFavorite,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCoachFavoriteExercises = `-- name: GetCoachFavoriteExercises :many
+SELECT id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at FROM exercises WHERE coach_id = $1 AND is_favorite = true ORDER BY name
+`
+
+func (q *Queries) GetCoachFavoriteExercises(ctx context.Context, coachID pgtype.UUID) ([]Exercise, error) {
+	rows, err := q.db.Query(ctx, getCoachFavoriteExercises, coachID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Exercise
+	for rows.Next() {
+		var i Exercise
+		if err := rows.Scan(
+			&i.ID,
+			&i.CoachID,
+			&i.Name,
+			&i.Description,
+			&i.Comment,
+			&i.VideoLink,
+			&i.IsFavorite,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -90,7 +126,7 @@ func (q *Queries) GetCoachExercises(ctx context.Context, coachID pgtype.UUID) ([
 }
 
 const getExercise = `-- name: GetExercise :one
-SELECT id, coach_id, name, description, comment, video_link, created_at, updated_at FROM exercises WHERE id = $1
+SELECT id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at FROM exercises WHERE id = $1
 `
 
 func (q *Queries) GetExercise(ctx context.Context, id pgtype.UUID) (Exercise, error) {
@@ -103,6 +139,35 @@ func (q *Queries) GetExercise(ctx context.Context, id pgtype.UUID) (Exercise, er
 		&i.Description,
 		&i.Comment,
 		&i.VideoLink,
+		&i.IsFavorite,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setExerciseFavorite = `-- name: SetExerciseFavorite :one
+UPDATE exercises SET is_favorite = $1, updated_at = now()
+WHERE id = $2
+RETURNING id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at
+`
+
+type SetExerciseFavoriteParams struct {
+	IsFavorite bool
+	ID         pgtype.UUID
+}
+
+func (q *Queries) SetExerciseFavorite(ctx context.Context, arg SetExerciseFavoriteParams) (Exercise, error) {
+	row := q.db.QueryRow(ctx, setExerciseFavorite, arg.IsFavorite, arg.ID)
+	var i Exercise
+	err := row.Scan(
+		&i.ID,
+		&i.CoachID,
+		&i.Name,
+		&i.Description,
+		&i.Comment,
+		&i.VideoLink,
+		&i.IsFavorite,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -113,7 +178,7 @@ const updateExercise = `-- name: UpdateExercise :one
 UPDATE exercises
 SET name = $1, description = $2, comment = $3, video_link = $4, updated_at = now()
 WHERE id = $5
-RETURNING id, coach_id, name, description, comment, video_link, created_at, updated_at
+RETURNING id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at
 `
 
 type UpdateExerciseParams struct {
@@ -140,6 +205,7 @@ func (q *Queries) UpdateExercise(ctx context.Context, arg UpdateExerciseParams) 
 		&i.Description,
 		&i.Comment,
 		&i.VideoLink,
+		&i.IsFavorite,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

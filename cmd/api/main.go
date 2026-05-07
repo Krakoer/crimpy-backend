@@ -171,9 +171,11 @@ func main() {
 	// Exercise library routes (coach only)
 	api.Post("/coach/exercises", exerciseHandler.CreateExercise)
 	api.Get("/coach/exercises", exerciseHandler.GetExercises)
+	api.Get("/coach/exercises/favorites", exerciseHandler.GetFavoriteExercises)
 	api.Get("/coach/exercises/:id", exerciseHandler.GetExercise)
 	api.Put("/coach/exercises/:id", exerciseHandler.UpdateExercise)
 	api.Delete("/coach/exercises/:id", exerciseHandler.DeleteExercise)
+	api.Put("/coach/exercises/:id/favorite", exerciseHandler.SetExerciseFavorite)
 
 	// Coaching panel routes
 	api.Get("/coach/clients/:user_id/sessions", coachHandler.GetClientSessions)

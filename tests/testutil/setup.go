@@ -135,6 +135,8 @@ type HandlerConfig struct {
 		GetExercise(fiber.Ctx) error
 		UpdateExercise(fiber.Ctx) error
 		DeleteExercise(fiber.Ctx) error
+		SetExerciseFavorite(fiber.Ctx) error
+		GetFavoriteExercises(fiber.Ctx) error
 	}
 	CoachTrainingHandler interface {
 		CreateCoachTraining(fiber.Ctx) error
@@ -194,9 +196,11 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	if config.ExerciseHandler != nil {
 		api.Post("/coach/exercises", config.ExerciseHandler.CreateExercise)
 		api.Get("/coach/exercises", config.ExerciseHandler.GetExercises)
+		api.Get("/coach/exercises/favorites", config.ExerciseHandler.GetFavoriteExercises)
 		api.Get("/coach/exercises/:id", config.ExerciseHandler.GetExercise)
 		api.Put("/coach/exercises/:id", config.ExerciseHandler.UpdateExercise)
 		api.Delete("/coach/exercises/:id", config.ExerciseHandler.DeleteExercise)
+		api.Put("/coach/exercises/:id/favorite", config.ExerciseHandler.SetExerciseFavorite)
 	}
 
 	if config.CoachTrainingHandler != nil {

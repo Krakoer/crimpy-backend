@@ -43,17 +43,19 @@ type ExerciseResponse struct {
 	Description *string `json:"description"`
 	Comment     *string `json:"comment"`
 	VideoLink   *string `json:"video_link"`
+	IsFavorite  bool    `json:"is_favorite"`
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
 }
 
 func exerciseToResponse(e db.Exercise) ExerciseResponse {
 	resp := ExerciseResponse{
-		ID:        e.ID.String(),
-		CoachID:   e.CoachID.String(),
-		Name:      e.Name,
-		CreatedAt: e.CreatedAt.Time.UTC().Format(time.RFC3339),
-		UpdatedAt: e.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:         e.ID.String(),
+		CoachID:    e.CoachID.String(),
+		Name:       e.Name,
+		IsFavorite: e.IsFavorite,
+		CreatedAt:  e.CreatedAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt:  e.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	if e.Description.Valid {
 		resp.Description = &e.Description.String
@@ -326,4 +328,92 @@ func (h *ExerciseHandler) DeleteExercise(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Exercise deleted successfully"})
+}
+
+type SetExerciseFavoriteRequest struct {
+	IsFavorite bool `json:"is_favorite"`
+}
+
+// SetExerciseFavorite godoc
+// @Summary Set exercise favorite status
+// @Description Mark or unmark an exercise as favorite. Only the owning coach can update.
+// @Tags Exercises
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Exercise ID"
+// @Param request body SetExerciseFavoriteRequest true "Favorite status"
+// @Success 200 {object} ExerciseResponse "Updated exercise"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 403 {object} map[string]string "Not a validated coach or not owner"
+// @Failure 404 {object} map[string]string "Exercise not found"
+// @Router /api/coach/exercises/{id}/favorite [put]
+func (h *ExerciseHandler) SetExerciseFavorite(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	var exerciseUUID pgtype.UUID
+	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
+	}
+
+	existing, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
+		}
+		slog.Error("failed to retrieve exercise for favorite update", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
+	}
+
+	if existing.CoachID.Bytes != coachUUID.Bytes {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	}
+
+	var req SetExerciseFavoriteRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	updated, err := h.queries.SetExerciseFavorite(context.Background(), db.SetExerciseFavoriteParams{
+		ID:         exerciseUUID,
+		IsFavorite: req.IsFavorite,
+	})
+	if err != nil {
+		slog.Error("failed to update exercise favorite", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(updated))
+}
+
+// GetFavoriteExercises godoc
+// @Summary List favorite exercises
+// @Description Get all exercises marked as favorite in the authenticated coach's library.
+// @Tags Exercises
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} ExerciseResponse "List of favorite exercises"
+// @Failure 403 {object} map[string]string "Not a validated coach"
+// @Router /api/coach/exercises/favorites [get]
+func (h *ExerciseHandler) GetFavoriteExercises(c fiber.Ctx) error {
+	coachUUID, ok := requireValidatedCoach(c, h.queries)
+	if !ok {
+		return nil
+	}
+
+	exercises, err := h.queries.GetCoachFavoriteExercises(context.Background(), coachUUID)
+	if err != nil {
+		slog.Error("failed to retrieve favorite exercises", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
+	}
+
+	result := make([]ExerciseResponse, 0, len(exercises))
+	for _, e := range exercises {
+		result = append(result, exerciseToResponse(e))
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
 }

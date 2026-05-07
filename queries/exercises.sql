@@ -17,3 +17,11 @@ RETURNING *;
 
 -- name: DeleteExercise :exec
 DELETE FROM exercises WHERE id = @id;
+
+-- name: SetExerciseFavorite :one
+UPDATE exercises SET is_favorite = @is_favorite, updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: GetCoachFavoriteExercises :many
+SELECT * FROM exercises WHERE coach_id = @coach_id AND is_favorite = true ORDER BY name;

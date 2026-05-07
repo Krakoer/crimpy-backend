@@ -89,6 +89,7 @@ type Exercise struct {
 	Description pgtype.Text
 	Comment     pgtype.Text
 	VideoLink   pgtype.Text
+	IsFavorite  bool
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
 }

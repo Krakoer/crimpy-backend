@@ -817,6 +817,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/coach/exercises/favorites": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all exercises marked as favorite in the authenticated coach's library.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Exercises"
+                ],
+                "summary": "List favorite exercises",
+                "responses": {
+                    "200": {
+                        "description": "List of favorite exercises",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.ExerciseResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/coach/exercises/{id}": {
             "get": {
                 "security": [
@@ -983,6 +1020,79 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid exercise ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach or not owner",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Exercise not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/exercises/{id}/favorite": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mark or unmark an exercise as favorite. Only the owning coach can update.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Exercises"
+                ],
+                "summary": "Set exercise favorite status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Exercise ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Favorite status",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.SetExerciseFavoriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated exercise",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ExerciseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3246,6 +3356,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "is_favorite": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -3424,6 +3537,14 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.SetExerciseFavoriteRequest": {
+            "type": "object",
+            "properties": {
+                "is_favorite": {
+                    "type": "boolean"
                 }
             }
         },
