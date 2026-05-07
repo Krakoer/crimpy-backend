@@ -130,11 +130,15 @@ func TestExerciseHandler_List_Success(t *testing.T) {
 		t.Errorf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
 	}
 
-	var result []map[string]interface{}
+	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	if len(result) == 0 {
-		t.Error("Expected at least one exercise")
+	exercises, ok := result["exercises"].([]interface{})
+	if !ok || len(exercises) == 0 {
+		t.Error("Expected at least one exercise in paginated response")
+	}
+	if result["total"] == nil {
+		t.Error("Expected total field in paginated response")
 	}
 }
 

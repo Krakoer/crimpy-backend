@@ -5,6 +5,8 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -47,6 +49,13 @@ type ExerciseResponse struct {
 	Tags        []TagResponse `json:"tags"`
 	CreatedAt   string        `json:"created_at"`
 	UpdatedAt   string        `json:"updated_at"`
+}
+
+type ExerciseListResponse struct {
+	Exercises []ExerciseResponse `json:"exercises"`
+	Total     int64              `json:"total"`
+	Limit     int32              `json:"limit"`
+	Offset    int32              `json:"offset"`
 }
 
 func exerciseToResponse(e db.Exercise, tags []db.Tag) ExerciseResponse {
@@ -156,11 +165,16 @@ func (h *ExerciseHandler) CreateExercise(c fiber.Ctx) error {
 
 // GetExercises godoc
 // @Summary List coach's exercises
-// @Description Get all exercises in the authenticated coach's library.
+// @Description Get paginated exercises in the authenticated coach's library, with optional name and tag filters.
 // @Tags Exercises
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {array} ExerciseResponse "List of exercises"
+// @Param name query string false "Filter by name (case-insensitive substring)"
+// @Param tags query string false "Filter by tag IDs (comma-separated UUIDs)"
+// @Param limit query int false "Results per page (1-100, default 20)"
+// @Param offset query int false "Number of results to skip (default 0)"
+// @Success 200 {object} ExerciseListResponse "Paginated list of exercises"
+// @Failure 400 {object} map[string]string "Invalid tag ID"
 // @Failure 403 {object} map[string]string "Not a validated coach"
 // @Router /api/coach/exercises [get]
 func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
@@ -169,26 +183,80 @@ func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
 		return nil
 	}
 
-	exercises, err := h.queries.GetCoachExercises(context.Background(), coachUUID)
+	nameFilter := c.Query("name", "")
+
+	limit := int32(20)
+	if v, err := strconv.ParseInt(c.Query("limit", "20"), 10, 32); err == nil && v > 0 && v <= 100 {
+		limit = int32(v)
+	}
+	offset := int32(0)
+	if v, err := strconv.ParseInt(c.Query("offset", "0"), 10, 32); err == nil && v >= 0 {
+		offset = int32(v)
+	}
+
+	tagIDs := make([]pgtype.UUID, 0)
+	if tagsParam := c.Query("tags", ""); tagsParam != "" {
+		for _, part := range strings.Split(tagsParam, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			var tagUUID pgtype.UUID
+			if err := tagUUID.Scan(part); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tag ID: " + part})
+			}
+			tagIDs = append(tagIDs, tagUUID)
+		}
+	}
+
+	searchParams := db.SearchCoachExercisesParams{
+		CoachID:    coachUUID,
+		NameFilter: nameFilter,
+		TagIds:     tagIDs,
+		Lim:        limit,
+		Off:        offset,
+	}
+	exercises, err := h.queries.SearchCoachExercises(context.Background(), searchParams)
 	if err != nil {
 		slog.Error("failed to retrieve exercises", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
 	}
 
-	tagRows, err := h.queries.GetCoachExerciseTags(context.Background(), coachUUID)
+	countParams := db.CountCoachExercisesParams{
+		CoachID:    coachUUID,
+		NameFilter: nameFilter,
+		TagIds:     tagIDs,
+	}
+	total, err := h.queries.CountCoachExercises(context.Background(), countParams)
+	if err != nil {
+		slog.Error("failed to count exercises", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
+	}
+
+	exerciseIDs := make([]pgtype.UUID, 0, len(exercises))
+	for _, e := range exercises {
+		exerciseIDs = append(exerciseIDs, e.ID)
+	}
+
+	tagRows, err := h.queries.GetExerciseTagsByIDs(context.Background(), exerciseIDs)
 	if err != nil {
 		slog.Error("failed to retrieve exercise tags", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
 	}
 
-	tagsByExercise := buildTagsByExercise(tagRows)
+	tagsByExercise := buildTagsByExerciseFromIDRows(tagRows)
 
 	result := make([]ExerciseResponse, 0, len(exercises))
 	for _, e := range exercises {
 		result = append(result, exerciseToResponse(e, tagsByExercise[e.ID.String()]))
 	}
 
-	return c.Status(fiber.StatusOK).JSON(result)
+	return c.Status(fiber.StatusOK).JSON(ExerciseListResponse{
+		Exercises: result,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+	})
 }
 
 // GetExercise godoc
@@ -459,6 +527,21 @@ func (h *ExerciseHandler) GetFavoriteExercises(c fiber.Ctx) error {
 }
 
 func buildTagsByExercise(rows []db.GetCoachExerciseTagsRow) map[string][]db.Tag {
+	m := make(map[string][]db.Tag)
+	for _, row := range rows {
+		key := row.ExerciseID.String()
+		m[key] = append(m[key], db.Tag{
+			ID:        row.ID,
+			Name:      row.Name,
+			Color:     row.Color,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return m
+}
+
+func buildTagsByExerciseFromIDRows(rows []db.GetExerciseTagsByIDsRow) map[string][]db.Tag {
 	m := make(map[string][]db.Tag)
 	for _, row := range rows {
 		key := row.ExerciseID.String()
