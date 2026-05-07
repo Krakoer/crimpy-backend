@@ -37,23 +37,29 @@ type UpdateExerciseRequest struct {
 }
 
 type ExerciseResponse struct {
-	ID          string  `json:"id"`
-	CoachID     string  `json:"coach_id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	Comment     *string `json:"comment"`
-	VideoLink   *string `json:"video_link"`
-	IsFavorite  bool    `json:"is_favorite"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID          string        `json:"id"`
+	CoachID     string        `json:"coach_id"`
+	Name        string        `json:"name"`
+	Description *string       `json:"description"`
+	Comment     *string       `json:"comment"`
+	VideoLink   *string       `json:"video_link"`
+	IsFavorite  bool          `json:"is_favorite"`
+	Tags        []TagResponse `json:"tags"`
+	CreatedAt   string        `json:"created_at"`
+	UpdatedAt   string        `json:"updated_at"`
 }
 
-func exerciseToResponse(e db.Exercise) ExerciseResponse {
+func exerciseToResponse(e db.Exercise, tags []db.Tag) ExerciseResponse {
+	tagResponses := make([]TagResponse, 0, len(tags))
+	for _, t := range tags {
+		tagResponses = append(tagResponses, tagToResponse(t))
+	}
 	resp := ExerciseResponse{
 		ID:         e.ID.String(),
 		CoachID:    e.CoachID.String(),
 		Name:       e.Name,
 		IsFavorite: e.IsFavorite,
+		Tags:       tagResponses,
 		CreatedAt:  e.CreatedAt.Time.UTC().Format(time.RFC3339),
 		UpdatedAt:  e.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
@@ -145,7 +151,7 @@ func (h *ExerciseHandler) CreateExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create exercise"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(exerciseToResponse(exercise))
+	return c.Status(fiber.StatusCreated).JSON(exerciseToResponse(exercise, nil))
 }
 
 // GetExercises godoc
@@ -169,9 +175,17 @@ func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
 	}
 
+	tagRows, err := h.queries.GetCoachExerciseTags(context.Background(), coachUUID)
+	if err != nil {
+		slog.Error("failed to retrieve exercise tags", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
+	}
+
+	tagsByExercise := buildTagsByExercise(tagRows)
+
 	result := make([]ExerciseResponse, 0, len(exercises))
 	for _, e := range exercises {
-		result = append(result, exerciseToResponse(e))
+		result = append(result, exerciseToResponse(e, tagsByExercise[e.ID.String()]))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -213,7 +227,13 @@ func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(exercise))
+	tags, err := h.queries.GetExerciseTags(context.Background(), exerciseUUID)
+	if err != nil {
+		slog.Error("failed to retrieve exercise tags", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(exercise, tags))
 }
 
 // UpdateExercise godoc
@@ -283,7 +303,13 @@ func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(updated))
+	tags, err := h.queries.GetExerciseTags(context.Background(), exerciseUUID)
+	if err != nil {
+		slog.Error("failed to retrieve exercise tags", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(updated, tags))
 }
 
 // DeleteExercise godoc
@@ -386,7 +412,13 @@ func (h *ExerciseHandler) SetExerciseFavorite(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(updated))
+	tags, err := h.queries.GetExerciseTags(context.Background(), exerciseUUID)
+	if err != nil {
+		slog.Error("failed to retrieve exercise tags", "exercise_id", exerciseUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(exerciseToResponse(updated, tags))
 }
 
 // GetFavoriteExercises godoc
@@ -410,10 +442,33 @@ func (h *ExerciseHandler) GetFavoriteExercises(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
 	}
 
+	tagRows, err := h.queries.GetCoachExerciseTags(context.Background(), coachUUID)
+	if err != nil {
+		slog.Error("failed to retrieve exercise tags", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
+	}
+
+	tagsByExercise := buildTagsByExercise(tagRows)
+
 	result := make([]ExerciseResponse, 0, len(exercises))
 	for _, e := range exercises {
-		result = append(result, exerciseToResponse(e))
+		result = append(result, exerciseToResponse(e, tagsByExercise[e.ID.String()]))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+func buildTagsByExercise(rows []db.GetCoachExerciseTagsRow) map[string][]db.Tag {
+	m := make(map[string][]db.Tag)
+	for _, row := range rows {
+		key := row.ExerciseID.String()
+		m[key] = append(m[key], db.Tag{
+			ID:        row.ID,
+			Name:      row.Name,
+			Color:     row.Color,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return m
 }

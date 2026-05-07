@@ -194,6 +194,26 @@ CREATE TABLE "exercises" (
 
 CREATE INDEX "exercises_coach_id_idx" ON "exercises"("coach_id");
 
+-- Stores tags created by coaches to categorize exercises.
+CREATE TABLE "tags" (
+  "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "coach_id"   UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "name"       TEXT        NOT NULL,
+  "color"      TEXT        NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "tags_coach_id_idx" ON "tags"("coach_id");
+
+-- Associates tags with exercises (many-to-many).
+CREATE TABLE "exercise_tags" (
+  "exercise_id" UUID NOT NULL REFERENCES "exercises"("id") ON DELETE CASCADE,
+  "tag_id"      UUID NOT NULL REFERENCES "tags"("id") ON DELETE CASCADE,
+  PRIMARY KEY ("exercise_id", "tag_id")
+);
+
 -- Stores coach-created training templates (structured training sessions).
 CREATE TABLE "coach_trainings" (
   "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),

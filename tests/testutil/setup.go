@@ -138,6 +138,14 @@ type HandlerConfig struct {
 		SetExerciseFavorite(fiber.Ctx) error
 		GetFavoriteExercises(fiber.Ctx) error
 	}
+	TagHandler interface {
+		CreateTag(fiber.Ctx) error
+		GetTags(fiber.Ctx) error
+		UpdateTag(fiber.Ctx) error
+		DeleteTag(fiber.Ctx) error
+		AssignTag(fiber.Ctx) error
+		UnassignTag(fiber.Ctx) error
+	}
 	CoachTrainingHandler interface {
 		CreateCoachTraining(fiber.Ctx) error
 		GetCoachTrainings(fiber.Ctx) error
@@ -201,6 +209,15 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Put("/coach/exercises/:id", config.ExerciseHandler.UpdateExercise)
 		api.Delete("/coach/exercises/:id", config.ExerciseHandler.DeleteExercise)
 		api.Put("/coach/exercises/:id/favorite", config.ExerciseHandler.SetExerciseFavorite)
+	}
+
+	if config.TagHandler != nil {
+		api.Post("/coach/tags", config.TagHandler.CreateTag)
+		api.Get("/coach/tags", config.TagHandler.GetTags)
+		api.Put("/coach/tags/:id", config.TagHandler.UpdateTag)
+		api.Delete("/coach/tags/:id", config.TagHandler.DeleteTag)
+		api.Post("/coach/exercises/:exercise_id/tags/:tag_id", config.TagHandler.AssignTag)
+		api.Delete("/coach/exercises/:exercise_id/tags/:tag_id", config.TagHandler.UnassignTag)
 	}
 
 	if config.CoachTrainingHandler != nil {

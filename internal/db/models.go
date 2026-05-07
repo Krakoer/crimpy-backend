@@ -94,6 +94,11 @@ type Exercise struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+type ExerciseTag struct {
+	ExerciseID pgtype.UUID
+	TagID      pgtype.UUID
+}
+
 type PinnedBuiltinTraining struct {
 	BuiltinTrainingID pgtype.UUID
 	UserID            pgtype.UUID
@@ -186,6 +191,15 @@ type Session struct {
 	DeletedAt         pgtype.Timestamptz
 	SyncVersion       int64
 	ServerUpdatedAt   pgtype.Timestamptz
+}
+
+type Tag struct {
+	ID        pgtype.UUID
+	CoachID   pgtype.UUID
+	Name      string
+	Color     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 type Training struct {

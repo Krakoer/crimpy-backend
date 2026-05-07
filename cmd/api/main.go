@@ -72,6 +72,7 @@ func main() {
 	syncHandler := sync.NewSyncHandler(queries)
 	coachHandler := handler.NewCoachHandler(queries, pool)
 	exerciseHandler := handler.NewExerciseHandler(queries, pool)
+	tagHandler := handler.NewTagHandler(queries, pool)
 	coachTrainingHandler := handler.NewCoachTrainingHandler(queries, pool)
 
 	// Create Fiber app
@@ -176,6 +177,14 @@ func main() {
 	api.Put("/coach/exercises/:id", exerciseHandler.UpdateExercise)
 	api.Delete("/coach/exercises/:id", exerciseHandler.DeleteExercise)
 	api.Put("/coach/exercises/:id/favorite", exerciseHandler.SetExerciseFavorite)
+	api.Post("/coach/exercises/:exercise_id/tags/:tag_id", tagHandler.AssignTag)
+	api.Delete("/coach/exercises/:exercise_id/tags/:tag_id", tagHandler.UnassignTag)
+
+	// Tag library routes (coach only)
+	api.Post("/coach/tags", tagHandler.CreateTag)
+	api.Get("/coach/tags", tagHandler.GetTags)
+	api.Put("/coach/tags/:id", tagHandler.UpdateTag)
+	api.Delete("/coach/tags/:id", tagHandler.DeleteTag)
 
 	// Coaching panel routes
 	api.Get("/coach/clients/:user_id/sessions", coachHandler.GetClientSessions)

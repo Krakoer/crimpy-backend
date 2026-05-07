@@ -149,6 +149,13 @@ definitions:
       session_type:
         type: integer
     type: object
+  handler.CreateTagRequest:
+    properties:
+      color:
+        type: string
+      name:
+        type: string
+    type: object
   handler.CreateTrainingRequest:
     properties:
       is_assessment:
@@ -215,6 +222,10 @@ definitions:
         type: boolean
       name:
         type: string
+      tags:
+        items:
+          $ref: '#/definitions/handler.TagResponse'
+        type: array
       updated_at:
         type: string
       video_link:
@@ -335,6 +346,19 @@ definitions:
     properties:
       is_favorite:
         type: boolean
+    type: object
+  handler.TagResponse:
+    properties:
+      color:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
     type: object
   handler.TrainingItemRequest:
     properties:
@@ -491,6 +515,13 @@ definitions:
       name:
         type: string
       notes:
+        type: string
+    type: object
+  handler.UpdateTagRequest:
+    properties:
+      color:
+        type: string
+      name:
         type: string
     type: object
   handler.UpdateTrainingRequest:
@@ -1107,6 +1138,99 @@ paths:
       summary: Create an exercise
       tags:
       - Exercises
+  /api/coach/exercises/{exercise_id}/tags/{tag_id}:
+    delete:
+      description: Remove a tag from an exercise. Both must belong to the authenticated
+        coach.
+      parameters:
+      - description: Exercise ID
+        in: path
+        name: exercise_id
+        required: true
+        type: string
+      - description: Tag ID
+        in: path
+        name: tag_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tag unassigned
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Exercise or tag not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unassign a tag from an exercise
+      tags:
+      - Tags
+    post:
+      description: Assign a tag to an exercise. Both must belong to the authenticated
+        coach.
+      parameters:
+      - description: Exercise ID
+        in: path
+        name: exercise_id
+        required: true
+        type: string
+      - description: Tag ID
+        in: path
+        name: tag_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tag assigned
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Exercise or tag not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign a tag to an exercise
+      tags:
+      - Tags
   /api/coach/exercises/{id}:
     delete:
       description: Delete an exercise from the coach's library. Only the owning coach
@@ -1306,6 +1430,160 @@ paths:
       summary: List favorite exercises
       tags:
       - Exercises
+  /api/coach/tags:
+    get:
+      description: Get all tags in the authenticated coach's library.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of tags
+          schema:
+            items:
+              $ref: '#/definitions/handler.TagResponse'
+            type: array
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List coach's tags
+      tags:
+      - Tags
+    post:
+      consumes:
+      - application/json
+      description: Create a new tag in the coach's tag library. Requires a validated
+        coach account.
+      parameters:
+      - description: Tag data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateTagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Tag created
+          schema:
+            $ref: '#/definitions/handler.TagResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a tag
+      tags:
+      - Tags
+  /api/coach/tags/{id}:
+    delete:
+      description: Delete a tag from the coach's library. Only the owning coach can
+        delete. Automatically unassigns from all exercises.
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tag deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid tag ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Tag not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a tag
+      tags:
+      - Tags
+    put:
+      consumes:
+      - application/json
+      description: Update a tag in the coach's library. Only the owning coach can
+        update.
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated tag data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateTagRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated tag
+          schema:
+            $ref: '#/definitions/handler.TagResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or not owner
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Tag not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a tag
+      tags:
+      - Tags
   /api/coach/trainings:
     get:
       description: Get all training templates for the authenticated coach (without
