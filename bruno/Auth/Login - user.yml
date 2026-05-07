@@ -1,5 +1,5 @@
 info:
-  name: Login
+  name: Login - user
   type: http
   seq: 2
 
@@ -13,16 +13,20 @@ http:
     type: json
     data: |-
       {
-        "email": "jane@example.com",
-        "password": "secret123"
+        "email": "{{user}}",
+        "password": "{{userPwd}}"
       }
-  auth:
-    type: none
 
 runtime:
   scripts:
     - type: after-response
       code: |-
         if (res.status === 200) {
-          bru.setEnvVar("authToken", res.body.token);
+          bru.setEnvVar("authTokenUser", res.body.token);
         }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

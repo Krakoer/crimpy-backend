@@ -1,7 +1,7 @@
 info:
   name: Resend Verification
   type: http
-  seq: 4
+  seq: 5
 
 http:
   method: POST
@@ -15,5 +15,9 @@ http:
       {
         "email": "jane@example.com"
       }
-  auth:
-    type: none
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

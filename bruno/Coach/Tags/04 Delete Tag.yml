@@ -6,8 +6,10 @@ info:
 http:
   method: DELETE
   url: "{{baseUrl}}/api/coach/tags/{{tagId}}"
-  body:
-    type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -6,8 +6,12 @@ info:
 http:
   method: GET
   url: "{{baseUrl}}/api/user/enrollment"
-  body:
-    type: none
   auth:
     type: bearer
-    token: "{{authToken}}"
+    token: "{{authTokenUser}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

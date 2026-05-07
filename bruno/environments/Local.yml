@@ -1,10 +1,11 @@
+name: Local
 variables:
   - name: baseUrl
     value: http://localhost:3000
-  - name: authToken
+  - name: authTokenUser
     value: ""
   - name: exerciseId
-    value: ""
+    value: f337c68c-a7db-4489-8ccf-461afcc98c96
   - name: tagId
     value: ""
   - name: trainingId
@@ -18,6 +19,16 @@ variables:
   - name: enrollmentToken
     value: ""
   - name: clientUserId
-    value: ""
+    value: dd4d4657-35b8-4df1-ae01-b391fe235d8e
   - name: userId
+    value: ""
+  - name: user
+    value: local@local.com
+  - name: userPwd
+    value: coucou
+  - name: coachUsername
+    value: coach@local.com
+  - name: coachPwd
+    value: coucou
+  - name: authTokenCoach
     value: ""

@@ -18,9 +18,7 @@ http:
         "comment": "Keep core engaged, avoid kipping",
         "video_link": "https://example.com/pullup"
       }
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit
 
 runtime:
   scripts:
@@ -29,3 +27,9 @@ runtime:
         if (res.status === 201) {
           bru.setEnvVar("exerciseId", res.body.id);
         }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

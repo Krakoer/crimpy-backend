@@ -1,3 +1,13 @@
 info:
   name: Coach
   type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: Authorization
+      value: ""
+      disabled: true
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"
