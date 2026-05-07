@@ -1,0 +1,13 @@
+info:
+  name: Get Client Session
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/sessions/{{sessionId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

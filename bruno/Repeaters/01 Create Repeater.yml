@@ -1,0 +1,36 @@
+info:
+  name: Create Repeater
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/repeaters"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "sets": 6,
+        "reps": 6,
+        "worktime": 7000,
+        "resttime": 3000,
+        "set_rest": 120000,
+        "split_hand": false,
+        "grip_position": 0,
+        "target_weight_right": 10.0,
+        "target_weight_left": 10.0
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("repeaterId", res.body.ID);
+        }

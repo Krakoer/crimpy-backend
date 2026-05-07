@@ -1,0 +1,19 @@
+info:
+  name: Verify Email
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/verify"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "token": "the-verification-token-from-email"
+      }
+  auth:
+    type: none

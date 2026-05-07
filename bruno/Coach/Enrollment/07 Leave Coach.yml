@@ -1,0 +1,13 @@
+info:
+  name: Leave Coach
+  type: http
+  seq: 7
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/user/enrollment"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

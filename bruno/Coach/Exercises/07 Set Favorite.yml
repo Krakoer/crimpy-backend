@@ -1,0 +1,20 @@
+info:
+  name: Set Favorite
+  type: http
+  seq: 7
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/coach/exercises/{{exerciseId}}/favorite"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "is_favorite": true
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"

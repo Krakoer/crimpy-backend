@@ -1,0 +1,23 @@
+info:
+  name: Update Exercise
+  type: http
+  seq: 5
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/coach/exercises/{{exerciseId}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Pull-up (weighted)",
+        "description": "Pull-up with added weight",
+        "comment": "Use a dip belt for loading",
+        "video_link": "https://example.com/weighted-pullup"
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"

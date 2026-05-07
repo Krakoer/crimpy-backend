@@ -1,0 +1,52 @@
+info:
+  name: Create Session
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/sessions"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Morning hang session",
+        "notes": "Felt strong today",
+        "is_assessment": false,
+        "session_type": 0,
+        "duration": 3600,
+        "rep_datas": [
+          {
+            "average_weight": 12.5,
+            "is_rest": false,
+            "right_hand": true,
+            "duration": 7000,
+            "target_weight": 10.0,
+            "index": 0,
+            "grip_position": 0
+          },
+          {
+            "average_weight": 0.0,
+            "is_rest": true,
+            "right_hand": true,
+            "duration": 3000,
+            "target_weight": 0.0,
+            "index": 1,
+            "grip_position": 0
+          }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("sessionId", res.body.ID);
+        }

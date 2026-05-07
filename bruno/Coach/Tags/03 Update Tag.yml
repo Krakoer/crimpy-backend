@@ -1,0 +1,21 @@
+info:
+  name: Update Tag
+  type: http
+  seq: 3
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/coach/tags/{{tagId}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Max Strength",
+        "color": "#B71C1C"
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"

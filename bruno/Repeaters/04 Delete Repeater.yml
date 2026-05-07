@@ -1,0 +1,13 @@
+info:
+  name: Delete Repeater
+  type: http
+  seq: 4
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/repeaters/{{repeaterId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

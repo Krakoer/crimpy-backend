@@ -1,0 +1,24 @@
+info:
+  name: Update Session
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/sessions/{{sessionId}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Morning hang session (updated)",
+        "notes": "Felt strong, PR on left hand",
+        "is_assessment": false,
+        "session_type": 0,
+        "duration": 3700
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"

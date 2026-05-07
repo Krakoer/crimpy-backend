@@ -1,0 +1,13 @@
+info:
+  name: Assign Tag
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/coach/exercises/{{exerciseId}}/tags/{{tagId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

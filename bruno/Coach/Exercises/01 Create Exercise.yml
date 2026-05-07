@@ -1,0 +1,31 @@
+info:
+  name: Create Exercise
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/coach/exercises"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Pull-up",
+        "description": "Classic upper-body pulling movement",
+        "comment": "Keep core engaged, avoid kipping",
+        "video_link": "https://example.com/pullup"
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("exerciseId", res.body.id);
+        }

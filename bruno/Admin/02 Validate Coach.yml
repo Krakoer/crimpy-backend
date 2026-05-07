@@ -1,0 +1,13 @@
+info:
+  name: Validate Coach
+  type: http
+  seq: 2
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/admin/coaches/{{userId}}/validate"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

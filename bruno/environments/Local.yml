@@ -1,0 +1,23 @@
+variables:
+  - name: baseUrl
+    value: http://localhost:3000
+  - name: authToken
+    value: ""
+  - name: exerciseId
+    value: ""
+  - name: tagId
+    value: ""
+  - name: trainingId
+    value: ""
+  - name: sessionId
+    value: ""
+  - name: repeaterId
+    value: ""
+  - name: coachTrainingId
+    value: ""
+  - name: enrollmentToken
+    value: ""
+  - name: clientUserId
+    value: ""
+  - name: userId
+    value: ""

@@ -1,0 +1,13 @@
+info:
+  name: Delete User
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/admin/users/{{userId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

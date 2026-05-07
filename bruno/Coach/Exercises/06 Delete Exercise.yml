@@ -1,0 +1,13 @@
+info:
+  name: Delete Exercise
+  type: http
+  seq: 6
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/coach/exercises/{{exerciseId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

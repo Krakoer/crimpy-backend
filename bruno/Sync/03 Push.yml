@@ -1,0 +1,44 @@
+info:
+  name: Push
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/sync/push"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "records": {
+          "sessions": [
+            {
+              "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "name": "Evening session",
+              "notes": "",
+              "date": "2026-05-07T18:00:00Z",
+              "is_assessment": false,
+              "session_type": 0,
+              "duration": 2700,
+              "updated_at": "2026-05-07T18:45:00Z",
+              "deleted_at": null,
+              "sync_version": 0,
+              "server_updated_at": "2026-05-07T18:45:00Z"
+            }
+          ],
+          "trainings": [],
+          "repeaters": [],
+          "rep_templates": [],
+          "rep_datas": [],
+          "assessments": [],
+          "sensor_configs": [],
+          "pinned_builtin_trainings": [],
+          "builtin_training_weights": []
+        }
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"

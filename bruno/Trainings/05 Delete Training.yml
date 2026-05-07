@@ -1,0 +1,13 @@
+info:
+  name: Delete Training
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/trainings/{{trainingId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"

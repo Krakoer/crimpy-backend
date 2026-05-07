@@ -1,0 +1,19 @@
+info:
+  name: Resend Verification
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/resend-verification"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "email": "jane@example.com"
+      }
+  auth:
+    type: none

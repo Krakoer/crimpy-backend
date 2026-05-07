@@ -1,0 +1,21 @@
+info:
+  name: Generate Enrollment Token
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/coach/enrollment-token"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("enrollmentToken", res.body.token);
+        }

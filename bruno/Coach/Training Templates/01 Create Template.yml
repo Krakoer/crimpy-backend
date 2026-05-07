@@ -1,0 +1,74 @@
+info:
+  name: Create Training Template
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/coach/trainings"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Beginner Fingerboard Session",
+        "description": "A structured session for beginner climbers",
+        "items": [
+          {
+            "type": "section",
+            "section_title": "Warm-up",
+            "position": 0,
+            "items": []
+          },
+          {
+            "type": "hangboard",
+            "position": 1,
+            "cycles": 3,
+            "cycle_rest_seconds": 120,
+            "reps": 6,
+            "hb_worktime_seconds": 7,
+            "rest_seconds": 3,
+            "both_hands": true,
+            "loads": [
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"}
+            ],
+            "hand_positions": [["crimp"], ["crimp"], ["crimp"], ["crimp"], ["crimp"], ["crimp"]],
+            "edge_sizes_mm": [20, 20, 20, 20, 20, 20],
+            "items": []
+          },
+          {
+            "type": "exercise",
+            "position": 2,
+            "exercise_id": "{{exerciseId}}",
+            "reps": 5,
+            "rest_seconds": 90,
+            "loads": [
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"},
+              {"value": 0, "unit": "kg"}
+            ],
+            "hand_positions": ["neutral", "neutral", "neutral", "neutral", "neutral"],
+            "items": []
+          }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("coachTrainingId", res.body.id);
+        }

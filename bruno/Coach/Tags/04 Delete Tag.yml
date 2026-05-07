@@ -1,0 +1,13 @@
+info:
+  name: Delete Tag
+  type: http
+  seq: 4
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/coach/tags/{{tagId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authToken}}"
