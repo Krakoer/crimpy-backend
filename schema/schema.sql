@@ -218,12 +218,15 @@ CREATE TABLE "exercise_tags" (
 
 -- Stores coach-created training templates (structured training sessions).
 CREATE TABLE "coach_trainings" (
-  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "coach_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "title"       TEXT        NOT NULL,
-  "description" TEXT,
-  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "coach_id"      UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "title"         TEXT        NOT NULL,
+  "description"   TEXT,
+  "training_type" TEXT        NOT NULL DEFAULT 'climbing',
+  "goal"          TEXT        NOT NULL DEFAULT '',
+  "comment"       TEXT        NOT NULL DEFAULT '',
+  "created_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
