@@ -25,6 +25,7 @@ type TagResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Color     string `json:"color"`
+	IsBuiltin bool   `json:"is_builtin"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -44,6 +45,7 @@ func tagToResponse(t db.Tag) TagResponse {
 		ID:        t.ID.String(),
 		Name:      t.Name,
 		Color:     t.Color,
+		IsBuiltin: t.IsBuiltin,
 		CreatedAt: t.CreatedAt.Time.UTC().Format(time.RFC3339),
 		UpdatedAt: t.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
@@ -156,6 +158,9 @@ func (h *TagHandler) UpdateTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tag"})
 	}
 
+	if existing.IsBuiltin {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Cannot modify a system tag"})
+	}
 	if existing.CoachID.Bytes != coachUUID.Bytes {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
@@ -217,6 +222,9 @@ func (h *TagHandler) DeleteTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tag"})
 	}
 
+	if existing.IsBuiltin {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Cannot modify a system tag"})
+	}
 	if existing.CoachID.Bytes != coachUUID.Bytes {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
@@ -335,7 +343,7 @@ func parseExerciseAndTagIDs(c fiber.Ctx, queries *db.Queries, coachUUID pgtype.U
 		}
 		return pgtype.UUID{}, pgtype.UUID{}, false
 	}
-	if tag.CoachID.Bytes != coachUUID.Bytes {
+	if !tag.IsBuiltin && tag.CoachID.Bytes != coachUUID.Bytes {
 		c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 		return pgtype.UUID{}, pgtype.UUID{}, false
 	}
