@@ -29,7 +29,7 @@ func (q *Queries) AssignTagToExercise(ctx context.Context, arg AssignTagToExerci
 const createTag = `-- name: CreateTag :one
 INSERT INTO tags (coach_id, name, color)
 VALUES ($1, $2, $3)
-RETURNING id, coach_id, name, color, created_at, updated_at
+RETURNING id, coach_id, name, color, is_builtin, created_at, updated_at
 `
 
 type CreateTagParams struct {
@@ -46,6 +46,7 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, erro
 		&i.CoachID,
 		&i.Name,
 		&i.Color,
+		&i.IsBuiltin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -62,10 +63,10 @@ func (q *Queries) DeleteTag(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getCoachExerciseTags = `-- name: GetCoachExerciseTags :many
-SELECT et.exercise_id, t.id, t.name, t.color, t.created_at, t.updated_at
+SELECT et.exercise_id, t.id, t.name, t.color, t.is_builtin, t.created_at, t.updated_at
 FROM tags t
 JOIN exercise_tags et ON et.tag_id = t.id
-WHERE t.coach_id = $1
+WHERE (t.coach_id = $1 OR t.is_builtin = TRUE)
 ORDER BY et.exercise_id, t.name
 `
 
@@ -74,6 +75,7 @@ type GetCoachExerciseTagsRow struct {
 	ID         pgtype.UUID
 	Name       string
 	Color      string
+	IsBuiltin  bool
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 }
@@ -92,6 +94,7 @@ func (q *Queries) GetCoachExerciseTags(ctx context.Context, coachID pgtype.UUID)
 			&i.ID,
 			&i.Name,
 			&i.Color,
+			&i.IsBuiltin,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -106,7 +109,7 @@ func (q *Queries) GetCoachExerciseTags(ctx context.Context, coachID pgtype.UUID)
 }
 
 const getCoachTags = `-- name: GetCoachTags :many
-SELECT id, coach_id, name, color, created_at, updated_at FROM tags WHERE coach_id = $1 ORDER BY name
+SELECT id, coach_id, name, color, is_builtin, created_at, updated_at FROM tags WHERE (coach_id = $1 OR is_builtin = TRUE) ORDER BY is_builtin DESC, name
 `
 
 func (q *Queries) GetCoachTags(ctx context.Context, coachID pgtype.UUID) ([]Tag, error) {
@@ -123,6 +126,7 @@ func (q *Queries) GetCoachTags(ctx context.Context, coachID pgtype.UUID) ([]Tag,
 			&i.CoachID,
 			&i.Name,
 			&i.Color,
+			&i.IsBuiltin,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -137,7 +141,7 @@ func (q *Queries) GetCoachTags(ctx context.Context, coachID pgtype.UUID) ([]Tag,
 }
 
 const getExerciseTags = `-- name: GetExerciseTags :many
-SELECT t.id, t.coach_id, t.name, t.color, t.created_at, t.updated_at FROM tags t
+SELECT t.id, t.coach_id, t.name, t.color, t.is_builtin, t.created_at, t.updated_at FROM tags t
 JOIN exercise_tags et ON et.tag_id = t.id
 WHERE et.exercise_id = $1
 ORDER BY t.name
@@ -157,6 +161,7 @@ func (q *Queries) GetExerciseTags(ctx context.Context, exerciseID pgtype.UUID) (
 			&i.CoachID,
 			&i.Name,
 			&i.Color,
+			&i.IsBuiltin,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -171,7 +176,7 @@ func (q *Queries) GetExerciseTags(ctx context.Context, exerciseID pgtype.UUID) (
 }
 
 const getExerciseTagsByIDs = `-- name: GetExerciseTagsByIDs :many
-SELECT et.exercise_id, t.id, t.name, t.color, t.created_at, t.updated_at
+SELECT et.exercise_id, t.id, t.name, t.color, t.is_builtin, t.created_at, t.updated_at
 FROM tags t
 JOIN exercise_tags et ON et.tag_id = t.id
 WHERE et.exercise_id = ANY($1::uuid[])
@@ -183,6 +188,7 @@ type GetExerciseTagsByIDsRow struct {
 	ID         pgtype.UUID
 	Name       string
 	Color      string
+	IsBuiltin  bool
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 }
@@ -201,6 +207,7 @@ func (q *Queries) GetExerciseTagsByIDs(ctx context.Context, exerciseIds []pgtype
 			&i.ID,
 			&i.Name,
 			&i.Color,
+			&i.IsBuiltin,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -215,7 +222,7 @@ func (q *Queries) GetExerciseTagsByIDs(ctx context.Context, exerciseIds []pgtype
 }
 
 const getTag = `-- name: GetTag :one
-SELECT id, coach_id, name, color, created_at, updated_at FROM tags WHERE id = $1
+SELECT id, coach_id, name, color, is_builtin, created_at, updated_at FROM tags WHERE id = $1
 `
 
 func (q *Queries) GetTag(ctx context.Context, id pgtype.UUID) (Tag, error) {
@@ -226,6 +233,7 @@ func (q *Queries) GetTag(ctx context.Context, id pgtype.UUID) (Tag, error) {
 		&i.CoachID,
 		&i.Name,
 		&i.Color,
+		&i.IsBuiltin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -249,7 +257,7 @@ func (q *Queries) UnassignTagFromExercise(ctx context.Context, arg UnassignTagFr
 const updateTag = `-- name: UpdateTag :one
 UPDATE tags SET name = $1, color = $2, updated_at = now()
 WHERE id = $3
-RETURNING id, coach_id, name, color, created_at, updated_at
+RETURNING id, coach_id, name, color, is_builtin, created_at, updated_at
 `
 
 type UpdateTagParams struct {
@@ -266,6 +274,7 @@ func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, erro
 		&i.CoachID,
 		&i.Name,
 		&i.Color,
+		&i.IsBuiltin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

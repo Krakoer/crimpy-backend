@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM tags WHERE id = @id;
 
 -- name: GetCoachTags :many
-SELECT * FROM tags WHERE coach_id = @coach_id ORDER BY name;
+SELECT * FROM tags WHERE (coach_id = @coach_id OR is_builtin = TRUE) ORDER BY is_builtin DESC, name;
 
 -- name: UpdateTag :one
 UPDATE tags SET name = @name, color = @color, updated_at = now()
@@ -31,14 +31,14 @@ WHERE et.exercise_id = @exercise_id
 ORDER BY t.name;
 
 -- name: GetCoachExerciseTags :many
-SELECT et.exercise_id, t.id, t.name, t.color, t.created_at, t.updated_at
+SELECT et.exercise_id, t.id, t.name, t.color, t.is_builtin, t.created_at, t.updated_at
 FROM tags t
 JOIN exercise_tags et ON et.tag_id = t.id
-WHERE t.coach_id = @coach_id
+WHERE (t.coach_id = @coach_id OR t.is_builtin = TRUE)
 ORDER BY et.exercise_id, t.name;
 
 -- name: GetExerciseTagsByIDs :many
-SELECT et.exercise_id, t.id, t.name, t.color, t.created_at, t.updated_at
+SELECT et.exercise_id, t.id, t.name, t.color, t.is_builtin, t.created_at, t.updated_at
 FROM tags t
 JOIN exercise_tags et ON et.tag_id = t.id
 WHERE et.exercise_id = ANY(@exercise_ids::uuid[])

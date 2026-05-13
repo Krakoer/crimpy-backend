@@ -14,7 +14,7 @@ import (
 const createCoachTraining = `-- name: CreateCoachTraining :one
 INSERT INTO coach_trainings (coach_id, title, description)
 VALUES ($1, $2, $3)
-RETURNING id, coach_id, title, description, created_at, updated_at
+RETURNING id, coach_id, title, description, training_type, goal, comment, created_at, updated_at
 `
 
 type CreateCoachTrainingParams struct {
@@ -31,6 +31,9 @@ func (q *Queries) CreateCoachTraining(ctx context.Context, arg CreateCoachTraini
 		&i.CoachID,
 		&i.Title,
 		&i.Description,
+		&i.TrainingType,
+		&i.Goal,
+		&i.Comment,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -143,7 +146,7 @@ func (q *Queries) DeleteCoachTrainingItems(ctx context.Context, trainingID pgtyp
 }
 
 const getCoachTraining = `-- name: GetCoachTraining :one
-SELECT id, coach_id, title, description, created_at, updated_at FROM coach_trainings WHERE id = $1
+SELECT id, coach_id, title, description, training_type, goal, comment, created_at, updated_at FROM coach_trainings WHERE id = $1
 `
 
 func (q *Queries) GetCoachTraining(ctx context.Context, id pgtype.UUID) (CoachTraining, error) {
@@ -154,6 +157,9 @@ func (q *Queries) GetCoachTraining(ctx context.Context, id pgtype.UUID) (CoachTr
 		&i.CoachID,
 		&i.Title,
 		&i.Description,
+		&i.TrainingType,
+		&i.Goal,
+		&i.Comment,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -206,7 +212,7 @@ func (q *Queries) GetCoachTrainingItems(ctx context.Context, trainingID pgtype.U
 }
 
 const getCoachTrainings = `-- name: GetCoachTrainings :many
-SELECT id, coach_id, title, description, created_at, updated_at FROM coach_trainings WHERE coach_id = $1 ORDER BY title
+SELECT id, coach_id, title, description, training_type, goal, comment, created_at, updated_at FROM coach_trainings WHERE coach_id = $1 ORDER BY title
 `
 
 func (q *Queries) GetCoachTrainings(ctx context.Context, coachID pgtype.UUID) ([]CoachTraining, error) {
@@ -223,6 +229,9 @@ func (q *Queries) GetCoachTrainings(ctx context.Context, coachID pgtype.UUID) ([
 			&i.CoachID,
 			&i.Title,
 			&i.Description,
+			&i.TrainingType,
+			&i.Goal,
+			&i.Comment,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -240,7 +249,7 @@ const updateCoachTraining = `-- name: UpdateCoachTraining :one
 UPDATE coach_trainings
 SET title = $1, description = $2, updated_at = now()
 WHERE id = $3
-RETURNING id, coach_id, title, description, created_at, updated_at
+RETURNING id, coach_id, title, description, training_type, goal, comment, created_at, updated_at
 `
 
 type UpdateCoachTrainingParams struct {
@@ -257,6 +266,9 @@ func (q *Queries) UpdateCoachTraining(ctx context.Context, arg UpdateCoachTraini
 		&i.CoachID,
 		&i.Title,
 		&i.Description,
+		&i.TrainingType,
+		&i.Goal,
+		&i.Comment,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

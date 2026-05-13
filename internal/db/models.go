@@ -42,12 +42,15 @@ type CoachEnrollment struct {
 }
 
 type CoachTraining struct {
-	ID          pgtype.UUID
-	CoachID     pgtype.UUID
-	Title       string
-	Description pgtype.Text
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID           pgtype.UUID
+	CoachID      pgtype.UUID
+	Title        string
+	Description  pgtype.Text
+	TrainingType string
+	Goal         string
+	Comment      string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type CoachTrainingItem struct {
@@ -198,6 +201,7 @@ type Tag struct {
 	CoachID   pgtype.UUID
 	Name      string
 	Color     string
+	IsBuiltin bool
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 }
