@@ -1,4 +1,4 @@
-h1:I8x3rJdNFWYGYLtWyLmZg+i6TumqD/CK7N0KbU+te2g=
+h1:QXjKW0I/8qUE9GB2OUsEEY/n04gsVelBFjUax6p+lvg=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -15,3 +15,4 @@ h1:I8x3rJdNFWYGYLtWyLmZg+i6TumqD/CK7N0KbU+te2g=
 20260513123035_add_coach_training_type_and_metadata.sql h1:WEbxBEoigWQpU0vyNQdeqtB9e9NK00L3ABMdG0DvJZg=
 20260513133159_rename_climbing_to_workout.sql h1:8Tw8prfrl2nVp2KShg5bWOQu/hVmKapzBt/YrNXt9ig=
 20260513162420_add_coach_programs.sql h1:lrPAfdP6JKe6pArrUNGlhIMBETr7kd5kxuBQog1ozE8=
+20260513172237_upgrade_programs_week_model.sql h1:kSqbk3W8hqr1qagYQ6pnhMZQi2vPG8DhoUXD2GLOpfA=

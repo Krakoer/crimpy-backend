@@ -315,30 +315,60 @@ CREATE TABLE "coach_programs" (
 CREATE INDEX "coach_programs_coach_id_idx" ON "coach_programs"("coach_id");
 CREATE INDEX "coach_programs_user_id_idx"  ON "coach_programs"("user_id");
 
--- Stores the slots of a training program.
--- day_of_week 0=Mon ... 6=Sun; NULL means unscheduled (times_per_week required).
-CREATE TABLE "coach_program_slots" (
-  "id"              UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "program_id"      UUID        NOT NULL REFERENCES "coach_programs"("id") ON DELETE CASCADE,
-  "training_id"     UUID        NOT NULL REFERENCES "coach_trainings"("id") ON DELETE CASCADE,
-  "day_of_week"     INTEGER,
-  "times_per_week"  INTEGER,
-  "position"        INTEGER     NOT NULL DEFAULT 0,
-  "created_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT "coach_program_slots_mode_check"
-    CHECK (
-      (day_of_week IS NOT NULL AND times_per_week IS NULL)
-      OR
-      (day_of_week IS NULL     AND times_per_week IS NOT NULL)
-    ),
-  CONSTRAINT "coach_program_slots_day_range_check"
+-- Represents a specific week in a training program.
+CREATE TABLE "coach_program_weeks" (
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "program_id"  UUID        NOT NULL REFERENCES "coach_programs"("id") ON DELETE CASCADE,
+  "week_number" INTEGER     NOT NULL,
+  "notes"       TEXT,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "coach_program_weeks_number_check" CHECK (week_number > 0),
+  UNIQUE ("program_id", "week_number"),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "coach_program_weeks_program_id_idx" ON "coach_program_weeks"("program_id");
+
+-- A training session assigned to a specific week.
+-- day_of_week 0=Mon...6=Sun; NULL means unscheduled (times_per_week required).
+CREATE TABLE "coach_program_week_sessions" (
+  "id"             UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "week_id"        UUID        NOT NULL REFERENCES "coach_program_weeks"("id") ON DELETE CASCADE,
+  "training_id"    UUID        NOT NULL REFERENCES "coach_trainings"("id") ON DELETE RESTRICT,
+  "day_of_week"    INTEGER,
+  "times_per_week" INTEGER,
+  "position"       INTEGER     NOT NULL DEFAULT 0,
+  "notes"          TEXT,
+  "created_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cpws_mode_check" CHECK (
+    (day_of_week IS NOT NULL AND times_per_week IS NULL)
+    OR (day_of_week IS NULL AND times_per_week IS NOT NULL)
+  ),
+  CONSTRAINT "cpws_day_range_check"
     CHECK (day_of_week IS NULL OR (day_of_week >= 0 AND day_of_week <= 6)),
-  CONSTRAINT "coach_program_slots_times_check"
+  CONSTRAINT "cpws_times_check"
     CHECK (times_per_week IS NULL OR times_per_week > 0),
   PRIMARY KEY ("id")
 );
 
-CREATE INDEX "coach_program_slots_program_id_idx" ON "coach_program_slots"("program_id");
+CREATE INDEX "coach_program_week_sessions_week_id_idx" ON "coach_program_week_sessions"("week_id");
+
+-- Sparse per-item overrides for a session (e.g. different loads for a specific week).
+-- overrides JSONB: only the fields being changed from the training template.
+CREATE TABLE "coach_program_session_overrides" (
+  "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "session_id" UUID        NOT NULL REFERENCES "coach_program_week_sessions"("id") ON DELETE CASCADE,
+  "item_id"    UUID        NOT NULL REFERENCES "coach_training_items"("id") ON DELETE CASCADE,
+  "overrides"  JSONB       NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE ("session_id", "item_id"),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "coach_program_session_overrides_session_id_idx" ON "coach_program_session_overrides"("session_id");
 
 -- Indexes for foreign keys to improve query performance
 CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
