@@ -332,6 +332,147 @@ func TestTagHandler_Assign_CrossCoachIsolation(t *testing.T) {
 	}
 }
 
+func TestTagHandler_BuiltinTag_AppearsInList(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "builtin1@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TagHandler: handler.NewTagHandler(queries, pool),
+	})
+
+	req := testutil.NewRequest(http.MethodGet, "/api/coach/tags", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var result []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	var found bool
+	for _, tag := range result {
+		if tag["name"] == "Stretching" && tag["is_builtin"] == true {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected stretching builtin tag in list, got %v", result)
+	}
+}
+
+func TestTagHandler_BuiltinTag_CannotUpdate(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "builtin2@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TagHandler: handler.NewTagHandler(queries, pool),
+	})
+
+	tagID := getBuiltinStretchingTagID(t, app, token)
+
+	body, _ := json.Marshal(map[string]interface{}{"name": "Hacked", "color": "#000000"})
+	req := testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/coach/tags/%s", tagID), body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, _ := app.Test(req)
+
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected %d for update of builtin tag, got %d", fiber.StatusForbidden, resp.StatusCode)
+	}
+}
+
+func TestTagHandler_BuiltinTag_CannotDelete(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "builtin3@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TagHandler: handler.NewTagHandler(queries, pool),
+	})
+
+	tagID := getBuiltinStretchingTagID(t, app, token)
+
+	req := testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/tags/%s", tagID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, _ := app.Test(req)
+
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected %d for delete of builtin tag, got %d", fiber.StatusForbidden, resp.StatusCode)
+	}
+}
+
+func TestTagHandler_BuiltinTag_CanAssignAndUnassign(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "builtin4@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		ExerciseHandler: handler.NewExerciseHandler(queries, pool),
+		TagHandler:      handler.NewTagHandler(queries, pool),
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{"name": "Hip Flexor Stretch"})
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/exercises", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, _ := app.Test(req)
+	var exercise map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&exercise)
+	exerciseID := exercise["id"].(string)
+
+	tagID := getBuiltinStretchingTagID(t, app, token)
+
+	req = testutil.NewRequest(http.MethodPost, fmt.Sprintf("/api/coach/exercises/%s/tags/%s", exerciseID, tagID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, _ = app.Test(req)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected %d for assigning builtin tag, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/exercises/%s/tags/%s", exerciseID, tagID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, _ = app.Test(req)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected %d for unassigning builtin tag, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+}
+
+func getBuiltinStretchingTagID(t *testing.T, app *fiber.App, token string) string {
+	t.Helper()
+	req := testutil.NewRequest(http.MethodGet, "/api/coach/tags", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to list tags: %v", err)
+	}
+	var tags []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&tags)
+	for _, tag := range tags {
+		if tag["name"] == "Stretching" && tag["is_builtin"] == true {
+			return tag["id"].(string)
+		}
+	}
+	t.Fatal("Stretching builtin tag not found in database")
+	return ""
+}
+
 func TestTagHandler_DeleteTag_RemovesFromExercise(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
