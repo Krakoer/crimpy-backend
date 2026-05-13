@@ -1,4 +1,4 @@
-h1:fCb6AB1U0nSZsZvh+deFukdGuUn+C43X75V+9GCKJ68=
+h1:ujUIGyT/v/cqnWNtnILP2I+7I+JFA+7dyTkc3ny33is=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -11,3 +11,4 @@ h1:fCb6AB1U0nSZsZvh+deFukdGuUn+C43X75V+9GCKJ68=
 20260506200518_rename_coach_sessions_to_coach_trainings.sql h1:qd+ad9ZFm+zWuGiBTMbS8lQjQk0plzdAbNUeSlrDjxU=
 20260507072711_add_is_favorite_to_exercises.sql h1:1inFZisxiCHgUgSIYu6kEFvgzjSG8gEFAWlX7Tr4a7Y=
 20260507075254_add_tags.sql h1:O8phrLzXmDeJ1eMj6Sz8wNLWac5k49QUEoVZ2rVjmug=
+20260513120856_add_is_builtin_to_tags.sql h1:CsxqFrinkfCvGqh466EgqKLtQpu7iA7Z+Zy588VgJ3k=

@@ -195,11 +195,13 @@ CREATE TABLE "exercises" (
 CREATE INDEX "exercises_coach_id_idx" ON "exercises"("coach_id");
 
 -- Stores tags created by coaches to categorize exercises.
+-- coach_id is NULL for system (builtin) tags.
 CREATE TABLE "tags" (
   "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "coach_id"   UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "coach_id"   UUID        REFERENCES "users"("id") ON DELETE CASCADE,
   "name"       TEXT        NOT NULL,
   "color"      TEXT        NOT NULL,
+  "is_builtin" BOOLEAN     NOT NULL DEFAULT FALSE,
   "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
