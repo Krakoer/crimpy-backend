@@ -61,6 +61,9 @@ func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 	if result["title"] != "Warm-up" {
 		t.Errorf("Expected title 'Warm-up', got %v", result["title"])
 	}
+	if result["training_type"] != "climbing" {
+		t.Errorf("Expected default training_type 'climbing', got %v", result["training_type"])
+	}
 
 	items, ok := result["items"].([]interface{})
 	if !ok || len(items) != 1 {
@@ -236,7 +239,9 @@ func TestCoachTrainingHandler_Update(t *testing.T) {
 	trainingID := created["id"].(string)
 
 	body, _ = json.Marshal(map[string]interface{}{
-		"title": "Updated",
+		"title":   "Updated",
+		"goal":    "Build endurance",
+		"comment": "Max RPE 8",
 		"items": []map[string]interface{}{
 			{"type": "exercise", "reps": 10},
 			{"type": "exercise", "reps": 15},
@@ -260,10 +265,80 @@ func TestCoachTrainingHandler_Update(t *testing.T) {
 	if result["title"] != "Updated" {
 		t.Errorf("Expected title 'Updated', got %v", result["title"])
 	}
+	if result["goal"] != "Build endurance" {
+		t.Errorf("Expected goal 'Build endurance', got %v", result["goal"])
+	}
+	if result["comment"] != "Max RPE 8" {
+		t.Errorf("Expected comment 'Max RPE 8', got %v", result["comment"])
+	}
 
 	items := result["items"].([]interface{})
 	if len(items) != 2 {
 		t.Errorf("Expected 2 items after update, got %d", len(items))
+	}
+}
+
+func TestCoachTrainingHandler_StretchingType(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining8@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":         "Hip Mobility",
+		"training_type": "stretching",
+		"goal":          "Improve hip flexibility",
+		"comment":       "Hold each stretch 30s",
+		"items": []map[string]interface{}{
+			{
+				"type":   "circuit",
+				"cycles": 1,
+				"items": []map[string]interface{}{
+					{"type": "exercise", "duration": 30},
+				},
+			},
+		},
+	})
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Errorf("Expected %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+
+	if created["training_type"] != "stretching" {
+		t.Errorf("Expected training_type 'stretching', got %v", created["training_type"])
+	}
+	if created["goal"] != "Improve hip flexibility" {
+		t.Errorf("Expected goal 'Improve hip flexibility', got %v", created["goal"])
+	}
+	if created["comment"] != "Hold each stretch 30s" {
+		t.Errorf("Expected comment 'Hold each stretch 30s', got %v", created["comment"])
+	}
+
+	trainingID := created["id"].(string)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, _ = app.Test(req)
+
+	var fetched map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&fetched)
+
+	if fetched["training_type"] != "stretching" {
+		t.Errorf("Expected training_type 'stretching' from GET, got %v", fetched["training_type"])
 	}
 }
 
