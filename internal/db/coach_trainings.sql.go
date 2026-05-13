@@ -12,19 +12,29 @@ import (
 )
 
 const createCoachTraining = `-- name: CreateCoachTraining :one
-INSERT INTO coach_trainings (coach_id, title, description)
-VALUES ($1, $2, $3)
+INSERT INTO coach_trainings (coach_id, title, description, training_type, goal, comment)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, coach_id, title, description, training_type, goal, comment, created_at, updated_at
 `
 
 type CreateCoachTrainingParams struct {
-	CoachID     pgtype.UUID
-	Title       string
-	Description pgtype.Text
+	CoachID      pgtype.UUID
+	Title        string
+	Description  pgtype.Text
+	TrainingType string
+	Goal         string
+	Comment      string
 }
 
 func (q *Queries) CreateCoachTraining(ctx context.Context, arg CreateCoachTrainingParams) (CoachTraining, error) {
-	row := q.db.QueryRow(ctx, createCoachTraining, arg.CoachID, arg.Title, arg.Description)
+	row := q.db.QueryRow(ctx, createCoachTraining,
+		arg.CoachID,
+		arg.Title,
+		arg.Description,
+		arg.TrainingType,
+		arg.Goal,
+		arg.Comment,
+	)
 	var i CoachTraining
 	err := row.Scan(
 		&i.ID,
@@ -247,19 +257,29 @@ func (q *Queries) GetCoachTrainings(ctx context.Context, coachID pgtype.UUID) ([
 
 const updateCoachTraining = `-- name: UpdateCoachTraining :one
 UPDATE coach_trainings
-SET title = $1, description = $2, updated_at = now()
-WHERE id = $3
+SET title = $1, description = $2, training_type = $3, goal = $4, comment = $5, updated_at = now()
+WHERE id = $6
 RETURNING id, coach_id, title, description, training_type, goal, comment, created_at, updated_at
 `
 
 type UpdateCoachTrainingParams struct {
-	Title       string
-	Description pgtype.Text
-	ID          pgtype.UUID
+	Title        string
+	Description  pgtype.Text
+	TrainingType string
+	Goal         string
+	Comment      string
+	ID           pgtype.UUID
 }
 
 func (q *Queries) UpdateCoachTraining(ctx context.Context, arg UpdateCoachTrainingParams) (CoachTraining, error) {
-	row := q.db.QueryRow(ctx, updateCoachTraining, arg.Title, arg.Description, arg.ID)
+	row := q.db.QueryRow(ctx, updateCoachTraining,
+		arg.Title,
+		arg.Description,
+		arg.TrainingType,
+		arg.Goal,
+		arg.Comment,
+		arg.ID,
+	)
 	var i CoachTraining
 	err := row.Scan(
 		&i.ID,
