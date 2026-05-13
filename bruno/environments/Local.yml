@@ -16,6 +16,8 @@ variables:
     value: ""
   - name: coachTrainingId
     value: ""
+  - name: programId
+    value: ""
   - name: enrollmentToken
     value: ""
   - name: clientUserId

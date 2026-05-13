@@ -1,0 +1,13 @@
+info:
+  name: Delete Program
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs/{{programId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"

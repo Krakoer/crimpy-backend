@@ -1,0 +1,37 @@
+info:
+  name: Update Program
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs/{{programId}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "6-Week Finger Strength Block (updated)",
+        "objective": "Build max finger strength on crimps and slopers",
+        "start_date": "2026-06-01",
+        "duration_weeks": 6,
+        "slots": [
+          {
+            "training_id": "{{coachTrainingId}}",
+            "day_of_week": 0
+          },
+          {
+            "training_id": "{{coachTrainingId}}",
+            "day_of_week": 3
+          },
+          {
+            "training_id": "{{coachTrainingId}}",
+            "times_per_week": 3
+          }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"

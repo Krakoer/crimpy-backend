@@ -1,0 +1,51 @@
+info:
+  name: Create Program
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "6-Week Finger Strength Block",
+        "objective": "Build max finger strength on crimps",
+        "start_date": "2026-06-01",
+        "duration_weeks": 6,
+        "slots": [
+          {
+            "training_id": "875f4264-5e1c-4610-abc9-53e1fb5ab79d",
+            "day_of_week": 0
+          },
+          {
+            "training_id": "b53eb232-1872-4e2f-9084-3bcf8f951952",
+            "day_of_week": 2
+          },
+          {
+            "training_id": "875f4264-5e1c-4610-abc9-53e1fb5ab79d",
+            "times_per_week": 2
+          }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("programId", res.body.id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
