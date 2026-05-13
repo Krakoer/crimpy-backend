@@ -1,0 +1,32 @@
+name: Preprod
+variables:
+  - name: baseUrl
+    value: https://devapi.crimpy.app
+  - name: authTokenUser
+    value: ""
+  - name: exerciseId
+    value: f337c68c-a7db-4489-8ccf-461afcc98c96
+  - name: tagId
+    value: ""
+  - name: trainingId
+    value: ""
+  - name: sessionId
+    value: ""
+  - name: repeaterId
+    value: ""
+  - name: coachTrainingId
+    value: ""
+  - name: enrollmentToken
+    value: ""
+  - name: clientUserId
+    value: dd4d4657-35b8-4df1-ae01-b391fe235d8e
+  - name: userId
+    value: ""
+  - name: user
+    value: krakoer@proton.me
+  - name: userPwd
+    value: Bonjour
+  - name: coachUsername
+    value: Adamnondra@crimpy.app
+  - name: coachPwd
+    value: Bonjour

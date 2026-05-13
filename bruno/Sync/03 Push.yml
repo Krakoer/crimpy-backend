@@ -27,18 +27,235 @@ http:
               "deleted_at": null,
               "sync_version": 0,
               "server_updated_at": "2026-05-07T18:45:00Z"
+            },
+            {
+              "id": "b1000001-0000-0000-0000-000000000001",
+              "name": "Assessment session Jan",
+              "notes": "",
+              "date": "2026-01-10T18:00:00Z",
+              "is_assessment": true,
+              "session_type": 0,
+              "duration": 1800,
+              "updated_at": "2026-01-10T18:30:00Z",
+              "deleted_at": null,
+              "sync_version": 0,
+              "server_updated_at": "2026-01-10T18:30:00Z"
+            },
+            {
+              "id": "b1000001-0000-0000-0000-000000000002",
+              "name": "Assessment session Feb",
+              "notes": "",
+              "date": "2026-02-14T18:00:00Z",
+              "is_assessment": true,
+              "session_type": 0,
+              "duration": 1800,
+              "updated_at": "2026-02-14T18:30:00Z",
+              "deleted_at": null,
+              "sync_version": 0,
+              "server_updated_at": "2026-02-14T18:30:00Z"
+            },
+            {
+              "id": "b1000001-0000-0000-0000-000000000003",
+              "name": "Assessment session Mar",
+              "notes": "",
+              "date": "2026-03-21T18:00:00Z",
+              "is_assessment": true,
+              "session_type": 0,
+              "duration": 1800,
+              "updated_at": "2026-03-21T18:30:00Z",
+              "deleted_at": null,
+              "sync_version": 0,
+              "server_updated_at": "2026-03-21T18:30:00Z"
+            },
+            {
+              "id": "b1000001-0000-0000-0000-000000000004",
+              "name": "Assessment session Apr",
+              "notes": "",
+              "date": "2026-04-18T18:00:00Z",
+              "is_assessment": true,
+              "session_type": 0,
+              "duration": 1800,
+              "updated_at": "2026-04-18T18:30:00Z",
+              "deleted_at": null,
+              "sync_version": 0,
+              "server_updated_at": "2026-04-18T18:30:00Z"
             }
           ],
           "trainings": [],
           "repeaters": [],
           "rep_templates": [],
           "rep_datas": [],
-          "assessments": [],
+          "assessments": [
+              {
+                "id": "a0000001-0000-0000-0000-000000000001",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 0,
+                "right_value": 24.5,
+                "left_value": 22.0,
+                "grip_position": 0,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000002",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 0,
+                "right_value": 22.0,
+                "left_value": 20.5,
+                "grip_position": 1,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000003",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 0,
+                "right_value": 26.0,
+                "left_value": 23.5,
+                "grip_position": 2,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000004",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 0,
+                "right_value": 21.0,
+                "left_value": 19.5,
+                "grip_position": 3,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "b2000001-0000-0000-0000-000000000001",
+                "session_id": "b1000001-0000-0000-0000-000000000001",
+                "type": 1,
+                "right_value": 45.2,
+                "left_value": 41.8,
+                "grip_position": 0,
+                "updated_at": "2026-01-10T18:30:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "b2000001-0000-0000-0000-000000000002",
+                "session_id": "b1000001-0000-0000-0000-000000000002",
+                "type": 1,
+                "right_value": 47.6,
+                "left_value": 43.9,
+                "grip_position": 0,
+                "updated_at": "2026-02-14T18:30:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "b2000001-0000-0000-0000-000000000003",
+                "session_id": "b1000001-0000-0000-0000-000000000003",
+                "type": 1,
+                "right_value": 49.8,
+                "left_value": 46.0,
+                "grip_position": 0,
+                "updated_at": "2026-03-21T18:30:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "b2000001-0000-0000-0000-000000000004",
+                "session_id": "b1000001-0000-0000-0000-000000000004",
+                "type": 1,
+                "right_value": 51.0,
+                "left_value": 47.3,
+                "grip_position": 0,
+                "updated_at": "2026-04-18T18:30:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000005",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 1,
+                "right_value": 52.3,
+                "left_value": 48.7,
+                "grip_position": 0,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000006",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 1,
+                "right_value": 49.0,
+                "left_value": 45.5,
+                "grip_position": 1,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000007",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 1,
+                "right_value": 55.1,
+                "left_value": 51.2,
+                "grip_position": 2,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000008",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 1,
+                "right_value": 47.8,
+                "left_value": 44.1,
+                "grip_position": 3,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-000000000009",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 2,
+                "right_value": 78.0,
+                "left_value": 72.0,
+                "grip_position": 0,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-00000000000a",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 2,
+                "right_value": 70.0,
+                "left_value": 65.0,
+                "grip_position": 1,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-00000000000b",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 2,
+                "right_value": 82.0,
+                "left_value": 76.0,
+                "grip_position": 2,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              },
+              {
+                "id": "a0000001-0000-0000-0000-00000000000c",
+                "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": 2,
+                "right_value": 68.0,
+                "left_value": 63.0,
+                "grip_position": 3,
+                "updated_at": "2026-05-07T18:45:00Z",
+                "deleted_at": null
+              }
+            ],
           "sensor_configs": [],
           "pinned_builtin_trainings": [],
           "builtin_training_weights": []
         }
       }
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

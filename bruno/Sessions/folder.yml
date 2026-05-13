@@ -1,3 +1,9 @@
 info:
   name: Sessions
   type: folder
+  seq: 1
+
+request:
+  auth:
+    type: bearer
+    token: "{{authTokenUser}}"
