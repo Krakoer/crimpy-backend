@@ -723,7 +723,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all exercises in the authenticated coach's library.",
+                "description": "Get paginated exercises in the authenticated coach's library, with optional name and tag filters.",
                 "produces": [
                     "application/json"
                 ],
@@ -731,13 +731,45 @@ const docTemplate = `{
                     "Exercises"
                 ],
                 "summary": "List coach's exercises",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by name (case-insensitive substring)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tag IDs (comma-separated UUIDs)",
+                        "name": "tags",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Results per page (1-100, default 20)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of results to skip (default 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "List of exercises",
+                        "description": "Paginated list of exercises",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/handler.ExerciseResponse"
+                            "$ref": "#/definitions/handler.ExerciseListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid tag ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -3475,16 +3507,25 @@ const docTemplate = `{
                 "coach_id": {
                     "type": "string"
                 },
+                "comment": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
                 "description": {
                     "type": "string"
                 },
+                "goal": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "title": {
+                    "type": "string"
+                },
+                "training_type": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -3498,10 +3539,16 @@ const docTemplate = `{
                 "coach_id": {
                     "type": "string"
                 },
+                "comment": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
                 "description": {
+                    "type": "string"
+                },
+                "goal": {
                     "type": "string"
                 },
                 "id": {
@@ -3516,6 +3563,9 @@ const docTemplate = `{
                 "title": {
                     "type": "string"
                 },
+                "training_type": {
+                    "type": "string"
+                },
                 "updated_at": {
                     "type": "string"
                 }
@@ -3524,7 +3574,13 @@ const docTemplate = `{
         "handler.CreateCoachTrainingRequest": {
             "type": "object",
             "properties": {
+                "comment": {
+                    "type": "string"
+                },
                 "description": {
+                    "type": "string"
+                },
+                "goal": {
                     "type": "string"
                 },
                 "items": {
@@ -3534,6 +3590,9 @@ const docTemplate = `{
                     }
                 },
                 "title": {
+                    "type": "string"
+                },
+                "training_type": {
                     "type": "string"
                 }
             }
@@ -3722,6 +3781,26 @@ const docTemplate = `{
                 },
                 "token": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.ExerciseListResponse": {
+            "type": "object",
+            "properties": {
+                "exercises": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.ExerciseResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
@@ -3953,6 +4032,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "is_builtin": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -4123,7 +4205,13 @@ const docTemplate = `{
         "handler.UpdateCoachTrainingRequest": {
             "type": "object",
             "properties": {
+                "comment": {
+                    "type": "string"
+                },
                 "description": {
+                    "type": "string"
+                },
+                "goal": {
                     "type": "string"
                 },
                 "items": {
@@ -4133,6 +4221,9 @@ const docTemplate = `{
                     }
                 },
                 "title": {
+                    "type": "string"
+                },
+                "training_type": {
                     "type": "string"
                 }
             }

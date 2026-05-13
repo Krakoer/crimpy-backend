@@ -43,15 +43,21 @@ type TrainingItemRequest struct {
 }
 
 type CreateCoachTrainingRequest struct {
-	Title       string                `json:"title"`
-	Description *string               `json:"description"`
-	Items       []TrainingItemRequest `json:"items"`
+	Title        string                `json:"title"`
+	Description  *string               `json:"description"`
+	TrainingType string                `json:"training_type"`
+	Goal         string                `json:"goal"`
+	Comment      string                `json:"comment"`
+	Items        []TrainingItemRequest `json:"items"`
 }
 
 type UpdateCoachTrainingRequest struct {
-	Title       string                `json:"title"`
-	Description *string               `json:"description"`
-	Items       []TrainingItemRequest `json:"items"`
+	Title        string                `json:"title"`
+	Description  *string               `json:"description"`
+	TrainingType string                `json:"training_type"`
+	Goal         string                `json:"goal"`
+	Comment      string                `json:"comment"`
+	Items        []TrainingItemRequest `json:"items"`
 }
 
 // TrainingItemResponse mirrors TrainingItemRequest with added server-assigned fields.
@@ -76,31 +82,40 @@ type TrainingItemResponse struct {
 }
 
 type CoachTrainingResponse struct {
-	ID          string                 `json:"id"`
-	CoachID     string                 `json:"coach_id"`
-	Title       string                 `json:"title"`
-	Description *string                `json:"description"`
-	Items       []TrainingItemResponse `json:"items"`
-	CreatedAt   string                 `json:"created_at"`
-	UpdatedAt   string                 `json:"updated_at"`
+	ID           string                 `json:"id"`
+	CoachID      string                 `json:"coach_id"`
+	Title        string                 `json:"title"`
+	Description  *string                `json:"description"`
+	TrainingType string                 `json:"training_type"`
+	Goal         string                 `json:"goal"`
+	Comment      string                 `json:"comment"`
+	Items        []TrainingItemResponse `json:"items"`
+	CreatedAt    string                 `json:"created_at"`
+	UpdatedAt    string                 `json:"updated_at"`
 }
 
 type CoachTrainingListItem struct {
-	ID          string  `json:"id"`
-	CoachID     string  `json:"coach_id"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID           string  `json:"id"`
+	CoachID      string  `json:"coach_id"`
+	Title        string  `json:"title"`
+	Description  *string `json:"description"`
+	TrainingType string  `json:"training_type"`
+	Goal         string  `json:"goal"`
+	Comment      string  `json:"comment"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func coachTrainingToListItem(s db.CoachTraining) CoachTrainingListItem {
 	item := CoachTrainingListItem{
-		ID:        s.ID.String(),
-		CoachID:   s.CoachID.String(),
-		Title:     s.Title,
-		CreatedAt: s.CreatedAt.Time.UTC().Format(time.RFC3339),
-		UpdatedAt: s.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:           s.ID.String(),
+		CoachID:      s.CoachID.String(),
+		Title:        s.Title,
+		TrainingType: s.TrainingType,
+		Goal:         s.Goal,
+		Comment:      s.Comment,
+		CreatedAt:    s.CreatedAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt:    s.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	if s.Description.Valid {
 		item.Description = &s.Description.String
@@ -290,7 +305,16 @@ func (h *CoachTrainingHandler) CreateCoachTraining(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
-	params := db.CreateCoachTrainingParams{CoachID: coachUUID, Title: req.Title}
+	if req.TrainingType == "" {
+		req.TrainingType = "climbing"
+	}
+	params := db.CreateCoachTrainingParams{
+		CoachID:      coachUUID,
+		Title:        req.Title,
+		TrainingType: req.TrainingType,
+		Goal:         req.Goal,
+		Comment:      req.Comment,
+	}
 	if req.Description != nil {
 		params.Description = pgtype.Text{String: *req.Description, Valid: true}
 	}
@@ -449,7 +473,16 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
-	updateParams := db.UpdateCoachTrainingParams{ID: trainingUUID, Title: req.Title}
+	if req.TrainingType == "" {
+		req.TrainingType = "climbing"
+	}
+	updateParams := db.UpdateCoachTrainingParams{
+		ID:           trainingUUID,
+		Title:        req.Title,
+		TrainingType: req.TrainingType,
+		Goal:         req.Goal,
+		Comment:      req.Comment,
+	}
 	if req.Description != nil {
 		updateParams.Description = pgtype.Text{String: *req.Description, Valid: true}
 	}
@@ -526,12 +559,15 @@ func (h *CoachTrainingHandler) DeleteCoachTraining(c fiber.Ctx) error {
 
 func buildCoachTrainingResponse(training db.CoachTraining, items []TrainingItemResponse) CoachTrainingResponse {
 	resp := CoachTrainingResponse{
-		ID:        training.ID.String(),
-		CoachID:   training.CoachID.String(),
-		Title:     training.Title,
-		Items:     items,
-		CreatedAt: training.CreatedAt.Time.UTC().Format(time.RFC3339),
-		UpdatedAt: training.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:           training.ID.String(),
+		CoachID:      training.CoachID.String(),
+		Title:        training.Title,
+		TrainingType: training.TrainingType,
+		Goal:         training.Goal,
+		Comment:      training.Comment,
+		Items:        items,
+		CreatedAt:    training.CreatedAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt:    training.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	if training.Description.Valid {
 		resp.Description = &training.Description.String
