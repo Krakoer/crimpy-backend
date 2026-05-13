@@ -41,6 +41,28 @@ type CoachEnrollment struct {
 	EnrolledAt pgtype.Timestamptz
 }
 
+type CoachProgram struct {
+	ID            pgtype.UUID
+	CoachID       pgtype.UUID
+	UserID        pgtype.UUID
+	Name          string
+	Objective     pgtype.Text
+	StartDate     pgtype.Date
+	DurationWeeks pgtype.Int4
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type CoachProgramSlot struct {
+	ID           pgtype.UUID
+	ProgramID    pgtype.UUID
+	TrainingID   pgtype.UUID
+	DayOfWeek    pgtype.Int4
+	TimesPerWeek pgtype.Int4
+	Position     int32
+	CreatedAt    pgtype.Timestamptz
+}
+
 type CoachTraining struct {
 	ID           pgtype.UUID
 	CoachID      pgtype.UUID
