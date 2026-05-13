@@ -298,6 +298,48 @@ CREATE TABLE "coach_enrollments" (
 CREATE UNIQUE INDEX "coach_enrollments_user_id_key" ON "coach_enrollments" ("user_id");
 CREATE INDEX "coach_enrollments_coach_id_idx" ON "coach_enrollments" ("coach_id");
 
+-- Stores training programs created by coaches for specific enrolled users.
+CREATE TABLE "coach_programs" (
+  "id"              UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "coach_id"        UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id"         UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "name"            TEXT        NOT NULL,
+  "objective"       TEXT,
+  "start_date"      DATE        NOT NULL,
+  "duration_weeks"  INTEGER,
+  "created_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "coach_programs_coach_id_idx" ON "coach_programs"("coach_id");
+CREATE INDEX "coach_programs_user_id_idx"  ON "coach_programs"("user_id");
+
+-- Stores the slots of a training program.
+-- day_of_week 0=Mon ... 6=Sun; NULL means unscheduled (times_per_week required).
+CREATE TABLE "coach_program_slots" (
+  "id"              UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "program_id"      UUID        NOT NULL REFERENCES "coach_programs"("id") ON DELETE CASCADE,
+  "training_id"     UUID        NOT NULL REFERENCES "coach_trainings"("id") ON DELETE CASCADE,
+  "day_of_week"     INTEGER,
+  "times_per_week"  INTEGER,
+  "position"        INTEGER     NOT NULL DEFAULT 0,
+  "created_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "coach_program_slots_mode_check"
+    CHECK (
+      (day_of_week IS NOT NULL AND times_per_week IS NULL)
+      OR
+      (day_of_week IS NULL     AND times_per_week IS NOT NULL)
+    ),
+  CONSTRAINT "coach_program_slots_day_range_check"
+    CHECK (day_of_week IS NULL OR (day_of_week >= 0 AND day_of_week <= 6)),
+  CONSTRAINT "coach_program_slots_times_check"
+    CHECK (times_per_week IS NULL OR times_per_week > 0),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "coach_program_slots_program_id_idx" ON "coach_program_slots"("program_id");
+
 -- Indexes for foreign keys to improve query performance
 CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
 CREATE INDEX "assessments_session_id_idx" ON "assessments"("session_id");
