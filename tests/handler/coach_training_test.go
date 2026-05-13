@@ -61,8 +61,8 @@ func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 	if result["title"] != "Warm-up" {
 		t.Errorf("Expected title 'Warm-up', got %v", result["title"])
 	}
-	if result["training_type"] != "climbing" {
-		t.Errorf("Expected default training_type 'climbing', got %v", result["training_type"])
+	if result["training_type"] != "workout" {
+		t.Errorf("Expected default training_type 'workout', got %v", result["training_type"])
 	}
 
 	items, ok := result["items"].([]interface{})

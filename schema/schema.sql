@@ -222,7 +222,7 @@ CREATE TABLE "coach_trainings" (
   "coach_id"      UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
   "title"         TEXT        NOT NULL,
   "description"   TEXT,
-  "training_type" TEXT        NOT NULL DEFAULT 'climbing',
+  "training_type" TEXT        NOT NULL DEFAULT 'workout',
   "goal"          TEXT        NOT NULL DEFAULT '',
   "comment"       TEXT        NOT NULL DEFAULT '',
   "created_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),

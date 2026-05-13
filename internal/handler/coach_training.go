@@ -306,7 +306,7 @@ func (h *CoachTrainingHandler) CreateCoachTraining(c fiber.Ctx) error {
 	qtx := h.queries.WithTx(tx)
 
 	if req.TrainingType == "" {
-		req.TrainingType = "climbing"
+		req.TrainingType = "workout"
 	}
 	params := db.CreateCoachTrainingParams{
 		CoachID:      coachUUID,
@@ -474,7 +474,7 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 	qtx := h.queries.WithTx(tx)
 
 	if req.TrainingType == "" {
-		req.TrainingType = "climbing"
+		req.TrainingType = "workout"
 	}
 	updateParams := db.UpdateCoachTrainingParams{
 		ID:           trainingUUID,
