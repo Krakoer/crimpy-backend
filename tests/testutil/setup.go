@@ -87,6 +87,12 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 		t.Logf("Warning: Failed to clean up repeaters: %v", err)
 	}
 
+	// Delete programs (slots cascade)
+	_, err = pool.Exec(ctx, "DELETE FROM coach_programs WHERE coach_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
+	if err != nil {
+		t.Logf("Warning: Failed to clean up coach_programs: %v", err)
+	}
+
 	// Delete test users
 	_, err = pool.Exec(ctx, "DELETE FROM users WHERE email LIKE '%test%'")
 	if err != nil {
@@ -152,6 +158,15 @@ type HandlerConfig struct {
 		GetCoachTraining(fiber.Ctx) error
 		UpdateCoachTraining(fiber.Ctx) error
 		DeleteCoachTraining(fiber.Ctx) error
+	}
+	ProgramHandler interface {
+		CreateProgram(fiber.Ctx) error
+		GetPrograms(fiber.Ctx) error
+		GetProgram(fiber.Ctx) error
+		UpdateProgram(fiber.Ctx) error
+		DeleteProgram(fiber.Ctx) error
+		GetMyPrograms(fiber.Ctx) error
+		GetMyProgram(fiber.Ctx) error
 	}
 }
 
@@ -226,6 +241,16 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/coach/trainings/:id", config.CoachTrainingHandler.GetCoachTraining)
 		api.Put("/coach/trainings/:id", config.CoachTrainingHandler.UpdateCoachTraining)
 		api.Delete("/coach/trainings/:id", config.CoachTrainingHandler.DeleteCoachTraining)
+	}
+
+	if config.ProgramHandler != nil {
+		api.Post("/coach/clients/:user_id/programs", config.ProgramHandler.CreateProgram)
+		api.Get("/coach/clients/:user_id/programs", config.ProgramHandler.GetPrograms)
+		api.Get("/coach/clients/:user_id/programs/:program_id", config.ProgramHandler.GetProgram)
+		api.Put("/coach/clients/:user_id/programs/:program_id", config.ProgramHandler.UpdateProgram)
+		api.Delete("/coach/clients/:user_id/programs/:program_id", config.ProgramHandler.DeleteProgram)
+		api.Get("/user/programs", config.ProgramHandler.GetMyPrograms)
+		api.Get("/user/programs/:program_id", config.ProgramHandler.GetMyProgram)
 	}
 
 	return app
