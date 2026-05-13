@@ -74,6 +74,7 @@ func main() {
 	exerciseHandler := handler.NewExerciseHandler(queries, pool)
 	tagHandler := handler.NewTagHandler(queries, pool)
 	coachTrainingHandler := handler.NewCoachTrainingHandler(queries, pool)
+	programHandler := handler.NewProgramHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -190,6 +191,15 @@ func main() {
 	api.Get("/coach/clients/:user_id/sessions", coachHandler.GetClientSessions)
 	api.Get("/coach/clients/:user_id/sessions/:session_id", coachHandler.GetClientSession)
 	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
+
+	// Program routes (coach manages, coachee reads)
+	api.Post("/coach/clients/:user_id/programs", programHandler.CreateProgram)
+	api.Get("/coach/clients/:user_id/programs", programHandler.GetPrograms)
+	api.Get("/coach/clients/:user_id/programs/:program_id", programHandler.GetProgram)
+	api.Put("/coach/clients/:user_id/programs/:program_id", programHandler.UpdateProgram)
+	api.Delete("/coach/clients/:user_id/programs/:program_id", programHandler.DeleteProgram)
+	api.Get("/user/programs", programHandler.GetMyPrograms)
+	api.Get("/user/programs/:program_id", programHandler.GetMyProgram)
 
 	// Admin routes
 	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)
