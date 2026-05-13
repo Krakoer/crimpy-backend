@@ -19,15 +19,15 @@ http:
         "duration_weeks": 6,
         "slots": [
           {
-            "training_id": "875f4264-5e1c-4610-abc9-53e1fb5ab79d",
+            "training_id": "{{coachTrainingId}}",
             "day_of_week": 0
           },
           {
-            "training_id": "b53eb232-1872-4e2f-9084-3bcf8f951952",
+            "training_id": "{{coachTrainingId}}",
             "day_of_week": 2
           },
           {
-            "training_id": "875f4264-5e1c-4610-abc9-53e1fb5ab79d",
+            "training_id": "{{coachTrainingId}}",
             "times_per_week": 2
           }
         ]
