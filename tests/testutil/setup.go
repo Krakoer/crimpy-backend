@@ -167,6 +167,12 @@ type HandlerConfig struct {
 		DeleteProgram(fiber.Ctx) error
 		GetMyPrograms(fiber.Ctx) error
 		GetMyProgram(fiber.Ctx) error
+		UpsertWeek(fiber.Ctx) error
+		GetWeeks(fiber.Ctx) error
+		GetWeek(fiber.Ctx) error
+		DeleteWeek(fiber.Ctx) error
+		GetMyWeeks(fiber.Ctx) error
+		GetMyWeek(fiber.Ctx) error
 	}
 }
 
@@ -251,6 +257,12 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Delete("/coach/clients/:user_id/programs/:program_id", config.ProgramHandler.DeleteProgram)
 		api.Get("/user/programs", config.ProgramHandler.GetMyPrograms)
 		api.Get("/user/programs/:program_id", config.ProgramHandler.GetMyProgram)
+		api.Put("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", config.ProgramHandler.UpsertWeek)
+		api.Get("/coach/clients/:user_id/programs/:program_id/weeks", config.ProgramHandler.GetWeeks)
+		api.Get("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", config.ProgramHandler.GetWeek)
+		api.Delete("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", config.ProgramHandler.DeleteWeek)
+		api.Get("/user/programs/:program_id/weeks", config.ProgramHandler.GetMyWeeks)
+		api.Get("/user/programs/:program_id/weeks/:week_number", config.ProgramHandler.GetMyWeek)
 	}
 
 	return app

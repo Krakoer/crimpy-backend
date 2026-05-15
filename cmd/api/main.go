@@ -200,6 +200,12 @@ func main() {
 	api.Delete("/coach/clients/:user_id/programs/:program_id", programHandler.DeleteProgram)
 	api.Get("/user/programs", programHandler.GetMyPrograms)
 	api.Get("/user/programs/:program_id", programHandler.GetMyProgram)
+	api.Put("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", programHandler.UpsertWeek)
+	api.Get("/coach/clients/:user_id/programs/:program_id/weeks", programHandler.GetWeeks)
+	api.Get("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", programHandler.GetWeek)
+	api.Delete("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", programHandler.DeleteWeek)
+	api.Get("/user/programs/:program_id/weeks", programHandler.GetMyWeeks)
+	api.Get("/user/programs/:program_id/weeks/:week_number", programHandler.GetMyWeek)
 
 	// Admin routes
 	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)
