@@ -1,0 +1,55 @@
+info:
+  name: Upsert Week
+  type: http
+  seq: 6
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs/{{programId}}/weeks/{{weekNumber}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "notes": "First heavy week",
+        "sessions": [
+          {
+            "training_id": "{{coachTrainingId}}",
+            "day_of_week": 0,
+            "notes": "Focus on max load",
+            "overrides": [
+              {
+                "item_id": "{{coachTrainingItemId}}",
+                "overrides": {
+                  "loads": [{"value": 35, "unit": "kg"}],
+                  "reps": 6
+                }
+              }
+            ]
+          },
+          {
+            "training_id": "{{coachTrainingId}}",
+            "times_per_week": 2,
+            "overrides": []
+          }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 200) {
+          bru.setEnvVar("weekId", res.body.id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

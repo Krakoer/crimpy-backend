@@ -18,6 +18,12 @@ variables:
     value: ""
   - name: programId
     value: ""
+  - name: weekNumber
+    value: "1"
+  - name: weekId
+    value: ""
+  - name: coachTrainingItemId
+    value: ""
   - name: enrollmentToken
     value: ""
   - name: clientUserId

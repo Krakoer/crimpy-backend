@@ -1,0 +1,13 @@
+info:
+  name: Delete Week
+  type: http
+  seq: 9
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs/{{programId}}/weeks/{{weekNumber}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"

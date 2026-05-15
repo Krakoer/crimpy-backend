@@ -16,21 +16,7 @@ http:
         "name": "6-Week Finger Strength Block",
         "objective": "Build max finger strength on crimps",
         "start_date": "2026-06-01",
-        "duration_weeks": 6,
-        "slots": [
-          {
-            "training_id": "{{coachTrainingId}}",
-            "day_of_week": 0
-          },
-          {
-            "training_id": "{{coachTrainingId}}",
-            "day_of_week": 2
-          },
-          {
-            "training_id": "{{coachTrainingId}}",
-            "times_per_week": 2
-          }
-        ]
+        "duration_weeks": 6
       }
   auth:
     type: bearer
