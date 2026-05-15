@@ -22,7 +22,7 @@ func enrollUserDirect(t *testing.T, pool *pgxpool.Pool, coachID, userID string) 
 	}
 }
 
-func createTestCoachTrainingForProgram(t *testing.T, pool *pgxpool.Pool, queries interface{}, coachToken string, app *fiber.App) string {
+func createTestCoachTraining(t *testing.T, coachToken string, app *fiber.App) string {
 	t.Helper()
 	body, _ := json.Marshal(map[string]interface{}{
 		"title": "Test Training Template",
@@ -40,32 +40,43 @@ func createTestCoachTrainingForProgram(t *testing.T, pool *pgxpool.Pool, queries
 	return result["id"].(string)
 }
 
+func createTestProgram(t *testing.T, coachToken, userID string, app *fiber.App) string {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":       "Test Program",
+		"start_date": "2026-06-01",
+	})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create program: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating program, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result["id"].(string)
+}
+
 func TestProgramHandler_Create_Success(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
 	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "prog1coach@test.com")
-	userID, userToken := testutil.CreateTestUser(t, queries, "prog1user@test.com")
-	_ = userToken
+	userID, _ := testutil.CreateTestUser(t, queries, "prog1user@test.com")
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
-
-	trainingID := createTestCoachTrainingForProgram(t, pool, queries, coachToken, app)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":           "Test Program",
 		"objective":      "Get stronger",
 		"start_date":     "2026-06-01",
 		"duration_weeks": 6,
-		"slots": []map[string]interface{}{
-			{"training_id": trainingID, "day_of_week": 0},
-			{"training_id": trainingID, "times_per_week": 2},
-		},
 	})
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
@@ -84,9 +95,14 @@ func TestProgramHandler_Create_Success(t *testing.T) {
 	if result["name"] != "Test Program" {
 		t.Errorf("Expected name 'Test Program', got %v", result["name"])
 	}
-	slots, ok := result["slots"].([]interface{})
-	if !ok || len(slots) != 2 {
-		t.Errorf("Expected 2 slots, got %v", result["slots"])
+	if result["coach_id"] == nil {
+		t.Errorf("Expected coach_id in response")
+	}
+	if result["user_id"] != userID {
+		t.Errorf("Expected user_id %s, got %v", userID, result["user_id"])
+	}
+	if result["start_date"] != "2026-06-01" {
+		t.Errorf("Expected start_date '2026-06-01', got %v", result["start_date"])
 	}
 }
 
@@ -105,7 +121,6 @@ func TestProgramHandler_Create_NotCoach(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":       "Test Program",
 		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
 	})
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", targetID), body, userToken)
@@ -133,7 +148,6 @@ func TestProgramHandler_Create_ClientNotEnrolled(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":       "Test Program",
 		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
 	})
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
@@ -161,7 +175,6 @@ func TestProgramHandler_Create_MissingName(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
 	})
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
@@ -190,75 +203,6 @@ func TestProgramHandler_Create_InvalidDate(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":       "Test Program",
 		"start_date": "not-a-date",
-		"slots":      []interface{}{},
-	})
-
-	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Errorf("Expected 400, got %d", resp.StatusCode)
-	}
-}
-
-func TestProgramHandler_Create_SlotBothFields(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-secret-key")
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-
-	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "prog6coach@test.com")
-	userID, _ := testutil.CreateTestUser(t, queries, "prog6user@test.com")
-	enrollUserDirect(t, pool, coachID, userID)
-
-	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
-	})
-
-	trainingID := createTestCoachTrainingForProgram(t, pool, queries, coachToken, app)
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"name":       "Test Program",
-		"start_date": "2026-06-01",
-		"slots": []map[string]interface{}{
-			{"training_id": trainingID, "day_of_week": 0, "times_per_week": 2},
-		},
-	})
-
-	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Errorf("Expected 400, got %d", resp.StatusCode)
-	}
-}
-
-func TestProgramHandler_Create_SlotNoField(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-secret-key")
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-
-	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "prog7coach@test.com")
-	userID, _ := testutil.CreateTestUser(t, queries, "prog7user@test.com")
-	enrollUserDirect(t, pool, coachID, userID)
-
-	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
-	})
-
-	trainingID := createTestCoachTrainingForProgram(t, pool, queries, coachToken, app)
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"name":       "Test Program",
-		"start_date": "2026-06-01",
-		"slots": []map[string]interface{}{
-			{"training_id": trainingID},
-		},
 	})
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
@@ -281,15 +225,13 @@ func TestProgramHandler_GetPrograms(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
 	for i := 0; i < 2; i++ {
 		body, _ := json.Marshal(map[string]interface{}{
 			"name":       fmt.Sprintf("Program %d", i+1),
 			"start_date": fmt.Sprintf("2026-0%d-01", i+6),
-			"slots":      []interface{}{},
 		})
 		req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
 		app.Test(req)
@@ -321,24 +263,10 @@ func TestProgramHandler_GetProgram(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	trainingID := createTestCoachTrainingForProgram(t, pool, queries, coachToken, app)
-
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "My Program",
-		"start_date": "2026-06-01",
-		"slots": []map[string]interface{}{
-			{"training_id": trainingID, "day_of_week": 0},
-		},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	createResp, _ := app.Test(createReq)
-	var created map[string]interface{}
-	json.NewDecoder(createResp.Body).Decode(&created)
-	programID := created["id"].(string)
+	programID := createTestProgram(t, coachToken, userID, app)
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/coach/clients/%s/programs/%s", userID, programID), nil, coachToken)
 	resp, err := app.Test(req)
@@ -351,13 +279,8 @@ func TestProgramHandler_GetProgram(t *testing.T) {
 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
-	slots, ok := result["slots"].([]interface{})
-	if !ok || len(slots) != 1 {
-		t.Errorf("Expected 1 slot with training_title, got %v", result["slots"])
-	}
-	slot := slots[0].(map[string]interface{})
-	if slot["training_title"] == nil || slot["training_title"] == "" {
-		t.Errorf("Expected training_title in slot, got %v", slot)
+	if result["id"] != programID {
+		t.Errorf("Expected program id %s, got %v", programID, result["id"])
 	}
 }
 
@@ -378,16 +301,7 @@ func TestProgramHandler_GetProgram_NotOwner(t *testing.T) {
 		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "My Program",
-		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	createResp, _ := app.Test(createReq)
-	var created map[string]interface{}
-	json.NewDecoder(createResp.Body).Decode(&created)
-	programID := created["id"].(string)
+	programID := createTestProgram(t, coachToken, userID, app)
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/coach/clients/%s/programs/%s", user2ID, programID), nil, coach2Token)
 	resp, err := app.Test(req)
@@ -409,32 +323,14 @@ func TestProgramHandler_Update(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	trainingID := createTestCoachTrainingForProgram(t, pool, queries, coachToken, app)
-
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "Original Name",
-		"start_date": "2026-06-01",
-		"slots": []map[string]interface{}{
-			{"training_id": trainingID, "day_of_week": 0},
-			{"training_id": trainingID, "day_of_week": 2},
-		},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	createResp, _ := app.Test(createReq)
-	var created map[string]interface{}
-	json.NewDecoder(createResp.Body).Decode(&created)
-	programID := created["id"].(string)
+	programID := createTestProgram(t, coachToken, userID, app)
 
 	updateBody, _ := json.Marshal(map[string]interface{}{
 		"name":       "Updated Name",
-		"start_date": "2026-06-01",
-		"slots": []map[string]interface{}{
-			{"training_id": trainingID, "times_per_week": 3},
-		},
+		"start_date": "2026-07-01",
 	})
 	req := testutil.NewJSONRequestWithAuth(http.MethodPut, fmt.Sprintf("/api/coach/clients/%s/programs/%s", userID, programID), updateBody, coachToken)
 	resp, err := app.Test(req)
@@ -449,10 +345,6 @@ func TestProgramHandler_Update(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&result)
 	if result["name"] != "Updated Name" {
 		t.Errorf("Expected 'Updated Name', got %v", result["name"])
-	}
-	slots, _ := result["slots"].([]interface{})
-	if len(slots) != 1 {
-		t.Errorf("Expected 1 slot after update, got %d", len(slots))
 	}
 }
 
@@ -469,16 +361,7 @@ func TestProgramHandler_Delete(t *testing.T) {
 		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "To Delete",
-		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	createResp, _ := app.Test(createReq)
-	var created map[string]interface{}
-	json.NewDecoder(createResp.Body).Decode(&created)
-	programID := created["id"].(string)
+	programID := createTestProgram(t, coachToken, userID, app)
 
 	delReq := testutil.NewJSONRequestWithAuth(http.MethodDelete, fmt.Sprintf("/api/coach/clients/%s/programs/%s", userID, programID), nil, coachToken)
 	delResp, err := app.Test(delReq)
@@ -509,13 +392,7 @@ func TestProgramHandler_GetMyPrograms(t *testing.T) {
 		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "My Program",
-		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	app.Test(createReq)
+	createTestProgram(t, coachToken, userID, app)
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/user/programs", nil, userToken)
 	resp, err := app.Test(req)
@@ -546,16 +423,7 @@ func TestProgramHandler_GetMyProgram(t *testing.T) {
 		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "My Program",
-		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	createResp, _ := app.Test(createReq)
-	var created map[string]interface{}
-	json.NewDecoder(createResp.Body).Decode(&created)
-	programID := created["id"].(string)
+	programID := createTestProgram(t, coachToken, userID, app)
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/user/programs/%s", programID), nil, userToken)
 	resp, err := app.Test(req)
@@ -581,16 +449,7 @@ func TestProgramHandler_GetMyProgram_WrongUser(t *testing.T) {
 		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
-	createBody, _ := json.Marshal(map[string]interface{}{
-		"name":       "My Program",
-		"start_date": "2026-06-01",
-		"slots":      []interface{}{},
-	})
-	createReq := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), createBody, coachToken)
-	createResp, _ := app.Test(createReq)
-	var created map[string]interface{}
-	json.NewDecoder(createResp.Body).Decode(&created)
-	programID := created["id"].(string)
+	programID := createTestProgram(t, coachToken, userID, app)
 
 	req := testutil.NewJSONRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/user/programs/%s", programID), nil, otherToken)
 	resp, err := app.Test(req)
