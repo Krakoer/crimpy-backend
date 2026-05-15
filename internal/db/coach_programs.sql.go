@@ -50,56 +50,12 @@ func (q *Queries) CreateCoachProgram(ctx context.Context, arg CreateCoachProgram
 	return i, err
 }
 
-const createCoachProgramSlot = `-- name: CreateCoachProgramSlot :one
-INSERT INTO coach_program_slots (program_id, training_id, day_of_week, times_per_week, position)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, program_id, training_id, day_of_week, times_per_week, position, created_at
-`
-
-type CreateCoachProgramSlotParams struct {
-	ProgramID    pgtype.UUID
-	TrainingID   pgtype.UUID
-	DayOfWeek    pgtype.Int4
-	TimesPerWeek pgtype.Int4
-	Position     int32
-}
-
-func (q *Queries) CreateCoachProgramSlot(ctx context.Context, arg CreateCoachProgramSlotParams) (CoachProgramSlot, error) {
-	row := q.db.QueryRow(ctx, createCoachProgramSlot,
-		arg.ProgramID,
-		arg.TrainingID,
-		arg.DayOfWeek,
-		arg.TimesPerWeek,
-		arg.Position,
-	)
-	var i CoachProgramSlot
-	err := row.Scan(
-		&i.ID,
-		&i.ProgramID,
-		&i.TrainingID,
-		&i.DayOfWeek,
-		&i.TimesPerWeek,
-		&i.Position,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const deleteCoachProgram = `-- name: DeleteCoachProgram :exec
 DELETE FROM coach_programs WHERE id = $1
 `
 
 func (q *Queries) DeleteCoachProgram(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteCoachProgram, id)
-	return err
-}
-
-const deleteCoachProgramSlots = `-- name: DeleteCoachProgramSlots :exec
-DELETE FROM coach_program_slots WHERE program_id = $1
-`
-
-func (q *Queries) DeleteCoachProgramSlots(ctx context.Context, programID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteCoachProgramSlots, programID)
 	return err
 }
 
@@ -122,65 +78,6 @@ func (q *Queries) GetCoachProgram(ctx context.Context, id pgtype.UUID) (CoachPro
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const getCoachProgramSlots = `-- name: GetCoachProgramSlots :many
-SELECT
-  cps.id,
-  cps.program_id,
-  cps.training_id,
-  cps.day_of_week,
-  cps.times_per_week,
-  cps.position,
-  cps.created_at,
-  ct.title          AS training_title,
-  ct.training_type  AS training_type
-FROM coach_program_slots cps
-JOIN coach_trainings ct ON ct.id = cps.training_id
-WHERE cps.program_id = $1
-ORDER BY cps.position
-`
-
-type GetCoachProgramSlotsRow struct {
-	ID            pgtype.UUID
-	ProgramID     pgtype.UUID
-	TrainingID    pgtype.UUID
-	DayOfWeek     pgtype.Int4
-	TimesPerWeek  pgtype.Int4
-	Position      int32
-	CreatedAt     pgtype.Timestamptz
-	TrainingTitle string
-	TrainingType  string
-}
-
-func (q *Queries) GetCoachProgramSlots(ctx context.Context, programID pgtype.UUID) ([]GetCoachProgramSlotsRow, error) {
-	rows, err := q.db.Query(ctx, getCoachProgramSlots, programID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetCoachProgramSlotsRow
-	for rows.Next() {
-		var i GetCoachProgramSlotsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProgramID,
-			&i.TrainingID,
-			&i.DayOfWeek,
-			&i.TimesPerWeek,
-			&i.Position,
-			&i.CreatedAt,
-			&i.TrainingTitle,
-			&i.TrainingType,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const getCoachProgramsForClient = `-- name: GetCoachProgramsForClient :many

@@ -24,26 +24,3 @@ RETURNING *;
 -- name: DeleteCoachProgram :exec
 DELETE FROM coach_programs WHERE id = @id;
 
--- name: CreateCoachProgramSlot :one
-INSERT INTO coach_program_slots (program_id, training_id, day_of_week, times_per_week, position)
-VALUES (@program_id, @training_id, @day_of_week, @times_per_week, @position)
-RETURNING *;
-
--- name: GetCoachProgramSlots :many
-SELECT
-  cps.id,
-  cps.program_id,
-  cps.training_id,
-  cps.day_of_week,
-  cps.times_per_week,
-  cps.position,
-  cps.created_at,
-  ct.title          AS training_title,
-  ct.training_type  AS training_type
-FROM coach_program_slots cps
-JOIN coach_trainings ct ON ct.id = cps.training_id
-WHERE cps.program_id = @program_id
-ORDER BY cps.position;
-
--- name: DeleteCoachProgramSlots :exec
-DELETE FROM coach_program_slots WHERE program_id = @program_id;

@@ -53,14 +53,34 @@ type CoachProgram struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
-type CoachProgramSlot struct {
+type CoachProgramSessionOverride struct {
+	ID        pgtype.UUID
+	SessionID pgtype.UUID
+	ItemID    pgtype.UUID
+	Overrides []byte
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type CoachProgramWeek struct {
+	ID         pgtype.UUID
+	ProgramID  pgtype.UUID
+	WeekNumber int32
+	Notes      pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type CoachProgramWeekSession struct {
 	ID           pgtype.UUID
-	ProgramID    pgtype.UUID
+	WeekID       pgtype.UUID
 	TrainingID   pgtype.UUID
 	DayOfWeek    pgtype.Int4
 	TimesPerWeek pgtype.Int4
 	Position     int32
+	Notes        pgtype.Text
 	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type CoachTraining struct {
