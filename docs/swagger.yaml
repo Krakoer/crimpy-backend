@@ -113,6 +113,17 @@ definitions:
       video_link:
         type: string
     type: object
+  handler.CreateProgramRequest:
+    properties:
+      duration_weeks:
+        type: integer
+      name:
+        type: string
+      objective:
+        type: string
+      start_date:
+        type: string
+    type: object
   handler.CreateRepeaterRequest:
     properties:
       grip_position:
@@ -269,6 +280,48 @@ definitions:
       password:
         type: string
     type: object
+  handler.ProgramListItem:
+    properties:
+      coach_id:
+        type: string
+      created_at:
+        type: string
+      duration_weeks:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      objective:
+        type: string
+      start_date:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  handler.ProgramResponse:
+    properties:
+      coach_id:
+        type: string
+      created_at:
+        type: string
+      duration_weeks:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      objective:
+        type: string
+      start_date:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.RegisterRequest:
     properties:
       email:
@@ -341,6 +394,22 @@ definitions:
     properties:
       email:
         type: string
+    type: object
+  handler.SessionOverrideRequest:
+    properties:
+      item_id:
+        type: string
+      overrides:
+        type: object
+    type: object
+  handler.SessionOverrideResponse:
+    properties:
+      id:
+        type: string
+      item_id:
+        type: string
+      overrides:
+        type: object
     type: object
   handler.SessionResponse:
     properties:
@@ -526,6 +595,17 @@ definitions:
       video_link:
         type: string
     type: object
+  handler.UpdateProgramRequest:
+    properties:
+      duration_weeks:
+        type: integer
+      name:
+        type: string
+      objective:
+        type: string
+      start_date:
+        type: string
+    type: object
   handler.UpdateRepeaterRequest:
     properties:
       grip_position:
@@ -570,6 +650,15 @@ definitions:
       name:
         type: string
     type: object
+  handler.UpsertWeekRequest:
+    properties:
+      notes:
+        type: string
+      sessions:
+        items:
+          $ref: '#/definitions/handler.WeekSessionRequest'
+        type: array
+    type: object
   handler.UserEnrollmentResponse:
     properties:
       coach_email:
@@ -609,6 +698,78 @@ definitions:
   handler.VerifyEmailRequest:
     properties:
       token:
+        type: string
+    type: object
+  handler.WeekListItem:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      program_id:
+        type: string
+      updated_at:
+        type: string
+      week_number:
+        type: integer
+    type: object
+  handler.WeekResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      program_id:
+        type: string
+      sessions:
+        items:
+          $ref: '#/definitions/handler.WeekSessionResponse'
+        type: array
+      updated_at:
+        type: string
+      week_number:
+        type: integer
+    type: object
+  handler.WeekSessionRequest:
+    properties:
+      day_of_week:
+        type: integer
+      notes:
+        type: string
+      overrides:
+        items:
+          $ref: '#/definitions/handler.SessionOverrideRequest'
+        type: array
+      times_per_week:
+        type: integer
+      training_id:
+        type: string
+    type: object
+  handler.WeekSessionResponse:
+    properties:
+      day_of_week:
+        type: integer
+      id:
+        type: string
+      notes:
+        type: string
+      overrides:
+        items:
+          $ref: '#/definitions/handler.SessionOverrideResponse'
+        type: array
+      position:
+        type: integer
+      times_per_week:
+        type: integer
+      training_id:
+        type: string
+      training_title:
+        type: string
+      training_type:
         type: string
     type: object
   sync.PullResponse:
@@ -949,6 +1110,407 @@ paths:
       summary: Get a client's assessments
       tags:
       - Coaching
+  /api/coach/clients/{user_id}/programs:
+    get:
+      description: Get all training programs created by this coach for a specific
+        client.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of programs
+          schema:
+            items:
+              $ref: '#/definitions/handler.ProgramListItem'
+            type: array
+        "403":
+          description: Not a validated coach or client not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List programs for a client
+      tags:
+      - Programs
+    post:
+      consumes:
+      - application/json
+      description: Create a program for an enrolled client. Requires a validated coach
+        account.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateProgramRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Program created
+          schema:
+            $ref: '#/definitions/handler.ProgramResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or client not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a training program for a client
+      tags:
+      - Programs
+  /api/coach/clients/{user_id}/programs/{program_id}:
+    delete:
+      description: Delete a program and its weeks. Only the owning coach can delete.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Program deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a training program
+      tags:
+      - Programs
+    get:
+      description: Get a specific program by ID.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Program
+          schema:
+            $ref: '#/definitions/handler.ProgramResponse'
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a training program
+      tags:
+      - Programs
+    put:
+      consumes:
+      - application/json
+      description: Replace program metadata. Only the owning coach can update.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      - description: Updated program data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateProgramRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated program
+          schema:
+            $ref: '#/definitions/handler.ProgramResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a training program
+      tags:
+      - Programs
+  /api/coach/clients/{user_id}/programs/{program_id}/weeks:
+    get:
+      description: Get all explicitly defined weeks for a program (summary, no sessions).
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of weeks
+          schema:
+            items:
+              $ref: '#/definitions/handler.WeekListItem'
+            type: array
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List weeks of a program
+      tags:
+      - Programs
+  /api/coach/clients/{user_id}/programs/{program_id}/weeks/{week_number}:
+    delete:
+      description: Delete a week and all its sessions/overrides (cascade).
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      - description: Week number
+        in: path
+        name: week_number
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Week deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program or week not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a program week
+      tags:
+      - Programs
+    get:
+      description: Get a specific week with its sessions and per-item overrides.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      - description: Week number
+        in: path
+        name: week_number
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Week with sessions and overrides
+          schema:
+            $ref: '#/definitions/handler.WeekResponse'
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program or week not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a program week
+      tags:
+      - Programs
+    put:
+      consumes:
+      - application/json
+      description: Upsert a week's sessions and overrides. Existing sessions for the
+        week are replaced.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      - description: Week number (>= 1)
+        in: path
+        name: week_number
+        required: true
+        type: integer
+      - description: Week data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpsertWeekRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Upserted week
+          schema:
+            $ref: '#/definitions/handler.WeekResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create or replace a program week
+      tags:
+      - Programs
   /api/coach/clients/{user_id}/sessions:
     get:
       description: Retrieve all sessions for a user enrolled with the authenticated
@@ -2719,6 +3281,143 @@ paths:
       summary: Get user's current coach enrollment
       tags:
       - Enrollment
+  /api/user/programs:
+    get:
+      description: Get all programs assigned to the authenticated user by their coach.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of programs
+          schema:
+            items:
+              $ref: '#/definitions/handler.ProgramListItem'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my training programs
+      tags:
+      - Programs
+  /api/user/programs/{program_id}:
+    get:
+      description: Get a specific program assigned to the authenticated user.
+      parameters:
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Program
+          schema:
+            $ref: '#/definitions/handler.ProgramResponse'
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get one of my training programs
+      tags:
+      - Programs
+  /api/user/programs/{program_id}/weeks:
+    get:
+      description: Get all defined weeks for a program assigned to the authenticated
+        user.
+      parameters:
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of weeks
+          schema:
+            items:
+              $ref: '#/definitions/handler.WeekListItem'
+            type: array
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List weeks of one of my programs
+      tags:
+      - Programs
+  /api/user/programs/{program_id}/weeks/{week_number}:
+    get:
+      description: Get a specific week with sessions and overrides for a program assigned
+        to the authenticated user.
+      parameters:
+      - description: Program ID
+        in: path
+        name: program_id
+        required: true
+        type: string
+      - description: Week number
+        in: path
+        name: week_number
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Week with sessions and overrides
+          schema:
+            $ref: '#/definitions/handler.WeekResponse'
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Program or week not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a week from one of my programs
+      tags:
+      - Programs
   /auth/login:
     post:
       consumes:

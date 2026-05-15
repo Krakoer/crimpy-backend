@@ -18,7 +18,7 @@ import (
 
 type SessionOverrideRequest struct {
 	ItemID    string          `json:"item_id"`
-	Overrides json.RawMessage `json:"overrides"`
+	Overrides json.RawMessage `json:"overrides" swaggertype:"object"`
 }
 
 type WeekSessionRequest struct {
@@ -37,7 +37,7 @@ type UpsertWeekRequest struct {
 type SessionOverrideResponse struct {
 	ID        string          `json:"id"`
 	ItemID    string          `json:"item_id"`
-	Overrides json.RawMessage `json:"overrides"`
+	Overrides json.RawMessage `json:"overrides" swaggertype:"object"`
 }
 
 type WeekSessionResponse struct {
