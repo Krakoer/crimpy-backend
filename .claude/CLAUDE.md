@@ -148,7 +148,7 @@ Production (set via deployment):
 
 ## Production Deployment
 
-This application is configured to work with **Traefik** as a reverse proxy. The API will be accessible at `api.portfolio-online.ovh`.
+This application is configured to work with **Traefik** as a reverse proxy. The API will be accessible at `api.crimpy.app`.
 
 ### Prerequisites
 
@@ -195,7 +195,7 @@ This command will:
 ### Traefik Configuration
 
 The production setup includes these Traefik labels:
-- `Host`: `api.portfolio-online.ovh`
+- `Host`: `api.crimpy.app`
 - `Entrypoint`: `websecure` (HTTPS)
 - `Certificate resolver`: `dnsResolver`
 
@@ -306,7 +306,7 @@ The API uses **Swagger/OpenAPI** for interactive documentation. Documentation is
 
 When the server is running, visit:
 - **Local development:** `http://localhost:3000/swagger/index.html`
-- **Production:** `https://api.portfolio-online.ovh/swagger/index.html`
+- **Production:** `https://api.crimpy.app/swagger/index.html`
 
 ### Adding Documentation for New Endpoints
 

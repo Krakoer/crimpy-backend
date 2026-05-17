@@ -811,7 +811,7 @@ definitions:
       user_id:
         type: string
     type: object
-host: api.portfolio-online.ovh
+host: api.crimpy.app
 info:
   contact:
     email: support@crimpy.com
@@ -820,7 +820,7 @@ info:
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
-  termsOfService: https://api.portfolio-online.ovh/terms
+  termsOfService: https://api.crimpy.app/terms
   title: Crimpy API
   version: "1.0"
 paths:

@@ -116,7 +116,7 @@ tests/
 
 Interactive Swagger documentation is auto-generated from code annotations:
 - **Local**: http://localhost:3000/swagger/index.html
-- **Production**: https://api.portfolio-online.ovh/swagger/index.html
+- **Production**: https://api.crimpy.app/swagger/index.html
 
 ### Adding documentation for new endpoints
 
@@ -221,7 +221,7 @@ just prod-restart  # Restart API service
 ## Traefik Configuration
 
 The production setup uses Traefik as a reverse proxy:
-- **Host**: `api.portfolio-online.ovh`
+- **Host**: `api.crimpy.app`
 - **Entrypoint**: `websecure` (HTTPS)
 - **Certificate resolver**: `dnsResolver`
 

@@ -6,7 +6,7 @@
     "info": {
         "description": "Backend API for Crimpy climbing training application",
         "title": "Crimpy API",
-        "termsOfService": "https://api.portfolio-online.ovh/terms",
+        "termsOfService": "https://api.crimpy.app/terms",
         "contact": {
             "name": "API Support",
             "email": "support@crimpy.com"
@@ -17,7 +17,7 @@
         },
         "version": "1.0"
     },
-    "host": "api.portfolio-online.ovh",
+    "host": "api.crimpy.app",
     "basePath": "/",
     "paths": {
         "/api/admin/coaches/pending": {

@@ -9,7 +9,7 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "termsOfService": "https://api.portfolio-online.ovh/terms",
+        "termsOfService": "https://api.crimpy.app/terms",
         "contact": {
             "name": "API Support",
             "email": "support@crimpy.com"
@@ -5520,7 +5520,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "api.portfolio-online.ovh",
+	Host:             "api.crimpy.app",
 	BasePath:         "/",
 	Schemes:          []string{"https"},
 	Title:            "Crimpy API",

@@ -26,7 +26,7 @@ import (
 // @title Crimpy API
 // @version 1.0
 // @description Backend API for Crimpy climbing training application
-// @termsOfService https://api.portfolio-online.ovh/terms
+// @termsOfService https://api.crimpy.app/terms
 
 // @contact.name API Support
 // @contact.email support@crimpy.com
@@ -34,7 +34,7 @@ import (
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @host api.portfolio-online.ovh
+// @host api.crimpy.app
 // @BasePath /
 // @schemes https
 
