@@ -158,6 +158,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 	for _, rd := range req.RepDatas {
 		_, err := h.queries.CreateRepData(context.Background(), db.CreateRepDataParams{
+			UserID:        userUUID,
 			AverageWeight: rd.AverageWeight,
 			SessionID:     session.ID,
 			IsRest:        rd.IsRest,
@@ -191,6 +192,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		}
 
 		_, err := h.queries.CreateAssessment(context.Background(), db.CreateAssessmentParams{
+			UserID:       userUUID,
 			Type:         a.Type,
 			RightValue:   rightValue,
 			LeftValue:    leftValue,
