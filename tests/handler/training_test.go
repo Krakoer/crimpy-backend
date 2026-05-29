@@ -313,13 +313,16 @@ func TestTrainingHandler_UpdateTraining_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
 	}
 
-	var updatedTraining map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&updatedTraining)
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
 
+	updatedTraining, ok := response["training"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected 'training' key in response, got %v", response)
+	}
 	if updatedTraining["Name"] != "Updated Name" {
 		t.Errorf("Expected name 'Updated Name', got %v", updatedTraining["Name"])
 	}
-
 	if updatedTraining["IsFavorite"] != true {
 		t.Errorf("Expected is_favorite to be true, got %v", updatedTraining["IsFavorite"])
 	}
