@@ -112,21 +112,33 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 }
 
 const getUserAssessments = `-- name: GetUserAssessments :many
-SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at FROM assessments a
+SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 WHERE s.user_id = $1
 ORDER BY s.date DESC
 `
 
-func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([]Assessment, error) {
+type GetUserAssessmentsRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Type         int32
+	RightValue   pgtype.Float4
+	LeftValue    pgtype.Float4
+	SessionID    pgtype.UUID
+	GripPosition pgtype.Int4
+	UpdatedAt    pgtype.Timestamptz
+	SessionDate  pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([]GetUserAssessmentsRow, error) {
 	rows, err := q.db.Query(ctx, getUserAssessments, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Assessment
+	var items []GetUserAssessmentsRow
 	for rows.Next() {
-		var i Assessment
+		var i GetUserAssessmentsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -136,6 +148,7 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 			&i.SessionID,
 			&i.GripPosition,
 			&i.UpdatedAt,
+			&i.SessionDate,
 		); err != nil {
 			return nil, err
 		}

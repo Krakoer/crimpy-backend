@@ -16,7 +16,7 @@ WHERE s.user_id = $1 AND a.type = $2
 ORDER BY s.date DESC;
 
 -- name: GetUserAssessments :many
-SELECT a.* FROM assessments a
+SELECT a.*, s.date AS session_date FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 WHERE s.user_id = $1
 ORDER BY s.date DESC;
