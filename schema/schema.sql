@@ -34,147 +34,111 @@ CREATE TABLE "sessions" (
   "repeater_rest_time"  INTEGER,
   "repeater_set_rest"   INTEGER,
   "repeater_split_hand" BOOLEAN,
-  -- Sync columns
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"          TIMESTAMPTZ,
-  "sync_version"        BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at"   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores the assessments the user has done, with the results.
 CREATE TABLE "assessments" (
-  "id"                UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"           UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "type"              INTEGER     NOT NULL,
-  "right_value"       REAL,
-  "left_value"        REAL,
-  "session_id"        UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
-  "grip_position"     INTEGER     DEFAULT 0,
-  -- Sync columns
-  "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"        TIMESTAMPTZ,
-  "sync_version"      BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "type"          INTEGER     NOT NULL,
+  "right_value"   REAL,
+  "left_value"    REAL,
+  "session_id"    UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
+  "grip_position" INTEGER     DEFAULT 0,
+  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores the repeaters trainings, including builtins and assessments.
 CREATE TABLE "repeaters" (
-  "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"              UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "sets"                 INTEGER     NOT NULL,
-  "reps"                 INTEGER     NOT NULL,
-  "worktime"             INTEGER     NOT NULL,
-  "resttime"             INTEGER     NOT NULL,
-  "set_rest"             INTEGER     NOT NULL,
-  "target_weight_right"  REAL,
-  "target_weight_left"   REAL,
-  "split_hand"           BOOLEAN     NOT NULL,
-  "grip_position"        INTEGER     NOT NULL DEFAULT 0,
-  -- Sync columns
-  "updated_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"           TIMESTAMPTZ,
-  "sync_version"         BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"                  UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "sets"                INTEGER     NOT NULL,
+  "reps"                INTEGER     NOT NULL,
+  "worktime"            INTEGER     NOT NULL,
+  "resttime"            INTEGER     NOT NULL,
+  "set_rest"            INTEGER     NOT NULL,
+  "target_weight_right" REAL,
+  "target_weight_left"  REAL,
+  "split_hand"          BOOLEAN     NOT NULL,
+  "grip_position"       INTEGER     NOT NULL DEFAULT 0,
+  "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores the available trainings, including builtins and assessments.
 CREATE TABLE "trainings" (
-  "id"                UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"           UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "name"              TEXT        NOT NULL,
-  "repeater_id"       UUID        REFERENCES "repeaters"("id") ON DELETE CASCADE,
-  "is_favorite"       BOOLEAN     NOT NULL DEFAULT false,
-  "is_assessment"     BOOLEAN     NOT NULL DEFAULT false,
-  -- Sync columns
-  "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"        TIMESTAMPTZ,
-  "sync_version"      BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "name"          TEXT        NOT NULL,
+  "repeater_id"   UUID        REFERENCES "repeaters"("id") ON DELETE CASCADE,
+  "is_favorite"   BOOLEAN     NOT NULL DEFAULT false,
+  "is_assessment" BOOLEAN     NOT NULL DEFAULT false,
+  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores the repetitions for the trainings.
 CREATE TABLE "rep_templates" (
-  "id"                UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"           UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "is_rest"           BOOLEAN     NOT NULL,
-  "right_hand"        BOOLEAN     NOT NULL,
-  "duration"          INTEGER     NOT NULL,
-  "training_id"       UUID        NOT NULL REFERENCES "trainings"("id") ON DELETE CASCADE,
-  "target_weight"     REAL        NOT NULL,
-  "index"             INTEGER     NOT NULL,
-  "grip_position"     INTEGER     NOT NULL DEFAULT 0,
-  -- Sync columns
-  "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"        TIMESTAMPTZ,
-  "sync_version"      BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "is_rest"       BOOLEAN     NOT NULL,
+  "right_hand"    BOOLEAN     NOT NULL,
+  "duration"      INTEGER     NOT NULL,
+  "training_id"   UUID        NOT NULL REFERENCES "trainings"("id") ON DELETE CASCADE,
+  "target_weight" REAL        NOT NULL,
+  "index"         INTEGER     NOT NULL,
+  "grip_position" INTEGER     NOT NULL DEFAULT 0,
+  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores the data for the repetitions done during a session.
 CREATE TABLE "rep_datas" (
-  "id"                UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"           UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "average_weight"    REAL        NOT NULL,
-  "session_id"        UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
-  "is_rest"           BOOLEAN     NOT NULL,
-  "right_hand"        BOOLEAN     NOT NULL,
-  "duration"          INTEGER     NOT NULL,
-  "target_weight"     REAL        NOT NULL,
-  "index"             INTEGER     NOT NULL,
-  "grip_position"     INTEGER     NOT NULL DEFAULT 0,
-  -- Sync columns
-  "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"        TIMESTAMPTZ,
-  "sync_version"      BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"             UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"        UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "average_weight" REAL        NOT NULL,
+  "session_id"     UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
+  "is_rest"        BOOLEAN     NOT NULL,
+  "right_hand"     BOOLEAN     NOT NULL,
+  "duration"       INTEGER     NOT NULL,
+  "target_weight"  REAL        NOT NULL,
+  "index"          INTEGER     NOT NULL,
+  "grip_position"  INTEGER     NOT NULL DEFAULT 0,
+  "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores the IDs of pinned builtin trainings
 CREATE TABLE "pinned_builtin_trainings" (
-  "builtin_training_id"     UUID        NOT NULL,
-  "user_id"                 UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  -- Sync columns
-  "updated_at"              TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"              TIMESTAMPTZ,
-  "sync_version"            BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("builtin_training_id")
+  "builtin_training_id" UUID        NOT NULL,
+  "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY ("builtin_training_id", "user_id")
 );
 
 -- Stores the saved sensor configs.
 CREATE TABLE "sensor_configs" (
-  "id"                UUID        NOT NULL,
-  "user_id"           UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "name"              TEXT        NOT NULL,
-  "index"             BIGINT      NOT NULL,
-  "tare"              REAL        NOT NULL,
-  "coef"              REAL        NOT NULL,
-  -- Sync columns
-  "updated_at"        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"        TIMESTAMPTZ,
-  "sync_version"      BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"         UUID        NOT NULL,
+  "user_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "name"       TEXT        NOT NULL,
+  "index"      BIGINT      NOT NULL,
+  "tare"       REAL        NOT NULL,
+  "coef"       REAL        NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 -- Stores custom weights for builtin trainings per user.
 CREATE TABLE "builtin_training_weights" (
-  "id"                    UUID        NOT NULL,
-  "user_id"               UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "builtin_traning_id"    UUID        NOT NULL,
-  "custom_weight_left"    REAL        NOT NULL,
-  "custom_weight_right"   REAL        NOT NULL,
-  -- Sync columns
-  "updated_at"            TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "deleted_at"            TIMESTAMPTZ,
-  "sync_version"          BIGINT      NOT NULL DEFAULT 1,
-  "server_updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"                  UUID        NOT NULL,
+  "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "builtin_traning_id"  UUID        NOT NULL,
+  "custom_weight_left"  REAL        NOT NULL,
+  "custom_weight_right" REAL        NOT NULL,
+  "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
@@ -385,13 +349,3 @@ CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings
 CREATE INDEX "sensor_configs_user_id_idx" ON "sensor_configs"("user_id");
 CREATE INDEX "builtin_training_weights_user_id_idx" ON "builtin_training_weights"("user_id");
 
--- Indexes for sync operations
-CREATE INDEX "sessions_user_sync_idx" ON "sessions"("user_id", "sync_version");
-CREATE INDEX "assessments_user_sync_idx" ON "assessments"("user_id", "sync_version");
-CREATE INDEX "trainings_user_sync_idx" ON "trainings"("user_id", "sync_version");
-CREATE INDEX "repeaters_user_sync_idx" ON "repeaters"("user_id", "sync_version");
-CREATE INDEX "rep_templates_user_sync_idx" ON "rep_templates"("user_id", "sync_version");
-CREATE INDEX "rep_datas_user_sync_idx" ON "rep_datas"("user_id", "sync_version");
-CREATE INDEX "pinned_builtin_trainings_user_sync_idx" ON "pinned_builtin_trainings"("user_id", "sync_version");
-CREATE INDEX "sensor_configs_user_sync_idx" ON "sensor_configs"("user_id", "sync_version");
-CREATE INDEX "builtin_training_weights_user_sync_idx" ON "builtin_training_weights"("user_id", "sync_version");
