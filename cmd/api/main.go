@@ -68,6 +68,9 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
+	sensorConfigHandler := handler.NewSensorConfigHandler(queries)
+	builtinWeightHandler := handler.NewBuiltinTrainingWeightHandler(queries)
+	pinnedHandler := handler.NewPinnedBuiltinTrainingHandler(queries)
 	coachHandler := handler.NewCoachHandler(queries, pool)
 	exerciseHandler := handler.NewExerciseHandler(queries, pool)
 	tagHandler := handler.NewTagHandler(queries, pool)
@@ -205,6 +208,23 @@ func main() {
 	api.Delete("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", programHandler.DeleteWeek)
 	api.Get("/user/programs/:program_id/weeks", programHandler.GetMyWeeks)
 	api.Get("/user/programs/:program_id/weeks/:week_number", programHandler.GetMyWeek)
+
+	// Sensor config routes
+	api.Post("/sensor-configs", sensorConfigHandler.CreateSensorConfig)
+	api.Get("/sensor-configs", sensorConfigHandler.GetSensorConfigs)
+	api.Put("/sensor-configs/:id", sensorConfigHandler.UpdateSensorConfig)
+	api.Delete("/sensor-configs/:id", sensorConfigHandler.DeleteSensorConfig)
+
+	// Builtin training weight routes
+	api.Post("/builtin-training-weights", builtinWeightHandler.CreateBuiltinTrainingWeight)
+	api.Get("/builtin-training-weights", builtinWeightHandler.GetBuiltinTrainingWeights)
+	api.Put("/builtin-training-weights/:id", builtinWeightHandler.UpdateBuiltinTrainingWeight)
+	api.Delete("/builtin-training-weights/:id", builtinWeightHandler.DeleteBuiltinTrainingWeight)
+
+	// Pinned builtin training routes
+	api.Post("/pinned-builtin-trainings", pinnedHandler.PinBuiltinTraining)
+	api.Get("/pinned-builtin-trainings", pinnedHandler.GetPinnedBuiltinTrainings)
+	api.Delete("/pinned-builtin-trainings/:builtin_training_id", pinnedHandler.UnpinBuiltinTraining)
 
 	// Admin routes
 	api.Get("/admin/coaches/pending", adminHandler.GetPendingCoaches)

@@ -206,9 +206,13 @@ func TestTrainingHandler_GetTraining_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
 	}
 
-	var training map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&training)
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
 
+	training, ok := response["training"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected 'training' key in response, got %v", response)
+	}
 	if training["Name"] != "Test Training" {
 		t.Errorf("Expected name 'Test Training', got %v", training["Name"])
 	}
