@@ -5,7 +5,6 @@ import (
 	"crimpy/backend/internal/database"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
-	"crimpy/backend/internal/handler/sync"
 	applogger "crimpy/backend/internal/logger"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
@@ -69,7 +68,6 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
-	syncHandler := sync.NewSyncHandler(queries)
 	coachHandler := handler.NewCoachHandler(queries, pool)
 	exerciseHandler := handler.NewExerciseHandler(queries, pool)
 	tagHandler := handler.NewTagHandler(queries, pool)
@@ -213,12 +211,6 @@ func main() {
 	api.Put("/admin/coaches/:id/reject", adminHandler.RejectCoach)
 	api.Get("/admin/users", adminHandler.ListUsers)
 	api.Delete("/admin/users/:id", adminHandler.DeleteUser)
-
-	// Sync routes
-	api.Get("/sync/summary", syncHandler.GetSummary)
-	api.Get("/sync/pull", syncHandler.Pull)
-	api.Post("/sync/push", syncHandler.Push)
-	api.Post("/sync/migrate", syncHandler.Migrate)
 
 	// Read port from environment or default to 3000
 	port := os.Getenv("PORT")
