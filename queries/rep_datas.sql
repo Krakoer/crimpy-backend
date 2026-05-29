@@ -1,7 +1,7 @@
 -- name: CreateRepData :one
 INSERT INTO rep_datas (
-  average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetRepData :one

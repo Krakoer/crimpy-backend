@@ -16,7 +16,7 @@ INSERT INTO repeaters (
   user_id, sets, reps, worktime, resttime, set_rest,
   target_weight_right, target_weight_left, split_hand, grip_position
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at, deleted_at, sync_version, server_updated_at
+RETURNING id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at
 `
 
 type CreateRepeaterParams struct {
@@ -59,9 +59,6 @@ func (q *Queries) CreateRepeater(ctx context.Context, arg CreateRepeaterParams) 
 		&i.SplitHand,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -76,7 +73,7 @@ func (q *Queries) DeleteRepeater(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getRepeater = `-- name: GetRepeater :one
-SELECT id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM repeaters WHERE id = $1
+SELECT id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at FROM repeaters WHERE id = $1
 `
 
 func (q *Queries) GetRepeater(ctx context.Context, id pgtype.UUID) (Repeater, error) {
@@ -95,9 +92,6 @@ func (q *Queries) GetRepeater(ctx context.Context, id pgtype.UUID) (Repeater, er
 		&i.SplitHand,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -107,7 +101,7 @@ UPDATE repeaters
 SET sets = $2, reps = $3, worktime = $4, resttime = $5, set_rest = $6,
     target_weight_right = $7, target_weight_left = $8, split_hand = $9, grip_position = $10
 WHERE id = $1
-RETURNING id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at, deleted_at, sync_version, server_updated_at
+RETURNING id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at
 `
 
 type UpdateRepeaterParams struct {
@@ -150,9 +144,6 @@ func (q *Queries) UpdateRepeater(ctx context.Context, arg UpdateRepeaterParams) 
 		&i.SplitHand,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }

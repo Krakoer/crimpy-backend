@@ -1,6 +1,6 @@
 -- name: CreateAssessment :one
-INSERT INTO assessments (type, right_value, left_value, session_id, grip_position)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO assessments (user_id, type, right_value, left_value, session_id, grip_position)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetAssessment :one

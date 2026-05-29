@@ -1,7 +1,7 @@
 -- name: CreateRepTemplate :one
 INSERT INTO rep_templates (
-  is_rest, right_hand, duration, training_id, target_weight, index, grip_position
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+  user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetRepTemplate :one

@@ -1,0 +1,99 @@
+info:
+  name: Create Repeater Session (Both Hands)
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/sessions"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Repeater 3x10 7s/3s both hands",
+        "notes": "3 sets of 10 reps, 7s on 3s off, 3min set rest",
+        "is_assessment": false,
+        "session_type": 0,
+        "duration": 900,
+        "repeater_sets": 3,
+        "repeater_reps": 10,
+        "repeater_work_time": 7000,
+        "repeater_rest_time": 3000,
+        "repeater_set_rest": 180000,
+        "repeater_split_hand": false,
+        "rep_datas": [
+          { "average_weight": 5.1, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 0, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 1, "grip_position": 0 },
+          { "average_weight": 5.2, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 2, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 3, "grip_position": 0 },
+          { "average_weight": 4.9, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 4, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 5, "grip_position": 0 },
+          { "average_weight": 5.0, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 6, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 7, "grip_position": 0 },
+          { "average_weight": 5.1, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 8, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 9, "grip_position": 0 },
+          { "average_weight": 4.8, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 10, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 11, "grip_position": 0 },
+          { "average_weight": 5.0, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 12, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 13, "grip_position": 0 },
+          { "average_weight": 5.2, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 14, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 15, "grip_position": 0 },
+          { "average_weight": 4.9, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 16, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 17, "grip_position": 0 },
+          { "average_weight": 5.1, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 5.0, "index": 18, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 180000, "target_weight": 0.0, "index": 19, "grip_position": 0 },
+          { "average_weight": 7.4, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 20, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 21, "grip_position": 0 },
+          { "average_weight": 7.6, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 22, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 23, "grip_position": 0 },
+          { "average_weight": 7.3, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 24, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 25, "grip_position": 0 },
+          { "average_weight": 7.5, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 26, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 27, "grip_position": 0 },
+          { "average_weight": 7.4, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 28, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 29, "grip_position": 0 },
+          { "average_weight": 7.6, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 30, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 31, "grip_position": 0 },
+          { "average_weight": 7.2, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 32, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 33, "grip_position": 0 },
+          { "average_weight": 7.5, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 34, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 35, "grip_position": 0 },
+          { "average_weight": 7.3, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 36, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0, "index": 37, "grip_position": 0 },
+          { "average_weight": 7.6, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 7.5, "index": 38, "grip_position": 0 },
+          { "average_weight": 0.0, "is_rest": true,  "right_hand": true, "duration": 180000, "target_weight": 0.0, "index": 39, "grip_position": 0 },
+          { "average_weight": 9.9,  "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 40, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 41, "grip_position": 0 },
+          { "average_weight": 10.1, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 42, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 43, "grip_position": 0 },
+          { "average_weight": 9.8,  "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 44, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 45, "grip_position": 0 },
+          { "average_weight": 10.0, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 46, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 47, "grip_position": 0 },
+          { "average_weight": 10.2, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 48, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 49, "grip_position": 0 },
+          { "average_weight": 9.7,  "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 50, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 51, "grip_position": 0 },
+          { "average_weight": 10.1, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 52, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 53, "grip_position": 0 },
+          { "average_weight": 9.9,  "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 54, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 55, "grip_position": 0 },
+          { "average_weight": 10.0, "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 56, "grip_position": 0 },
+          { "average_weight": 0.0,  "is_rest": true,  "right_hand": true, "duration": 3000, "target_weight": 0.0,  "index": 57, "grip_position": 0 },
+          { "average_weight": 9.8,  "is_rest": false, "right_hand": true, "duration": 7000, "target_weight": 10.0, "index": 58, "grip_position": 0 }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("sessionId", res.body.ID);
+        }

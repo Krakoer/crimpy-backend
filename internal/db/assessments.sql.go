@@ -12,12 +12,13 @@ import (
 )
 
 const createAssessment = `-- name: CreateAssessment :one
-INSERT INTO assessments (type, right_value, left_value, session_id, grip_position)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, type, right_value, left_value, session_id, grip_position, updated_at, deleted_at, sync_version, server_updated_at
+INSERT INTO assessments (user_id, type, right_value, left_value, session_id, grip_position)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, user_id, type, right_value, left_value, session_id, grip_position, updated_at
 `
 
 type CreateAssessmentParams struct {
+	UserID       pgtype.UUID
 	Type         int32
 	RightValue   pgtype.Float4
 	LeftValue    pgtype.Float4
@@ -27,6 +28,7 @@ type CreateAssessmentParams struct {
 
 func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentParams) (Assessment, error) {
 	row := q.db.QueryRow(ctx, createAssessment,
+		arg.UserID,
 		arg.Type,
 		arg.RightValue,
 		arg.LeftValue,
@@ -43,9 +45,6 @@ func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentPara
 		&i.SessionID,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -60,7 +59,7 @@ func (q *Queries) DeleteAssessment(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getAssessment = `-- name: GetAssessment :one
-SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM assessments WHERE id = $1
+SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at FROM assessments WHERE id = $1
 `
 
 func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment, error) {
@@ -75,15 +74,12 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 		&i.SessionID,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
 
 const getSessionAssessments = `-- name: GetSessionAssessments :many
-SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM assessments WHERE session_id = $1
+SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at FROM assessments WHERE session_id = $1
 `
 
 func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UUID) ([]Assessment, error) {
@@ -104,9 +100,6 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 			&i.SessionID,
 			&i.GripPosition,
 			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.SyncVersion,
-			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -119,7 +112,7 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 }
 
 const getUserAssessments = `-- name: GetUserAssessments :many
-SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, a.deleted_at, a.sync_version, a.server_updated_at FROM assessments a
+SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 WHERE s.user_id = $1
 ORDER BY s.date DESC
@@ -143,9 +136,6 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 			&i.SessionID,
 			&i.GripPosition,
 			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.SyncVersion,
-			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -158,7 +148,7 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 }
 
 const getUserAssessmentsByType = `-- name: GetUserAssessmentsByType :many
-SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, a.deleted_at, a.sync_version, a.server_updated_at FROM assessments a
+SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 WHERE s.user_id = $1 AND a.type = $2
 ORDER BY s.date DESC
@@ -187,9 +177,6 @@ func (q *Queries) GetUserAssessmentsByType(ctx context.Context, arg GetUserAsses
 			&i.SessionID,
 			&i.GripPosition,
 			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.SyncVersion,
-			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}

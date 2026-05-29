@@ -13,12 +13,13 @@ import (
 
 const createRepTemplate = `-- name: CreateRepTemplate :one
 INSERT INTO rep_templates (
-  is_rest, right_hand, duration, training_id, target_weight, index, grip_position
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at
+  user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at
 `
 
 type CreateRepTemplateParams struct {
+	UserID       pgtype.UUID
 	IsRest       bool
 	RightHand    bool
 	Duration     int32
@@ -30,6 +31,7 @@ type CreateRepTemplateParams struct {
 
 func (q *Queries) CreateRepTemplate(ctx context.Context, arg CreateRepTemplateParams) (RepTemplate, error) {
 	row := q.db.QueryRow(ctx, createRepTemplate,
+		arg.UserID,
 		arg.IsRest,
 		arg.RightHand,
 		arg.Duration,
@@ -50,9 +52,6 @@ func (q *Queries) CreateRepTemplate(ctx context.Context, arg CreateRepTemplatePa
 		&i.Index,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
@@ -76,7 +75,7 @@ func (q *Queries) DeleteTrainingRepTemplates(ctx context.Context, trainingID pgt
 }
 
 const getRepTemplate = `-- name: GetRepTemplate :one
-SELECT id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_templates WHERE id = $1
+SELECT id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at FROM rep_templates WHERE id = $1
 `
 
 func (q *Queries) GetRepTemplate(ctx context.Context, id pgtype.UUID) (RepTemplate, error) {
@@ -93,15 +92,12 @@ func (q *Queries) GetRepTemplate(ctx context.Context, id pgtype.UUID) (RepTempla
 		&i.Index,
 		&i.GripPosition,
 		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.SyncVersion,
-		&i.ServerUpdatedAt,
 	)
 	return i, err
 }
 
 const getTrainingRepTemplates = `-- name: GetTrainingRepTemplates :many
-SELECT id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at, deleted_at, sync_version, server_updated_at FROM rep_templates WHERE training_id = $1 ORDER BY index
+SELECT id, user_id, is_rest, right_hand, duration, training_id, target_weight, index, grip_position, updated_at FROM rep_templates WHERE training_id = $1 ORDER BY index
 `
 
 func (q *Queries) GetTrainingRepTemplates(ctx context.Context, trainingID pgtype.UUID) ([]RepTemplate, error) {
@@ -124,9 +120,6 @@ func (q *Queries) GetTrainingRepTemplates(ctx context.Context, trainingID pgtype
 			&i.Index,
 			&i.GripPosition,
 			&i.UpdatedAt,
-			&i.DeletedAt,
-			&i.SyncVersion,
-			&i.ServerUpdatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -23,10 +23,10 @@ variables:
   - name: userId
     value: ""
   - name: user
-    value: krakoer@proton.me
+    value: sophie@crimpy.app
   - name: userPwd
     value: Bonjour
   - name: coachUsername
-    value: Adamnondra@crimpy.app
+    value: adamondra@crimpy.app
   - name: coachPwd
     value: Bonjour

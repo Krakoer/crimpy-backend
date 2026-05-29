@@ -9,17 +9,14 @@ import (
 )
 
 type Assessment struct {
-	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	Type            int32
-	RightValue      pgtype.Float4
-	LeftValue       pgtype.Float4
-	SessionID       pgtype.UUID
-	GripPosition    pgtype.Int4
-	UpdatedAt       pgtype.Timestamptz
-	DeletedAt       pgtype.Timestamptz
-	SyncVersion     int64
-	ServerUpdatedAt pgtype.Timestamptz
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Type         int32
+	RightValue   pgtype.Float4
+	LeftValue    pgtype.Float4
+	SessionID    pgtype.UUID
+	GripPosition pgtype.Int4
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type BuiltinTrainingWeight struct {
@@ -29,9 +26,6 @@ type BuiltinTrainingWeight struct {
 	CustomWeightLeft  float32
 	CustomWeightRight float32
 	UpdatedAt         pgtype.Timestamptz
-	DeletedAt         pgtype.Timestamptz
-	SyncVersion       int64
-	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type CoachEnrollment struct {
@@ -148,42 +142,33 @@ type PinnedBuiltinTraining struct {
 	BuiltinTrainingID pgtype.UUID
 	UserID            pgtype.UUID
 	UpdatedAt         pgtype.Timestamptz
-	DeletedAt         pgtype.Timestamptz
-	SyncVersion       int64
-	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type RepData struct {
-	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	AverageWeight   float32
-	SessionID       pgtype.UUID
-	IsRest          bool
-	RightHand       bool
-	Duration        int32
-	TargetWeight    float32
-	Index           int32
-	GripPosition    int32
-	UpdatedAt       pgtype.Timestamptz
-	DeletedAt       pgtype.Timestamptz
-	SyncVersion     int64
-	ServerUpdatedAt pgtype.Timestamptz
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	AverageWeight float32
+	SessionID     pgtype.UUID
+	IsRest        bool
+	RightHand     bool
+	Duration      int32
+	TargetWeight  float32
+	Index         int32
+	GripPosition  int32
+	UpdatedAt     pgtype.Timestamptz
 }
 
 type RepTemplate struct {
-	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	IsRest          bool
-	RightHand       bool
-	Duration        int32
-	TrainingID      pgtype.UUID
-	TargetWeight    float32
-	Index           int32
-	GripPosition    int32
-	UpdatedAt       pgtype.Timestamptz
-	DeletedAt       pgtype.Timestamptz
-	SyncVersion     int64
-	ServerUpdatedAt pgtype.Timestamptz
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	IsRest       bool
+	RightHand    bool
+	Duration     int32
+	TrainingID   pgtype.UUID
+	TargetWeight float32
+	Index        int32
+	GripPosition int32
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type Repeater struct {
@@ -199,22 +184,16 @@ type Repeater struct {
 	SplitHand         bool
 	GripPosition      int32
 	UpdatedAt         pgtype.Timestamptz
-	DeletedAt         pgtype.Timestamptz
-	SyncVersion       int64
-	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type SensorConfig struct {
-	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	Name            string
-	Index           int64
-	Tare            float32
-	Coef            float32
-	UpdatedAt       pgtype.Timestamptz
-	DeletedAt       pgtype.Timestamptz
-	SyncVersion     int64
-	ServerUpdatedAt pgtype.Timestamptz
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Name      string
+	Index     int64
+	Tare      float32
+	Coef      float32
+	UpdatedAt pgtype.Timestamptz
 }
 
 type Session struct {
@@ -233,9 +212,6 @@ type Session struct {
 	RepeaterSetRest   pgtype.Int4
 	RepeaterSplitHand pgtype.Bool
 	UpdatedAt         pgtype.Timestamptz
-	DeletedAt         pgtype.Timestamptz
-	SyncVersion       int64
-	ServerUpdatedAt   pgtype.Timestamptz
 }
 
 type Tag struct {
@@ -249,16 +225,13 @@ type Tag struct {
 }
 
 type Training struct {
-	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	Name            string
-	RepeaterID      pgtype.UUID
-	IsFavorite      bool
-	IsAssessment    bool
-	UpdatedAt       pgtype.Timestamptz
-	DeletedAt       pgtype.Timestamptz
-	SyncVersion     int64
-	ServerUpdatedAt pgtype.Timestamptz
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Name         string
+	RepeaterID   pgtype.UUID
+	IsFavorite   bool
+	IsAssessment bool
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type User struct {
