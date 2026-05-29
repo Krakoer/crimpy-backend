@@ -38,8 +38,9 @@ type RepTemplateRequest struct {
 }
 
 type UpdateTrainingRequest struct {
-	Name       string `json:"name"`
-	IsFavorite bool   `json:"is_favorite"`
+	Name         string               `json:"name"`
+	IsFavorite   bool                 `json:"is_favorite"`
+	RepTemplates []RepTemplateRequest `json:"rep_templates,omitempty"`
 }
 
 type TrainingResponse struct {
@@ -256,7 +257,35 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
-	return c.JSON(updated)
+	if req.RepTemplates != nil {
+		if err := h.queries.DeleteTrainingRepTemplates(context.Background(), trainingUUID); err != nil {
+			slog.Error("failed to delete rep templates", "user_id", userID, "training_id", idStr, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update rep templates"})
+		}
+		for _, rt := range req.RepTemplates {
+			_, err := h.queries.CreateRepTemplate(context.Background(), db.CreateRepTemplateParams{
+				UserID:       userUUID,
+				IsRest:       rt.IsRest,
+				RightHand:    rt.RightHand,
+				Duration:     rt.Duration,
+				TrainingID:   trainingUUID,
+				TargetWeight: rt.TargetWeight,
+				Index:        rt.Index,
+				GripPosition: rt.GripPosition,
+			})
+			if err != nil {
+				slog.Error("failed to create rep template", "user_id", userID, "training_id", idStr, "error", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update rep templates"})
+			}
+		}
+	}
+
+	repTemplates, _ := h.queries.GetTrainingRepTemplates(context.Background(), updated.ID)
+
+	return c.JSON(fiber.Map{
+		"training":      updated,
+		"rep_templates": repTemplates,
+	})
 }
 
 // DeleteTraining godoc
