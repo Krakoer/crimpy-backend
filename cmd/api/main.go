@@ -68,6 +68,7 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
 	repeaterHandler := handler.NewRepeaterHandler(queries)
+	assessmentHandler := handler.NewAssessmentHandler(queries)
 	sensorConfigHandler := handler.NewSensorConfigHandler(queries)
 	builtinWeightHandler := handler.NewBuiltinTrainingWeightHandler(queries)
 	pinnedHandler := handler.NewPinnedBuiltinTrainingHandler(queries)
@@ -141,6 +142,10 @@ func main() {
 	api.Get("/trainings/:id", trainingHandler.GetTraining)
 	api.Put("/trainings/:id", trainingHandler.UpdateTraining)
 	api.Delete("/trainings/:id", trainingHandler.DeleteTraining)
+
+	// Assessment routes
+	api.Get("/assessments", assessmentHandler.GetAssessments)
+	api.Delete("/assessments/:id", assessmentHandler.DeleteAssessment)
 
 	// Session routes
 	api.Post("/sessions", sessionHandler.CreateSession)
