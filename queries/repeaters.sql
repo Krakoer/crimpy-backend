@@ -8,6 +8,9 @@ RETURNING *;
 -- name: GetRepeater :one
 SELECT * FROM repeaters WHERE id = $1;
 
+-- name: GetUserRepeaters :many
+SELECT * FROM repeaters WHERE user_id = $1 ORDER BY updated_at DESC;
+
 -- name: UpdateRepeater :one
 UPDATE repeaters
 SET sets = $2, reps = $3, worktime = $4, resttime = $5, set_rest = $6,

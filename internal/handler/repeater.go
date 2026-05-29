@@ -112,6 +112,37 @@ func (h *RepeaterHandler) CreateRepeater(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(repeater)
 }
 
+// GetRepeaters godoc
+// @Summary Get all repeater configurations
+// @Description Retrieve all repeater configurations for the authenticated user
+// @Tags Repeater
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} RepeaterResponse "List of repeaters"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/repeaters [get]
+func (h *RepeaterHandler) GetRepeaters(c fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(userID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	repeaters, err := h.queries.GetUserRepeaters(context.Background(), userUUID)
+	if err != nil {
+		slog.Error("failed to retrieve repeaters", "user_id", userID, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve repeaters"})
+	}
+
+	return c.JSON(repeaters)
+}
+
 // GetRepeater godoc
 // @Summary Get a repeater by ID
 // @Description Retrieve a specific repeater configuration by ID

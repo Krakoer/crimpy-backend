@@ -96,6 +96,43 @@ func (q *Queries) GetRepeater(ctx context.Context, id pgtype.UUID) (Repeater, er
 	return i, err
 }
 
+const getUserRepeaters = `-- name: GetUserRepeaters :many
+SELECT id, user_id, sets, reps, worktime, resttime, set_rest, target_weight_right, target_weight_left, split_hand, grip_position, updated_at FROM repeaters WHERE user_id = $1 ORDER BY updated_at DESC
+`
+
+func (q *Queries) GetUserRepeaters(ctx context.Context, userID pgtype.UUID) ([]Repeater, error) {
+	rows, err := q.db.Query(ctx, getUserRepeaters, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Repeater
+	for rows.Next() {
+		var i Repeater
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Sets,
+			&i.Reps,
+			&i.Worktime,
+			&i.Resttime,
+			&i.SetRest,
+			&i.TargetWeightRight,
+			&i.TargetWeightLeft,
+			&i.SplitHand,
+			&i.GripPosition,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRepeater = `-- name: UpdateRepeater :one
 UPDATE repeaters
 SET sets = $2, reps = $3, worktime = $4, resttime = $5, set_rest = $6,

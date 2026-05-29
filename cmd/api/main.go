@@ -148,6 +148,7 @@ func main() {
 
 	// Repeater routes
 	api.Post("/repeaters", repeaterHandler.CreateRepeater)
+	api.Get("/repeaters", repeaterHandler.GetRepeaters)
 	api.Get("/repeaters/:id", repeaterHandler.GetRepeater)
 	api.Put("/repeaters/:id", repeaterHandler.UpdateRepeater)
 	api.Delete("/repeaters/:id", repeaterHandler.DeleteRepeater)
