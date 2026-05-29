@@ -103,22 +103,21 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
 	}
 
-	if len(req.RepTemplates) > 0 {
-		for _, rt := range req.RepTemplates {
-			_, err := h.queries.CreateRepTemplate(context.Background(), db.CreateRepTemplateParams{
-				IsRest:       rt.IsRest,
-				RightHand:    rt.RightHand,
-				Duration:     rt.Duration,
-				TrainingID:   training.ID,
-				TargetWeight: rt.TargetWeight,
-				Index:        rt.Index,
-				GripPosition: rt.GripPosition,
-			})
-			if err != nil {
-				slog.Error("failed to create rep template", "user_id", userID, "training_id", training.ID, "error", err)
-				_ = h.queries.DeleteTraining(context.Background(), training.ID)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create rep templates"})
-			}
+	for _, rt := range req.RepTemplates {
+		_, err := h.queries.CreateRepTemplate(context.Background(), db.CreateRepTemplateParams{
+			UserID:       userUUID,
+			IsRest:       rt.IsRest,
+			RightHand:    rt.RightHand,
+			Duration:     rt.Duration,
+			TrainingID:   training.ID,
+			TargetWeight: rt.TargetWeight,
+			Index:        rt.Index,
+			GripPosition: rt.GripPosition,
+		})
+		if err != nil {
+			slog.Error("failed to create rep template", "user_id", userID, "training_id", training.ID, "error", err)
+			_ = h.queries.DeleteTraining(context.Background(), training.ID)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create rep templates"})
 		}
 	}
 
@@ -194,7 +193,12 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	return c.JSON(training)
+	repTemplates, _ := h.queries.GetTrainingRepTemplates(context.Background(), training.ID)
+
+	return c.JSON(fiber.Map{
+		"training":      training,
+		"rep_templates": repTemplates,
+	})
 }
 
 // UpdateTraining godoc
