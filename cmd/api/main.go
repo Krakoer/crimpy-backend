@@ -144,6 +144,7 @@ func main() {
 	api.Delete("/trainings/:id", trainingHandler.DeleteTraining)
 
 	// Assessment routes
+	api.Post("/assessments", assessmentHandler.CreateAssessment)
 	api.Get("/assessments", assessmentHandler.GetAssessments)
 	api.Delete("/assessments/:id", assessmentHandler.DeleteAssessment)
 

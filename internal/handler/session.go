@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,6 +24,7 @@ func NewSessionHandler(queries *db.Queries) *SessionHandler {
 type CreateSessionRequest struct {
 	Name              string              `json:"name"`
 	Notes             string              `json:"notes"`
+	Date              string              `json:"date,omitempty"`
 	IsAssessment      bool                `json:"is_assessment"`
 	SessionType       int32               `json:"session_type"`
 	Duration          int32               `json:"duration"`
@@ -109,6 +111,15 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
+	var sessionDate pgtype.Timestamptz
+	if req.Date != "" {
+		if err := sessionDate.Scan(req.Date); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
+		}
+	} else {
+		sessionDate = pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	}
+
 	var repeaterSets, repeaterReps, repeaterWorkTime, repeaterRestTime, repeaterSetRest pgtype.Int4
 	var repeaterSplitHand pgtype.Bool
 
@@ -141,6 +152,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		UserID:            userUUID,
 		Name:              req.Name,
 		Notes:             req.Notes,
+		Date:              sessionDate,
 		IsAssessment:      req.IsAssessment,
 		SessionType:       req.SessionType,
 		Duration:          req.Duration,

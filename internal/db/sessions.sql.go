@@ -13,11 +13,11 @@ import (
 
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
-  user_id, name, notes, is_assessment, session_type, duration,
+  user_id, name, notes, is_assessment, session_type, duration, date,
   repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
   repeater_set_rest, repeater_split_hand
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 ) RETURNING id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at
 `
 
@@ -28,6 +28,7 @@ type CreateSessionParams struct {
 	IsAssessment      bool
 	SessionType       int32
 	Duration          int32
+	Date              pgtype.Timestamptz
 	RepeaterSets      pgtype.Int4
 	RepeaterReps      pgtype.Int4
 	RepeaterWorkTime  pgtype.Int4
@@ -44,6 +45,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		arg.IsAssessment,
 		arg.SessionType,
 		arg.Duration,
+		arg.Date,
 		arg.RepeaterSets,
 		arg.RepeaterReps,
 		arg.RepeaterWorkTime,
