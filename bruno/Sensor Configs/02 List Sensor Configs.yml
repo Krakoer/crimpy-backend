@@ -1,0 +1,10 @@
+info:
+  name: List Sensor Configs
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/sensor-configs"
+  body:
+    type: none

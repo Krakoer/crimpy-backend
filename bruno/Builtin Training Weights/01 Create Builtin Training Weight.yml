@@ -1,0 +1,28 @@
+info:
+  name: Create Builtin Training Weight
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/builtin-training-weights"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "id": "00000000-0000-0000-0000-000000000002",
+        "builtin_training_id": "{{builtinTrainingId}}",
+        "custom_weight_left": 5.0,
+        "custom_weight_right": 7.5
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("builtinTrainingWeightId", res.body.ID);
+        }

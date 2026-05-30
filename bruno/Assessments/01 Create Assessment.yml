@@ -1,0 +1,29 @@
+info:
+  name: Create Assessment
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/assessments"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "session_id": "{{sessionId}}",
+        "type": 1,
+        "right_value": 48.5,
+        "left_value": 44.2,
+        "grip_position": 0
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("assessmentId", res.body.ID);
+        }

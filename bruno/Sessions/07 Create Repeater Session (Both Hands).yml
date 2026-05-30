@@ -1,7 +1,7 @@
 info:
   name: Create Repeater Session (Both Hands)
   type: http
-  seq: 6
+  seq: 7
 
 http:
   method: POST

@@ -15,6 +15,7 @@ http:
       {
         "name": "Morning hang session",
         "notes": "Felt strong today",
+        "date": "2026-05-28T07:30:00Z",
         "is_assessment": false,
         "session_type": 0,
         "duration": 3600,
@@ -37,11 +38,12 @@ http:
             "index": 1,
             "grip_position": 0
           }
-        ]
+        ],
+        "assessments": []
       }
   auth:
     type: bearer
-    token: "{{authToken}}"
+    token: "{{authTokenUser}}"
 
 runtime:
   scripts:

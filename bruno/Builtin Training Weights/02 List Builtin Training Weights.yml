@@ -1,0 +1,10 @@
+info:
+  name: List Builtin Training Weights
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/builtin-training-weights"
+  body:
+    type: none

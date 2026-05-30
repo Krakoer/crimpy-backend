@@ -1,0 +1,9 @@
+info:
+  name: Pinned Builtin Trainings
+  type: folder
+  seq: 1
+
+request:
+  auth:
+    type: bearer
+    token: "{{authTokenUser}}"

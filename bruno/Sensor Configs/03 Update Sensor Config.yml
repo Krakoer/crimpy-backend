@@ -1,0 +1,20 @@
+info:
+  name: Update Sensor Config
+  type: http
+  seq: 3
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/sensor-configs/{{sensorConfigId}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Left sensor (calibrated)",
+        "index": 0,
+        "tare": 0.15,
+        "coef": 1.041
+      }

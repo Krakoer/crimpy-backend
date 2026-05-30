@@ -1,0 +1,9 @@
+info:
+  name: Sensor Configs
+  type: folder
+  seq: 1
+
+request:
+  auth:
+    type: bearer
+    token: "{{authTokenUser}}"

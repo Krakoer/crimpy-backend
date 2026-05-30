@@ -1,0 +1,51 @@
+info:
+  name: Create Assessment Session
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/sessions"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Max Hang Assessment",
+        "notes": "Monthly strength test",
+        "date": "2026-05-28T10:00:00Z",
+        "is_assessment": true,
+        "session_type": 0,
+        "duration": 1800,
+        "rep_datas": [
+          { "average_weight": 24.3, "is_rest": false, "right_hand": true,  "duration": 7000, "target_weight": 25.0, "index": 0, "grip_position": 0 },
+          { "average_weight": 22.1, "is_rest": false, "right_hand": false, "duration": 7000, "target_weight": 25.0, "index": 1, "grip_position": 0 }
+        ],
+        "assessments": [
+          {
+            "type": 0,
+            "right_value": 24.3,
+            "left_value": 22.1,
+            "grip_position": 0
+          },
+          {
+            "type": 1,
+            "right_value": 48.5,
+            "left_value": 44.2,
+            "grip_position": 0
+          }
+        ]
+      }
+  auth:
+    type: bearer
+    token: "{{authTokenUser}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("sessionId", res.body.ID);
+        }

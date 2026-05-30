@@ -1,0 +1,18 @@
+info:
+  name: Update Builtin Training Weight
+  type: http
+  seq: 3
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/builtin-training-weights/{{builtinTrainingWeightId}}"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "custom_weight_left": 6.0,
+        "custom_weight_right": 8.0
+      }

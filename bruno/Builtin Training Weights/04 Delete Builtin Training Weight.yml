@@ -1,0 +1,10 @@
+info:
+  name: Delete Builtin Training Weight
+  type: http
+  seq: 4
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/builtin-training-weights/{{builtinTrainingWeightId}}"
+  body:
+    type: none

@@ -1,0 +1,29 @@
+info:
+  name: Create Sensor Config
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/sensor-configs"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Left sensor",
+        "index": 0,
+        "tare": 0.12,
+        "coef": 1.034
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("sensorConfigId", res.body.ID);
+        }

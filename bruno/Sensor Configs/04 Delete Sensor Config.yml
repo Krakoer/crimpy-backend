@@ -1,0 +1,10 @@
+info:
+  name: Delete Sensor Config
+  type: http
+  seq: 4
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/sensor-configs/{{sensorConfigId}}"
+  body:
+    type: none
