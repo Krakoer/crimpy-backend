@@ -113,9 +113,14 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 	var sessionDate pgtype.Timestamptz
 	if req.Date != "" {
-		if err := sessionDate.Scan(req.Date); err != nil {
+		t, err := time.Parse(time.RFC3339Nano, req.Date)
+		if err != nil {
+			t, err = time.Parse(time.RFC3339, req.Date)
+		}
+		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
 		}
+		sessionDate = pgtype.Timestamptz{Time: t.UTC(), Valid: true}
 	} else {
 		sessionDate = pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
 	}
@@ -248,6 +253,9 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
 	}
 
+	if sessions == nil {
+		sessions = []db.Session{}
+	}
 	return c.JSON(sessions)
 }
 

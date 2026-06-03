@@ -69,22 +69,10 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 		t.Logf("Warning: Failed to clean up sessions: %v", err)
 	}
 
-	// Delete rep_templates
-	_, err = pool.Exec(ctx, "DELETE FROM rep_templates WHERE training_id IN (SELECT id FROM trainings WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%'))")
+	// Delete coach_trainings (items cascade)
+	_, err = pool.Exec(ctx, "DELETE FROM coach_trainings WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
 	if err != nil {
-		t.Logf("Warning: Failed to clean up rep_templates: %v", err)
-	}
-
-	// Delete trainings
-	_, err = pool.Exec(ctx, "DELETE FROM trainings WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
-	if err != nil {
-		t.Logf("Warning: Failed to clean up trainings: %v", err)
-	}
-
-	// Delete repeaters
-	_, err = pool.Exec(ctx, "DELETE FROM repeaters WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
-	if err != nil {
-		t.Logf("Warning: Failed to clean up repeaters: %v", err)
+		t.Logf("Warning: Failed to clean up coach_trainings: %v", err)
 	}
 
 	// Delete programs (slots cascade)
@@ -115,25 +103,12 @@ type HandlerConfig struct {
 		ValidateCoach(fiber.Ctx) error
 		RejectCoach(fiber.Ctx) error
 	}
-	TrainingHandler interface {
-		CreateTraining(fiber.Ctx) error
-		GetTrainings(fiber.Ctx) error
-		GetTraining(fiber.Ctx) error
-		UpdateTraining(fiber.Ctx) error
-		DeleteTraining(fiber.Ctx) error
-	}
 	SessionHandler interface {
 		CreateSession(fiber.Ctx) error
 		GetSessions(fiber.Ctx) error
 		GetSession(fiber.Ctx) error
 		UpdateSession(fiber.Ctx) error
 		DeleteSession(fiber.Ctx) error
-	}
-	RepeaterHandler interface {
-		CreateRepeater(fiber.Ctx) error
-		GetRepeater(fiber.Ctx) error
-		UpdateRepeater(fiber.Ctx) error
-		DeleteRepeater(fiber.Ctx) error
 	}
 	ExerciseHandler interface {
 		CreateExercise(fiber.Ctx) error
@@ -193,27 +168,12 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Put("/auth/change-password", config.AuthHandler.ChangePassword)
 	}
 
-	if config.TrainingHandler != nil {
-		api.Post("/trainings", config.TrainingHandler.CreateTraining)
-		api.Get("/trainings", config.TrainingHandler.GetTrainings)
-		api.Get("/trainings/:id", config.TrainingHandler.GetTraining)
-		api.Put("/trainings/:id", config.TrainingHandler.UpdateTraining)
-		api.Delete("/trainings/:id", config.TrainingHandler.DeleteTraining)
-	}
-
 	if config.SessionHandler != nil {
 		api.Post("/sessions", config.SessionHandler.CreateSession)
 		api.Get("/sessions", config.SessionHandler.GetSessions)
 		api.Get("/sessions/:id", config.SessionHandler.GetSession)
 		api.Put("/sessions/:id", config.SessionHandler.UpdateSession)
 		api.Delete("/sessions/:id", config.SessionHandler.DeleteSession)
-	}
-
-	if config.RepeaterHandler != nil {
-		api.Post("/repeaters", config.RepeaterHandler.CreateRepeater)
-		api.Get("/repeaters/:id", config.RepeaterHandler.GetRepeater)
-		api.Put("/repeaters/:id", config.RepeaterHandler.UpdateRepeater)
-		api.Delete("/repeaters/:id", config.RepeaterHandler.DeleteRepeater)
 	}
 
 	if config.AdminHandler != nil {

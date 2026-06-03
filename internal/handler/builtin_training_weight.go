@@ -112,6 +112,9 @@ func (h *BuiltinTrainingWeightHandler) GetBuiltinTrainingWeights(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve builtin training weights"})
 	}
 
+	if weights == nil {
+		weights = []db.BuiltinTrainingWeight{}
+	}
 	return c.JSON(weights)
 }
 

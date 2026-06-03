@@ -113,6 +113,9 @@ func (h *SensorConfigHandler) GetSensorConfigs(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sensor configs"})
 	}
 
+	if configs == nil {
+		configs = []db.SensorConfig{}
+	}
 	return c.JSON(configs)
 }
 

@@ -98,6 +98,9 @@ func (h *PinnedBuiltinTrainingHandler) GetPinnedBuiltinTrainings(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve pinned builtin trainings"})
 	}
 
+	if pinned == nil {
+		pinned = []db.PinnedBuiltinTraining{}
+	}
 	return c.JSON(pinned)
 }
 

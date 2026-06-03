@@ -51,49 +51,6 @@ CREATE TABLE "assessments" (
   PRIMARY KEY ("id")
 );
 
--- Stores the repeaters trainings, including builtins and assessments.
-CREATE TABLE "repeaters" (
-  "id"                  UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "sets"                INTEGER     NOT NULL,
-  "reps"                INTEGER     NOT NULL,
-  "worktime"            INTEGER     NOT NULL,
-  "resttime"            INTEGER     NOT NULL,
-  "set_rest"            INTEGER     NOT NULL,
-  "target_weight_right" REAL,
-  "target_weight_left"  REAL,
-  "split_hand"          BOOLEAN     NOT NULL,
-  "grip_position"       INTEGER     NOT NULL DEFAULT 0,
-  "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
-);
-
--- Stores the available trainings, including builtins and assessments.
-CREATE TABLE "trainings" (
-  "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "name"          TEXT        NOT NULL,
-  "repeater_id"   UUID        REFERENCES "repeaters"("id") ON DELETE CASCADE,
-  "is_favorite"   BOOLEAN     NOT NULL DEFAULT false,
-  "is_assessment" BOOLEAN     NOT NULL DEFAULT false,
-  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
-);
-
--- Stores the repetitions for the trainings.
-CREATE TABLE "rep_templates" (
-  "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "is_rest"       BOOLEAN     NOT NULL,
-  "right_hand"    BOOLEAN     NOT NULL,
-  "duration"      INTEGER     NOT NULL,
-  "training_id"   UUID        NOT NULL REFERENCES "trainings"("id") ON DELETE CASCADE,
-  "target_weight" REAL        NOT NULL,
-  "index"         INTEGER     NOT NULL,
-  "grip_position" INTEGER     NOT NULL DEFAULT 0,
-  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
-);
 
 -- Stores the data for the repetitions done during a session.
 CREATE TABLE "rep_datas" (
@@ -345,11 +302,6 @@ CREATE INDEX "coach_program_session_overrides_session_id_idx" ON "coach_program_
 CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
 CREATE INDEX "assessments_session_id_idx" ON "assessments"("session_id");
 CREATE INDEX "assessments_user_id_idx" ON "assessments"("user_id");
-CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
-CREATE INDEX "trainings_repeater_id_idx" ON "trainings"("repeater_id");
-CREATE INDEX "repeaters_user_id_idx" ON "repeaters"("user_id");
-CREATE INDEX "rep_templates_training_id_idx" ON "rep_templates"("training_id");
-CREATE INDEX "rep_templates_user_id_idx" ON "rep_templates"("user_id");
 CREATE INDEX "rep_datas_session_id_idx" ON "rep_datas"("session_id");
 CREATE INDEX "rep_datas_user_id_idx" ON "rep_datas"("user_id");
 CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings"("user_id");

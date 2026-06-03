@@ -7,8 +7,11 @@ migrate:
 migrate_status:
     atlas migrate status --env dev
 
-dev:
+dev-build:
     docker compose -f docker-compose.dev.yml up --build
+
+dev command:
+    docker compose -f docker-compose.dev.yml {{command}}
 
 dev-d:
     docker compose -f docker-compose.dev.yml up -d --build

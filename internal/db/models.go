@@ -161,34 +161,6 @@ type RepData struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
-type RepTemplate struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	IsRest       bool
-	RightHand    bool
-	Duration     int32
-	TrainingID   pgtype.UUID
-	TargetWeight float32
-	Index        int32
-	GripPosition int32
-	UpdatedAt    pgtype.Timestamptz
-}
-
-type Repeater struct {
-	ID                pgtype.UUID
-	UserID            pgtype.UUID
-	Sets              int32
-	Reps              int32
-	Worktime          int32
-	Resttime          int32
-	SetRest           int32
-	TargetWeightRight pgtype.Float4
-	TargetWeightLeft  pgtype.Float4
-	SplitHand         bool
-	GripPosition      int32
-	UpdatedAt         pgtype.Timestamptz
-}
-
 type SensorConfig struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID
@@ -225,16 +197,6 @@ type Tag struct {
 	IsBuiltin bool
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
-}
-
-type Training struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Name         string
-	RepeaterID   pgtype.UUID
-	IsFavorite   bool
-	IsAssessment bool
-	UpdatedAt    pgtype.Timestamptz
 }
 
 type User struct {

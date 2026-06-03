@@ -65,9 +65,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(queries)
 	adminHandler := handler.NewAdminHandler(queries)
-	trainingHandler := handler.NewTrainingHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries)
-	repeaterHandler := handler.NewRepeaterHandler(queries)
 	assessmentHandler := handler.NewAssessmentHandler(queries)
 	sensorConfigHandler := handler.NewSensorConfigHandler(queries)
 	builtinWeightHandler := handler.NewBuiltinTrainingWeightHandler(queries)
@@ -136,13 +134,6 @@ func main() {
 	api.Get("/user", authHandler.GetCurrentUser)
 	api.Put("/auth/change-password", authHandler.ChangePassword)
 
-	// Training routes
-	api.Post("/trainings", trainingHandler.CreateTraining)
-	api.Get("/trainings", trainingHandler.GetTrainings)
-	api.Get("/trainings/:id", trainingHandler.GetTraining)
-	api.Put("/trainings/:id", trainingHandler.UpdateTraining)
-	api.Delete("/trainings/:id", trainingHandler.DeleteTraining)
-
 	// Assessment routes
 	api.Post("/assessments", assessmentHandler.CreateAssessment)
 	api.Get("/assessments", assessmentHandler.GetAssessments)
@@ -154,13 +145,6 @@ func main() {
 	api.Get("/sessions/:id", sessionHandler.GetSession)
 	api.Put("/sessions/:id", sessionHandler.UpdateSession)
 	api.Delete("/sessions/:id", sessionHandler.DeleteSession)
-
-	// Repeater routes
-	api.Post("/repeaters", repeaterHandler.CreateRepeater)
-	api.Get("/repeaters", repeaterHandler.GetRepeaters)
-	api.Get("/repeaters/:id", repeaterHandler.GetRepeater)
-	api.Put("/repeaters/:id", repeaterHandler.UpdateRepeater)
-	api.Delete("/repeaters/:id", repeaterHandler.DeleteRepeater)
 
 	// Enrollment routes
 	api.Post("/coach/enrollment-token", coachHandler.GenerateEnrollmentToken)

@@ -135,6 +135,9 @@ func (h *AssessmentHandler) GetAssessments(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
 	}
 
+	if assessments == nil {
+		assessments = []db.GetUserAssessmentsRow{}
+	}
 	return c.JSON(assessments)
 }
 
