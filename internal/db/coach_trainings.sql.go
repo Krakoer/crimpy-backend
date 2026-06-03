@@ -56,7 +56,8 @@ INSERT INTO coach_training_items (
   cycles, cycle_rest_seconds,
   reps, duration, rest_seconds,
   exercise_id,
-  hb_worktime_seconds, both_hands,
+  worktime_seconds, hand,
+  free_text, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
   section_title
 ) VALUES (
@@ -65,30 +66,33 @@ INSERT INTO coach_training_items (
   $7, $8, $9,
   $10,
   $11, $12,
-  $13, $14, $15, $16,
-  $17
+  $13, $14,
+  $15, $16, $17, $18,
+  $19
 )
-RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, hb_worktime_seconds, both_hands, loads, left_loads, hand_positions, edge_sizes_mm, section_title, created_at, updated_at
+RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, worktime_seconds, hand, free_text, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, section_title, created_at, updated_at
 `
 
 type CreateCoachTrainingItemParams struct {
-	TrainingID        pgtype.UUID
-	ParentID          pgtype.UUID
-	Type              string
-	Position          int32
-	Cycles            pgtype.Int4
-	CycleRestSeconds  pgtype.Int4
-	Reps              pgtype.Int4
-	Duration          pgtype.Int4
-	RestSeconds       pgtype.Int4
-	ExerciseID        pgtype.UUID
-	HbWorktimeSeconds pgtype.Int4
-	BothHands         pgtype.Bool
-	Loads             []byte
-	LeftLoads         []byte
-	HandPositions     []byte
-	EdgeSizesMm       []byte
-	SectionTitle      pgtype.Text
+	TrainingID       pgtype.UUID
+	ParentID         pgtype.UUID
+	Type             string
+	Position         int32
+	Cycles           pgtype.Int4
+	CycleRestSeconds pgtype.Int4
+	Reps             pgtype.Int4
+	Duration         pgtype.Int4
+	RestSeconds      pgtype.Int4
+	ExerciseID       pgtype.UUID
+	WorktimeSeconds  pgtype.Int4
+	Hand             pgtype.Text
+	FreeText         pgtype.Text
+	LoadIsMax        bool
+	Loads            []byte
+	LeftLoads        []byte
+	HandPositions    []byte
+	EdgeSizesMm      []byte
+	SectionTitle     pgtype.Text
 }
 
 func (q *Queries) CreateCoachTrainingItem(ctx context.Context, arg CreateCoachTrainingItemParams) (CoachTrainingItem, error) {
@@ -103,8 +107,10 @@ func (q *Queries) CreateCoachTrainingItem(ctx context.Context, arg CreateCoachTr
 		arg.Duration,
 		arg.RestSeconds,
 		arg.ExerciseID,
-		arg.HbWorktimeSeconds,
-		arg.BothHands,
+		arg.WorktimeSeconds,
+		arg.Hand,
+		arg.FreeText,
+		arg.LoadIsMax,
 		arg.Loads,
 		arg.LeftLoads,
 		arg.HandPositions,
@@ -124,12 +130,14 @@ func (q *Queries) CreateCoachTrainingItem(ctx context.Context, arg CreateCoachTr
 		&i.Duration,
 		&i.RestSeconds,
 		&i.ExerciseID,
-		&i.HbWorktimeSeconds,
-		&i.BothHands,
+		&i.WorktimeSeconds,
+		&i.Hand,
+		&i.FreeText,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,
 		&i.EdgeSizesMm,
+		&i.LoadIsMax,
 		&i.SectionTitle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -177,7 +185,7 @@ func (q *Queries) GetCoachTraining(ctx context.Context, id pgtype.UUID) (CoachTr
 }
 
 const getCoachTrainingItems = `-- name: GetCoachTrainingItems :many
-SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, hb_worktime_seconds, both_hands, loads, left_loads, hand_positions, edge_sizes_mm, section_title, created_at, updated_at FROM coach_training_items WHERE training_id = $1 ORDER BY position
+SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, worktime_seconds, hand, free_text, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, section_title, created_at, updated_at FROM coach_training_items WHERE training_id = $1 ORDER BY position
 `
 
 func (q *Queries) GetCoachTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]CoachTrainingItem, error) {
@@ -201,12 +209,14 @@ func (q *Queries) GetCoachTrainingItems(ctx context.Context, trainingID pgtype.U
 			&i.Duration,
 			&i.RestSeconds,
 			&i.ExerciseID,
-			&i.HbWorktimeSeconds,
-			&i.BothHands,
+			&i.WorktimeSeconds,
+			&i.Hand,
+			&i.FreeText,
 			&i.Loads,
 			&i.LeftLoads,
 			&i.HandPositions,
 			&i.EdgeSizesMm,
+			&i.LoadIsMax,
 			&i.SectionTitle,
 			&i.CreatedAt,
 			&i.UpdatedAt,

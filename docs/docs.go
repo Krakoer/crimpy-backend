@@ -331,6 +331,200 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/assessments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all assessment results for the authenticated user, ordered by session date descending",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "Get all assessments for the current user",
+                "responses": {
+                    "200": {
+                        "description": "List of assessments",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new assessment result for the authenticated user, linked to an existing session they own",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "Create an assessment linked to an existing session",
+                "parameters": [
+                    {
+                        "description": "Assessment details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateAssessmentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Assessment created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/assessments/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete an assessment. User must own the associated session.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "Delete an assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/auth/change-password": {
             "put": {
                 "security": [
@@ -399,6 +593,278 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/builtin-training-weights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all custom weight overrides for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "BuiltinTrainingWeight"
+                ],
+                "summary": "Get all builtin training weight overrides",
+                "responses": {
+                    "200": {
+                        "description": "List of weight overrides",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a custom weight override for a builtin training",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "BuiltinTrainingWeight"
+                ],
+                "summary": "Create a builtin training weight override",
+                "parameters": [
+                    {
+                        "description": "Weight override details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateBuiltinTrainingWeightRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Weight override created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/builtin-training-weights/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update custom weights. User must own it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "BuiltinTrainingWeight"
+                ],
+                "summary": "Update a builtin training weight override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Weight override ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated weights",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateBuiltinTrainingWeightRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated weight override",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a custom weight override. User must own it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "BuiltinTrainingWeight"
+                ],
+                "summary": "Delete a builtin training weight override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Weight override ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2558,7 +3024,236 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/pinned-builtin-trainings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all pinned builtin trainings for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PinnedBuiltinTraining"
+                ],
+                "summary": "Get all pinned builtin trainings",
+                "responses": {
+                    "200": {
+                        "description": "List of pinned builtin trainings",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Pin a builtin training for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PinnedBuiltinTraining"
+                ],
+                "summary": "Pin a builtin training",
+                "parameters": [
+                    {
+                        "description": "Builtin training to pin",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.PinBuiltinTrainingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Pinned training",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/pinned-builtin-trainings/{builtin_training_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove a pinned builtin training for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "PinnedBuiltinTraining"
+                ],
+                "summary": "Unpin a builtin training",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Builtin training ID (UUID)",
+                        "name": "builtin_training_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Unpinned successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/repeaters": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all repeater configurations for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Repeater"
+                ],
+                "summary": "Get all repeater configurations",
+                "responses": {
+                    "200": {
+                        "description": "List of repeaters",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.RepeaterResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -2769,6 +3464,278 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid repeater ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sensor-configs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve all sensor configs for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SensorConfig"
+                ],
+                "summary": "Get all sensor configs",
+                "responses": {
+                    "200": {
+                        "description": "List of sensor configs",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new sensor calibration configuration for the authenticated user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SensorConfig"
+                ],
+                "summary": "Create a sensor config",
+                "parameters": [
+                    {
+                        "description": "Sensor config details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateSensorConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Sensor config created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sensor-configs/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a sensor config. User must own it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SensorConfig"
+                ],
+                "summary": "Update a sensor config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Sensor config ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated sensor config",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateSensorConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated sensor config",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a sensor config. User must own it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SensorConfig"
+                ],
+                "summary": "Delete a sensor config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Sensor config ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3101,221 +4068,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Session not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sync/migrate": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Bulk uploads all local data when cloud account is empty (called once at first login)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sync"
-                ],
-                "summary": "Migrate local data to cloud on first sync",
-                "parameters": [
-                    {
-                        "description": "All local records to migrate",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/sync.PushRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Migration results with accepted and rejected IDs",
-                        "schema": {
-                            "$ref": "#/definitions/sync.PushResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request body or user ID",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sync/pull": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns all records modified after the specified sync version for incremental sync",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sync"
-                ],
-                "summary": "Pull sync changes",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 0,
-                        "description": "Sync version to pull changes since",
-                        "name": "since_version",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Records and current server version",
-                        "schema": {
-                            "$ref": "#/definitions/sync.PullResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid user ID",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sync/push": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Accepts a batch of locally changed records and applies last-write-wins conflict resolution",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sync"
-                ],
-                "summary": "Push local changes to cloud",
-                "parameters": [
-                    {
-                        "description": "Records to push",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/sync.PushRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Push results with accepted and rejected IDs",
-                        "schema": {
-                            "$ref": "#/definitions/sync.PushResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request body or user ID",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/sync/summary": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns count of records per collection and last sync version for the authenticated user",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sync"
-                ],
-                "summary": "Get sync summary",
-                "responses": {
-                    "200": {
-                        "description": "Sync summary",
-                        "schema": {
-                            "$ref": "#/definitions/sync.SyncSummaryResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid user ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4395,6 +5147,43 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CreateAssessmentRequest": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.CreateBuiltinTrainingWeightRequest": {
+            "type": "object",
+            "properties": {
+                "builtin_training_id": {
+                    "type": "string"
+                },
+                "custom_weight_left": {
+                    "type": "number"
+                },
+                "custom_weight_right": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.CreateCoachTrainingRequest": {
             "type": "object",
             "properties": {
@@ -4487,6 +5276,26 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CreateSensorConfigRequest": {
+            "type": "object",
+            "properties": {
+                "coef": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tare": {
+                    "type": "number"
+                }
+            }
+        },
         "handler.CreateSessionRequest": {
             "type": "object",
             "properties": {
@@ -4495,6 +5304,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/handler.AssessmentRequest"
                     }
+                },
+                "date": {
+                    "type": "string"
                 },
                 "duration": {
                     "type": "integer"
@@ -4690,6 +5502,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.PinBuiltinTrainingRequest": {
+            "type": "object",
+            "properties": {
+                "builtin_training_id": {
                     "type": "string"
                 }
             }
@@ -4976,9 +5796,6 @@ const docTemplate = `{
         "handler.TrainingItemRequest": {
             "type": "object",
             "properties": {
-                "both_hands": {
-                    "type": "boolean"
-                },
                 "cycle_rest_seconds": {
                     "type": "integer"
                 },
@@ -4997,14 +5814,17 @@ const docTemplate = `{
                 "exercise_id": {
                     "type": "string"
                 },
+                "free_text": {
+                    "type": "string"
+                },
+                "hand": {
+                    "type": "string"
+                },
                 "hand_positions": {
                     "type": "array",
                     "items": {
                         "type": "object"
                     }
-                },
-                "hb_worktime_seconds": {
-                    "type": "integer"
                 },
                 "items": {
                     "type": "array",
@@ -5017,6 +5837,9 @@ const docTemplate = `{
                     "items": {
                         "type": "object"
                     }
+                },
+                "load_is_max": {
+                    "type": "boolean"
                 },
                 "loads": {
                     "type": "array",
@@ -5035,15 +5858,15 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                },
+                "worktime_seconds": {
+                    "type": "integer"
                 }
             }
         },
         "handler.TrainingItemResponse": {
             "type": "object",
             "properties": {
-                "both_hands": {
-                    "type": "boolean"
-                },
                 "cycle_rest_seconds": {
                     "type": "integer"
                 },
@@ -5062,14 +5885,17 @@ const docTemplate = `{
                 "exercise_id": {
                     "type": "string"
                 },
+                "free_text": {
+                    "type": "string"
+                },
+                "hand": {
+                    "type": "string"
+                },
                 "hand_positions": {
                     "type": "array",
                     "items": {
                         "type": "object"
                     }
-                },
-                "hb_worktime_seconds": {
-                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
@@ -5085,6 +5911,9 @@ const docTemplate = `{
                     "items": {
                         "type": "object"
                     }
+                },
+                "load_is_max": {
+                    "type": "boolean"
                 },
                 "loads": {
                     "type": "array",
@@ -5106,6 +5935,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                },
+                "worktime_seconds": {
+                    "type": "integer"
                 }
             }
         },
@@ -5129,6 +5961,17 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.UpdateBuiltinTrainingWeightRequest": {
+            "type": "object",
+            "properties": {
+                "custom_weight_left": {
+                    "type": "number"
+                },
+                "custom_weight_right": {
+                    "type": "number"
                 }
             }
         },
@@ -5224,6 +6067,23 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.UpdateSensorConfigRequest": {
+            "type": "object",
+            "properties": {
+                "coef": {
+                    "type": "number"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tare": {
+                    "type": "number"
+                }
+            }
+        },
         "handler.UpdateSessionRequest": {
             "type": "object",
             "properties": {
@@ -5257,6 +6117,12 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "rep_templates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.RepTemplateRequest"
+                    }
                 }
             }
         },
@@ -5443,65 +6309,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "training_type": {
-                    "type": "string"
-                }
-            }
-        },
-        "sync.PullResponse": {
-            "type": "object",
-            "properties": {
-                "records": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
-                "server_version": {
-                    "type": "integer"
-                }
-            }
-        },
-        "sync.PushRequest": {
-            "type": "object",
-            "properties": {
-                "records": {
-                    "type": "object",
-                    "additionalProperties": true
-                }
-            }
-        },
-        "sync.PushResponse": {
-            "type": "object",
-            "properties": {
-                "accepted": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "rejected": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "server_version": {
-                    "type": "integer"
-                }
-            }
-        },
-        "sync.SyncSummaryResponse": {
-            "type": "object",
-            "properties": {
-                "collections": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "integer",
-                        "format": "int64"
-                    }
-                },
-                "last_sync_version": {
-                    "type": "integer"
-                },
-                "user_id": {
                     "type": "string"
                 }
             }

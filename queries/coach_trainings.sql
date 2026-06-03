@@ -24,7 +24,8 @@ INSERT INTO coach_training_items (
   cycles, cycle_rest_seconds,
   reps, duration, rest_seconds,
   exercise_id,
-  hb_worktime_seconds, both_hands,
+  worktime_seconds, hand,
+  free_text, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
   section_title
 ) VALUES (
@@ -32,7 +33,8 @@ INSERT INTO coach_training_items (
   @cycles, @cycle_rest_seconds,
   @reps, @duration, @rest_seconds,
   @exercise_id,
-  @hb_worktime_seconds, @both_hands,
+  @worktime_seconds, @hand,
+  @free_text, @load_is_max,
   @loads, @left_loads, @hand_positions, @edge_sizes_mm,
   @section_title
 )

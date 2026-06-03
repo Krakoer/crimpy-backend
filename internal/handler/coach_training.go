@@ -23,23 +23,25 @@ func NewCoachTrainingHandler(queries *db.Queries, pool *pgxpool.Pool) *CoachTrai
 }
 
 // TrainingItemRequest represents one item in the training tree.
-// Circuits and sections carry nested Items; exercises and hangboards are leaves.
+// Circuits and sections carry nested Items; repeaters and hangboard reps are leaves.
 type TrainingItemRequest struct {
-	Type              string                `json:"type"`
-	Cycles            *int32                `json:"cycles"`
-	CycleRestSeconds  *int32                `json:"cycle_rest_seconds"`
-	Reps              *int32                `json:"reps"`
-	Duration          *int32                `json:"duration"`
-	RestSeconds       *int32                `json:"rest_seconds"`
-	ExerciseID        *string               `json:"exercise_id"`
-	HbWorktimeSeconds *int32                `json:"hb_worktime_seconds"`
-	BothHands         *bool                 `json:"both_hands"`
-	Loads             json.RawMessage       `json:"loads"           swaggertype:"array,object"`
-	LeftLoads         json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
-	HandPositions     json.RawMessage       `json:"hand_positions"  swaggertype:"array,object"`
-	EdgeSizesMm       json.RawMessage       `json:"edge_sizes_mm"   swaggertype:"array,integer"`
-	SectionTitle      *string               `json:"section_title"`
-	Items             []TrainingItemRequest `json:"items"`
+	Type             string                `json:"type"`
+	Cycles           *int32                `json:"cycles"`
+	CycleRestSeconds *int32                `json:"cycle_rest_seconds"`
+	Reps             *int32                `json:"reps"`
+	Duration         *int32                `json:"duration"`
+	RestSeconds      *int32                `json:"rest_seconds"`
+	ExerciseID       *string               `json:"exercise_id"`
+	WorktimeSeconds  *int32                `json:"worktime_seconds"`
+	Hand             *string               `json:"hand"`
+	FreeText         *string               `json:"free_text"`
+	LoadIsMax        bool                  `json:"load_is_max"`
+	Loads            json.RawMessage       `json:"loads"           swaggertype:"array,object"`
+	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
+	HandPositions    json.RawMessage       `json:"hand_positions"  swaggertype:"array,object"`
+	EdgeSizesMm      json.RawMessage       `json:"edge_sizes_mm"   swaggertype:"array,integer"`
+	SectionTitle     *string               `json:"section_title"`
+	Items            []TrainingItemRequest `json:"items"`
 }
 
 type CreateCoachTrainingRequest struct {
@@ -62,23 +64,25 @@ type UpdateCoachTrainingRequest struct {
 
 // TrainingItemResponse mirrors TrainingItemRequest with added server-assigned fields.
 type TrainingItemResponse struct {
-	ID                string                 `json:"id"`
-	Type              string                 `json:"type"`
-	Position          int32                  `json:"position"`
-	Cycles            *int32                 `json:"cycles,omitempty"`
-	CycleRestSeconds  *int32                 `json:"cycle_rest_seconds,omitempty"`
-	Reps              *int32                 `json:"reps,omitempty"`
-	Duration          *int32                 `json:"duration,omitempty"`
-	RestSeconds       *int32                 `json:"rest_seconds,omitempty"`
-	ExerciseID        *string                `json:"exercise_id,omitempty"`
-	HbWorktimeSeconds *int32                 `json:"hb_worktime_seconds,omitempty"`
-	BothHands         *bool                  `json:"both_hands,omitempty"`
-	Loads             json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
-	LeftLoads         json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
-	HandPositions     json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
-	EdgeSizesMm       json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
-	SectionTitle      *string                `json:"section_title,omitempty"`
-	Items             []TrainingItemResponse `json:"items,omitempty"`
+	ID               string                 `json:"id"`
+	Type             string                 `json:"type"`
+	Position         int32                  `json:"position"`
+	Cycles           *int32                 `json:"cycles,omitempty"`
+	CycleRestSeconds *int32                 `json:"cycle_rest_seconds,omitempty"`
+	Reps             *int32                 `json:"reps,omitempty"`
+	Duration         *int32                 `json:"duration,omitempty"`
+	RestSeconds      *int32                 `json:"rest_seconds,omitempty"`
+	ExerciseID       *string                `json:"exercise_id,omitempty"`
+	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
+	Hand             *string                `json:"hand,omitempty"`
+	FreeText         *string                `json:"free_text,omitempty"`
+	LoadIsMax        bool                   `json:"load_is_max"`
+	Loads            json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
+	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
+	HandPositions    json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
+	EdgeSizesMm      json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
+	SectionTitle     *string                `json:"section_title,omitempty"`
+	Items            []TrainingItemResponse `json:"items,omitempty"`
 }
 
 type CoachTrainingResponse struct {
@@ -162,12 +166,16 @@ func insertTrainingItemsRecursive(
 				params.ExerciseID = exUUID
 			}
 		}
-		if req.HbWorktimeSeconds != nil {
-			params.HbWorktimeSeconds = pgtype.Int4{Int32: *req.HbWorktimeSeconds, Valid: true}
+		if req.WorktimeSeconds != nil {
+			params.WorktimeSeconds = pgtype.Int4{Int32: *req.WorktimeSeconds, Valid: true}
 		}
-		if req.BothHands != nil {
-			params.BothHands = pgtype.Bool{Bool: *req.BothHands, Valid: true}
+		if req.Hand != nil {
+			params.Hand = pgtype.Text{String: *req.Hand, Valid: true}
 		}
+		if req.FreeText != nil {
+			params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
+		}
+		params.LoadIsMax = req.LoadIsMax
 		if len(req.Loads) > 0 && string(req.Loads) != "null" {
 			params.Loads = req.Loads
 		}
@@ -230,12 +238,16 @@ func dbTrainingItemToResponse(r db.CoachTrainingItem) TrainingItemResponse {
 		s := r.ExerciseID.String()
 		resp.ExerciseID = &s
 	}
-	if r.HbWorktimeSeconds.Valid {
-		resp.HbWorktimeSeconds = &r.HbWorktimeSeconds.Int32
+	if r.WorktimeSeconds.Valid {
+		resp.WorktimeSeconds = &r.WorktimeSeconds.Int32
 	}
-	if r.BothHands.Valid {
-		resp.BothHands = &r.BothHands.Bool
+	if r.Hand.Valid {
+		resp.Hand = &r.Hand.String
 	}
+	if r.FreeText.Valid {
+		resp.FreeText = &r.FreeText.String
+	}
+	resp.LoadIsMax = r.LoadIsMax
 	if len(r.Loads) > 0 {
 		resp.Loads = json.RawMessage(r.Loads)
 	}

@@ -90,26 +90,28 @@ type CoachTraining struct {
 }
 
 type CoachTrainingItem struct {
-	ID                pgtype.UUID
-	TrainingID        pgtype.UUID
-	ParentID          pgtype.UUID
-	Type              string
-	Position          int32
-	Cycles            pgtype.Int4
-	CycleRestSeconds  pgtype.Int4
-	Reps              pgtype.Int4
-	Duration          pgtype.Int4
-	RestSeconds       pgtype.Int4
-	ExerciseID        pgtype.UUID
-	HbWorktimeSeconds pgtype.Int4
-	BothHands         pgtype.Bool
-	Loads             []byte
-	LeftLoads         []byte
-	HandPositions     []byte
-	EdgeSizesMm       []byte
-	SectionTitle      pgtype.Text
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
+	ID               pgtype.UUID
+	TrainingID       pgtype.UUID
+	ParentID         pgtype.UUID
+	Type             string
+	Position         int32
+	Cycles           pgtype.Int4
+	CycleRestSeconds pgtype.Int4
+	Reps             pgtype.Int4
+	Duration         pgtype.Int4
+	RestSeconds      pgtype.Int4
+	ExerciseID       pgtype.UUID
+	WorktimeSeconds  pgtype.Int4
+	Hand             pgtype.Text
+	FreeText         pgtype.Text
+	Loads            []byte
+	LeftLoads        []byte
+	HandPositions    []byte
+	EdgeSizesMm      []byte
+	LoadIsMax        bool
+	SectionTitle     pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
 }
 
 type EnrollmentToken struct {

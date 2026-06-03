@@ -196,36 +196,42 @@ CREATE TABLE "coach_trainings" (
 
 CREATE INDEX "coach_trainings_coach_id_idx" ON "coach_trainings"("coach_id");
 
--- Stores individual items within a coach training (exercises, hangboards, circuits, sections).
--- Items are stored flat; nesting is represented via parent_id.
+-- Stores individual items within a coach training (repeaters, hangboard reps, free notes,
+-- exercises, circuits, sections). Items are stored flat; nesting is via parent_id.
 -- Per-rep configurable fields are stored as JSONB arrays sized by the number of reps.
+-- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'section'
 CREATE TABLE "coach_training_items" (
   "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
   "training_id"          UUID        NOT NULL REFERENCES "coach_trainings"("id") ON DELETE CASCADE,
   "parent_id"            UUID        REFERENCES "coach_training_items"("id") ON DELETE CASCADE,
   "type"                 TEXT        NOT NULL,
   "position"             INTEGER     NOT NULL DEFAULT 0,
-  -- Circuit and hangboard cycles (scalar)
+  -- Circuit and repeater cycles (scalar)
   "cycles"               INTEGER,
   "cycle_rest_seconds"   INTEGER,
-  -- Exercise and hangboard reps (scalar)
+  -- Exercise, repeater, and hangboard_rep reps (scalar)
   "reps"                 INTEGER,
   "duration"             INTEGER,
   "rest_seconds"         INTEGER,
   -- Exercise-specific (scalar)
   "exercise_id"          UUID        REFERENCES "exercises"("id") ON DELETE CASCADE,
-  -- Hangboard-specific (scalar)
-  "hb_worktime_seconds"  INTEGER,
-  "both_hands"           BOOLEAN,
+  -- Repeater and hangboard_rep worktime (replaces hb_worktime_seconds)
+  "worktime_seconds"     INTEGER,
+  -- Hand: 'both', 'split', 'left', 'right' (replaces both_hands bool)
+  "hand"                 TEXT,
+  -- Free item text content
+  "free_text"            TEXT,
   -- Per-rep configurable fields (JSONB arrays sized by reps)
-  -- loads: [{value: float, unit: string}] per rep; carries right-hand loads in split mode
+  -- loads: [{value: float, unit: string}] per rep; right-hand or both-hands loads
   "loads"                JSONB,
-  -- left_loads: [{value: float, unit: string}] per rep; only set when both_hands is false
+  -- left_loads: [{value: float, unit: string}] per rep; only set in split mode
   "left_loads"           JSONB,
-  -- hand_positions: [string] per rep for exercise; [[string]] per cycle per rep for hangboard
+  -- hand_positions: [string] per rep
   "hand_positions"       JSONB,
-  -- edge_sizes_mm: [int] per rep (hangboard)
+  -- edge_sizes_mm: [int] per rep
   "edge_sizes_mm"        JSONB,
+  -- Whether load is maximum effort (as hard as possible) rather than a fixed value
+  "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
   -- Section-specific
   "section_title"        TEXT,
   "created_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -85,6 +85,30 @@ definitions:
       updated_at:
         type: string
     type: object
+  handler.CreateAssessmentRequest:
+    properties:
+      grip_position:
+        type: integer
+      left_value:
+        type: number
+      right_value:
+        type: number
+      session_id:
+        type: string
+      type:
+        type: integer
+    type: object
+  handler.CreateBuiltinTrainingWeightRequest:
+    properties:
+      builtin_training_id:
+        type: string
+      custom_weight_left:
+        type: number
+      custom_weight_right:
+        type: number
+      id:
+        type: string
+    type: object
   handler.CreateCoachTrainingRequest:
     properties:
       comment:
@@ -145,12 +169,27 @@ definitions:
       worktime:
         type: integer
     type: object
+  handler.CreateSensorConfigRequest:
+    properties:
+      coef:
+        type: number
+      id:
+        type: string
+      index:
+        type: integer
+      name:
+        type: string
+      tare:
+        type: number
+    type: object
   handler.CreateSessionRequest:
     properties:
       assessments:
         items:
           $ref: '#/definitions/handler.AssessmentRequest'
         type: array
+      date:
+        type: string
       duration:
         type: integer
       is_assessment:
@@ -278,6 +317,11 @@ definitions:
       email:
         type: string
       password:
+        type: string
+    type: object
+  handler.PinBuiltinTrainingRequest:
+    properties:
+      builtin_training_id:
         type: string
     type: object
   handler.ProgramListItem:
@@ -464,8 +508,6 @@ definitions:
     type: object
   handler.TrainingItemRequest:
     properties:
-      both_hands:
-        type: boolean
       cycle_rest_seconds:
         type: integer
       cycles:
@@ -478,12 +520,14 @@ definitions:
         type: array
       exercise_id:
         type: string
+      free_text:
+        type: string
+      hand:
+        type: string
       hand_positions:
         items:
           type: object
         type: array
-      hb_worktime_seconds:
-        type: integer
       items:
         items:
           $ref: '#/definitions/handler.TrainingItemRequest'
@@ -492,6 +536,8 @@ definitions:
         items:
           type: object
         type: array
+      load_is_max:
+        type: boolean
       loads:
         items:
           type: object
@@ -504,11 +550,11 @@ definitions:
         type: string
       type:
         type: string
+      worktime_seconds:
+        type: integer
     type: object
   handler.TrainingItemResponse:
     properties:
-      both_hands:
-        type: boolean
       cycle_rest_seconds:
         type: integer
       cycles:
@@ -521,12 +567,14 @@ definitions:
         type: array
       exercise_id:
         type: string
+      free_text:
+        type: string
+      hand:
+        type: string
       hand_positions:
         items:
           type: object
         type: array
-      hb_worktime_seconds:
-        type: integer
       id:
         type: string
       items:
@@ -537,6 +585,8 @@ definitions:
         items:
           type: object
         type: array
+      load_is_max:
+        type: boolean
       loads:
         items:
           type: object
@@ -551,6 +601,8 @@ definitions:
         type: string
       type:
         type: string
+      worktime_seconds:
+        type: integer
     type: object
   handler.TrainingResponse:
     properties:
@@ -566,6 +618,13 @@ definitions:
         type: integer
       user_id:
         type: string
+    type: object
+  handler.UpdateBuiltinTrainingWeightRequest:
+    properties:
+      custom_weight_left:
+        type: number
+      custom_weight_right:
+        type: number
     type: object
   handler.UpdateCoachTrainingRequest:
     properties:
@@ -627,6 +686,17 @@ definitions:
       worktime:
         type: integer
     type: object
+  handler.UpdateSensorConfigRequest:
+    properties:
+      coef:
+        type: number
+      index:
+        type: integer
+      name:
+        type: string
+      tare:
+        type: number
+    type: object
   handler.UpdateSessionRequest:
     properties:
       duration:
@@ -649,6 +719,10 @@ definitions:
         type: boolean
       name:
         type: string
+      rep_templates:
+        items:
+          $ref: '#/definitions/handler.RepTemplateRequest'
+        type: array
     type: object
   handler.UpsertWeekRequest:
     properties:
@@ -770,45 +844,6 @@ definitions:
       training_title:
         type: string
       training_type:
-        type: string
-    type: object
-  sync.PullResponse:
-    properties:
-      records:
-        additionalProperties: true
-        type: object
-      server_version:
-        type: integer
-    type: object
-  sync.PushRequest:
-    properties:
-      records:
-        additionalProperties: true
-        type: object
-    type: object
-  sync.PushResponse:
-    properties:
-      accepted:
-        items:
-          type: string
-        type: array
-      rejected:
-        items:
-          type: string
-        type: array
-      server_version:
-        type: integer
-    type: object
-  sync.SyncSummaryResponse:
-    properties:
-      collections:
-        additionalProperties:
-          format: int64
-          type: integer
-        type: object
-      last_sync_version:
-        type: integer
-      user_id:
         type: string
     type: object
 host: api.crimpy.app
@@ -1022,6 +1057,133 @@ paths:
       summary: Delete a user
       tags:
       - Admin
+  /api/assessments:
+    get:
+      description: Retrieve all assessment results for the authenticated user, ordered
+        by session date descending
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of assessments
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all assessments for the current user
+      tags:
+      - Assessment
+    post:
+      consumes:
+      - application/json
+      description: Create a new assessment result for the authenticated user, linked
+        to an existing session they own
+      parameters:
+      - description: Assessment details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateAssessmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Assessment created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create an assessment linked to an existing session
+      tags:
+      - Assessment
+  /api/assessments/{id}:
+    delete:
+      description: Delete an assessment. User must own the associated session.
+      parameters:
+      - description: Assessment ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete an assessment
+      tags:
+      - Assessment
   /api/auth/change-password:
     put:
       consumes:
@@ -1079,6 +1241,182 @@ paths:
       summary: Change user password
       tags:
       - Authentication
+  /api/builtin-training-weights:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all custom weight overrides for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of weight overrides
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all builtin training weight overrides
+      tags:
+      - BuiltinTrainingWeight
+    post:
+      consumes:
+      - application/json
+      description: Create a custom weight override for a builtin training
+      parameters:
+      - description: Weight override details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateBuiltinTrainingWeightRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Weight override created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a builtin training weight override
+      tags:
+      - BuiltinTrainingWeight
+  /api/builtin-training-weights/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a custom weight override. User must own it.
+      parameters:
+      - description: Weight override ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a builtin training weight override
+      tags:
+      - BuiltinTrainingWeight
+    put:
+      consumes:
+      - application/json
+      description: Update custom weights. User must own it.
+      parameters:
+      - description: Weight override ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated weights
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateBuiltinTrainingWeightRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated weight override
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a builtin training weight override
+      tags:
+      - BuiltinTrainingWeight
   /api/coach/clients/{user_id}/assessments:
     get:
       description: Retrieve all assessments for a user enrolled with the authenticated
@@ -2480,7 +2818,154 @@ paths:
       summary: Accept enrollment
       tags:
       - Enrollment
+  /api/pinned-builtin-trainings:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all pinned builtin trainings for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of pinned builtin trainings
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all pinned builtin trainings
+      tags:
+      - PinnedBuiltinTraining
+    post:
+      consumes:
+      - application/json
+      description: Pin a builtin training for the authenticated user
+      parameters:
+      - description: Builtin training to pin
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PinBuiltinTrainingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Pinned training
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Pin a builtin training
+      tags:
+      - PinnedBuiltinTraining
+  /api/pinned-builtin-trainings/{builtin_training_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a pinned builtin training for the authenticated user
+      parameters:
+      - description: Builtin training ID (UUID)
+        in: path
+        name: builtin_training_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Unpinned successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unpin a builtin training
+      tags:
+      - PinnedBuiltinTraining
   /api/repeaters:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all repeater configurations for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of repeaters
+          schema:
+            items:
+              $ref: '#/definitions/handler.RepeaterResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all repeater configurations
+      tags:
+      - Repeater
     post:
       consumes:
       - application/json
@@ -2628,6 +3113,183 @@ paths:
       summary: Update a repeater configuration
       tags:
       - Repeater
+  /api/sensor-configs:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all sensor configs for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of sensor configs
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all sensor configs
+      tags:
+      - SensorConfig
+    post:
+      consumes:
+      - application/json
+      description: Create a new sensor calibration configuration for the authenticated
+        user
+      parameters:
+      - description: Sensor config details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateSensorConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Sensor config created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a sensor config
+      tags:
+      - SensorConfig
+  /api/sensor-configs/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a sensor config. User must own it.
+      parameters:
+      - description: Sensor config ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a sensor config
+      tags:
+      - SensorConfig
+    put:
+      consumes:
+      - application/json
+      description: Update a sensor config. User must own it.
+      parameters:
+      - description: Sensor config ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated sensor config
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateSensorConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated sensor config
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a sensor config
+      tags:
+      - SensorConfig
   /api/sessions:
     get:
       consumes:
@@ -2846,146 +3508,6 @@ paths:
       summary: Update a session
       tags:
       - Session
-  /api/sync/migrate:
-    post:
-      consumes:
-      - application/json
-      description: Bulk uploads all local data when cloud account is empty (called
-        once at first login)
-      parameters:
-      - description: All local records to migrate
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/sync.PushRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Migration results with accepted and rejected IDs
-          schema:
-            $ref: '#/definitions/sync.PushResponse'
-        "400":
-          description: Invalid request body or user ID
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Migrate local data to cloud on first sync
-      tags:
-      - sync
-  /api/sync/pull:
-    get:
-      consumes:
-      - application/json
-      description: Returns all records modified after the specified sync version for
-        incremental sync
-      parameters:
-      - default: 0
-        description: Sync version to pull changes since
-        in: query
-        name: since_version
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Records and current server version
-          schema:
-            $ref: '#/definitions/sync.PullResponse'
-        "400":
-          description: Invalid user ID
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Pull sync changes
-      tags:
-      - sync
-  /api/sync/push:
-    post:
-      consumes:
-      - application/json
-      description: Accepts a batch of locally changed records and applies last-write-wins
-        conflict resolution
-      parameters:
-      - description: Records to push
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/sync.PushRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Push results with accepted and rejected IDs
-          schema:
-            $ref: '#/definitions/sync.PushResponse'
-        "400":
-          description: Invalid request body or user ID
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Push local changes to cloud
-      tags:
-      - sync
-  /api/sync/summary:
-    get:
-      consumes:
-      - application/json
-      description: Returns count of records per collection and last sync version for
-        the authenticated user
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Sync summary
-          schema:
-            $ref: '#/definitions/sync.SyncSummaryResponse'
-        "400":
-          description: Invalid user ID
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Get sync summary
-      tags:
-      - sync
   /api/trainings:
     get:
       consumes:
