@@ -20,7 +20,7 @@ func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 	_, token := testutil.CreateTestUser(t, queries, "ctraining1@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{
@@ -43,7 +43,7 @@ func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 		},
 	})
 
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -90,7 +90,7 @@ func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 	_, token := testutil.CreateTestUser(t, queries, "ctraining3@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{
@@ -108,7 +108,7 @@ func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 			},
 		},
 	})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ := app.Test(req)
 
@@ -116,7 +116,7 @@ func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&created)
 	trainingID := created["id"].(string)
 
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -160,11 +160,11 @@ func TestCoachTrainingHandler_OwnershipIsolation(t *testing.T) {
 	_, token2 := testutil.CreateTestUser(t, queries, "ctraining5@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{"title": "Coach1 Training"})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token1))
 	resp, _ := app.Test(req)
 
@@ -172,7 +172,7 @@ func TestCoachTrainingHandler_OwnershipIsolation(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&created)
 	trainingID := created["id"].(string)
 
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 	resp, _ = app.Test(req)
 
@@ -180,7 +180,7 @@ func TestCoachTrainingHandler_OwnershipIsolation(t *testing.T) {
 		t.Errorf("Expected %d for get isolation, got %d", fiber.StatusForbidden, resp.StatusCode)
 	}
 
-	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token2))
 	resp, _ = app.Test(req)
 
@@ -198,7 +198,7 @@ func TestCoachTrainingHandler_Update(t *testing.T) {
 	_, token := testutil.CreateTestUser(t, queries, "ctraining6@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{
@@ -207,7 +207,7 @@ func TestCoachTrainingHandler_Update(t *testing.T) {
 			{"type": "exercise", "reps": 5},
 		},
 	})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ := app.Test(req)
 
@@ -224,7 +224,7 @@ func TestCoachTrainingHandler_Update(t *testing.T) {
 			{"type": "exercise", "reps": 15},
 		},
 	})
-	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/coach/trainings/%s", trainingID), body)
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%s", trainingID), body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -264,7 +264,7 @@ func TestCoachTrainingHandler_StretchingType(t *testing.T) {
 	_, token := testutil.CreateTestUser(t, queries, "ctraining8@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{
@@ -282,7 +282,7 @@ func TestCoachTrainingHandler_StretchingType(t *testing.T) {
 			},
 		},
 	})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 
 	resp, err := app.Test(req)
@@ -307,7 +307,7 @@ func TestCoachTrainingHandler_StretchingType(t *testing.T) {
 	}
 
 	trainingID := created["id"].(string)
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -328,11 +328,11 @@ func TestCoachTrainingHandler_Delete(t *testing.T) {
 	_, token := testutil.CreateTestUser(t, queries, "ctraining7@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{"title": "To Delete"})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/trainings", body)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ := app.Test(req)
 
@@ -340,7 +340,7 @@ func TestCoachTrainingHandler_Delete(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&created)
 	trainingID := created["id"].(string)
 
-	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 
@@ -348,7 +348,7 @@ func TestCoachTrainingHandler_Delete(t *testing.T) {
 		t.Errorf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
 	}
 
-	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/coach/trainings/%s", trainingID), nil)
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
 	resp, _ = app.Test(req)
 

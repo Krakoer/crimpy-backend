@@ -27,7 +27,7 @@ func createTestCoachTraining(t *testing.T, coachToken string, app *fiber.App) st
 	body, _ := json.Marshal(map[string]interface{}{
 		"title": "Test Training Template",
 	})
-	req := testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/trainings", body, coachToken)
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, coachToken)
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf("Failed to create coach training: %v", err)

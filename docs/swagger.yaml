@@ -39,56 +39,6 @@ definitions:
       lastname:
         type: string
     type: object
-  handler.CoachTrainingListItem:
-    properties:
-      comment:
-        type: string
-      created_at:
-        type: string
-      description:
-        type: string
-      goal:
-        type: string
-      id:
-        type: string
-      is_favorite:
-        type: boolean
-      title:
-        type: string
-      training_type:
-        type: string
-      updated_at:
-        type: string
-      user_id:
-        type: string
-    type: object
-  handler.CoachTrainingResponse:
-    properties:
-      comment:
-        type: string
-      created_at:
-        type: string
-      description:
-        type: string
-      goal:
-        type: string
-      id:
-        type: string
-      is_favorite:
-        type: boolean
-      items:
-        items:
-          $ref: '#/definitions/handler.TrainingItemResponse'
-        type: array
-      title:
-        type: string
-      training_type:
-        type: string
-      updated_at:
-        type: string
-      user_id:
-        type: string
-    type: object
   handler.CreateAssessmentRequest:
     properties:
       grip_position:
@@ -111,25 +61,6 @@ definitions:
       custom_weight_right:
         type: number
       id:
-        type: string
-    type: object
-  handler.CreateCoachTrainingRequest:
-    properties:
-      comment:
-        type: string
-      description:
-        type: string
-      goal:
-        type: string
-      is_favorite:
-        type: boolean
-      items:
-        items:
-          $ref: '#/definitions/handler.TrainingItemRequest'
-        type: array
-      title:
-        type: string
-      training_type:
         type: string
     type: object
   handler.CreateExerciseRequest:
@@ -207,6 +138,25 @@ definitions:
       color:
         type: string
       name:
+        type: string
+    type: object
+  handler.CreateTrainingRequest:
+    properties:
+      comment:
+        type: string
+      description:
+        type: string
+      goal:
+        type: string
+      is_favorite:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/handler.TrainingItemRequest'
+        type: array
+      title:
+        type: string
+      training_type:
         type: string
     type: object
   handler.EnrolledUserResponse:
@@ -536,31 +486,62 @@ definitions:
       worktime_seconds:
         type: integer
     type: object
+  handler.TrainingListItem:
+    properties:
+      comment:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      goal:
+        type: string
+      id:
+        type: string
+      is_favorite:
+        type: boolean
+      title:
+        type: string
+      training_type:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  handler.TrainingResponse:
+    properties:
+      comment:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      goal:
+        type: string
+      id:
+        type: string
+      is_favorite:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/handler.TrainingItemResponse'
+        type: array
+      title:
+        type: string
+      training_type:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.UpdateBuiltinTrainingWeightRequest:
     properties:
       custom_weight_left:
         type: number
       custom_weight_right:
         type: number
-    type: object
-  handler.UpdateCoachTrainingRequest:
-    properties:
-      comment:
-        type: string
-      description:
-        type: string
-      goal:
-        type: string
-      is_favorite:
-        type: boolean
-      items:
-        items:
-          $ref: '#/definitions/handler.TrainingItemRequest'
-        type: array
-      title:
-        type: string
-      training_type:
-        type: string
     type: object
   handler.UpdateExerciseRequest:
     properties:
@@ -609,6 +590,25 @@ definitions:
       color:
         type: string
       name:
+        type: string
+    type: object
+  handler.UpdateTrainingRequest:
+    properties:
+      comment:
+        type: string
+      description:
+        type: string
+      goal:
+        type: string
+      is_favorite:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/handler.TrainingItemRequest'
+        type: array
+      title:
+        type: string
+      training_type:
         type: string
     type: object
   handler.UpsertWeekRequest:
@@ -2432,187 +2432,6 @@ paths:
       summary: Update a tag
       tags:
       - Tags
-  /api/coach/trainings:
-    get:
-      description: Get all training templates for the authenticated user (without
-        items).
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of trainings
-          schema:
-            items:
-              $ref: '#/definitions/handler.CoachTrainingListItem'
-            type: array
-      security:
-      - BearerAuth: []
-      summary: List user's training templates
-      tags:
-      - CoachTrainings
-    post:
-      consumes:
-      - application/json
-      description: Create a new training template with a structured item tree.
-      parameters:
-      - description: Training data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handler.CreateCoachTrainingRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Training created
-          schema:
-            $ref: '#/definitions/handler.CoachTrainingResponse'
-        "400":
-          description: Invalid request body
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Create a training template
-      tags:
-      - CoachTrainings
-  /api/coach/trainings/{id}:
-    delete:
-      description: Delete a training template and all its items. Only the owner can
-        delete.
-      parameters:
-      - description: Training ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Training deleted
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Invalid training ID
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Access denied
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Training not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Delete a training template
-      tags:
-      - CoachTrainings
-    get:
-      description: Get a training template with its full item tree. Only the owner
-        can access.
-      parameters:
-      - description: Training ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Training with items
-          schema:
-            $ref: '#/definitions/handler.CoachTrainingResponse'
-        "400":
-          description: Invalid training ID
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Access denied
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Training not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Get a training template
-      tags:
-      - CoachTrainings
-    put:
-      consumes:
-      - application/json
-      description: Replace the training metadata and items tree. Only the owner can
-        update.
-      parameters:
-      - description: Training ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Updated training data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handler.UpdateCoachTrainingRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Updated training
-          schema:
-            $ref: '#/definitions/handler.CoachTrainingResponse'
-        "400":
-          description: Invalid request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Access denied
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Training not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Update a training template
-      tags:
-      - CoachTrainings
   /api/enrollment/{token}:
     get:
       description: Validate a token and return the coach's info. Used before accepting
@@ -3204,6 +3023,187 @@ paths:
       summary: Update a session
       tags:
       - Session
+  /api/trainings:
+    get:
+      description: Get all training templates for the authenticated user (without
+        items).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of trainings
+          schema:
+            items:
+              $ref: '#/definitions/handler.TrainingListItem'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List user's training templates
+      tags:
+      - Trainings
+    post:
+      consumes:
+      - application/json
+      description: Create a new training template with a structured item tree.
+      parameters:
+      - description: Training data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateTrainingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Training created
+          schema:
+            $ref: '#/definitions/handler.TrainingResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a training template
+      tags:
+      - Trainings
+  /api/trainings/{id}:
+    delete:
+      description: Delete a training template and all its items. Only the owner can
+        delete.
+      parameters:
+      - description: Training ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Training deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid training ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a training template
+      tags:
+      - Trainings
+    get:
+      description: Get a training template with its full item tree. Only the owner
+        can access.
+      parameters:
+      - description: Training ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Training with items
+          schema:
+            $ref: '#/definitions/handler.TrainingResponse'
+        "400":
+          description: Invalid training ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a training template
+      tags:
+      - Trainings
+    put:
+      consumes:
+      - application/json
+      description: Replace the training metadata and items tree. Only the owner can
+        update.
+      parameters:
+      - description: Training ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated training data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateTrainingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated training
+          schema:
+            $ref: '#/definitions/handler.TrainingResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a training template
+      tags:
+      - Trainings
   /api/user:
     get:
       consumes:

@@ -14,13 +14,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type CoachTrainingHandler struct {
+type TrainingHandler struct {
 	queries *db.Queries
 	pool    *pgxpool.Pool
 }
 
-func NewCoachTrainingHandler(queries *db.Queries, pool *pgxpool.Pool) *CoachTrainingHandler {
-	return &CoachTrainingHandler{queries: queries, pool: pool}
+func NewTrainingHandler(queries *db.Queries, pool *pgxpool.Pool) *TrainingHandler {
+	return &TrainingHandler{queries: queries, pool: pool}
 }
 
 // TrainingItemRequest represents one item in the training tree.
@@ -45,7 +45,7 @@ type TrainingItemRequest struct {
 	Items            []TrainingItemRequest `json:"items"`
 }
 
-type CreateCoachTrainingRequest struct {
+type CreateTrainingRequest struct {
 	Title        string                `json:"title"`
 	Description  *string               `json:"description"`
 	TrainingType string                `json:"training_type"`
@@ -55,7 +55,7 @@ type CreateCoachTrainingRequest struct {
 	Items        []TrainingItemRequest `json:"items"`
 }
 
-type UpdateCoachTrainingRequest struct {
+type UpdateTrainingRequest struct {
 	Title        string                `json:"title"`
 	Description  *string               `json:"description"`
 	TrainingType string                `json:"training_type"`
@@ -88,7 +88,7 @@ type TrainingItemResponse struct {
 	Items            []TrainingItemResponse `json:"items,omitempty"`
 }
 
-type CoachTrainingResponse struct {
+type TrainingResponse struct {
 	ID           string                 `json:"id"`
 	UserID       string                 `json:"user_id"`
 	Title        string                 `json:"title"`
@@ -102,7 +102,7 @@ type CoachTrainingResponse struct {
 	UpdatedAt    string                 `json:"updated_at"`
 }
 
-type CoachTrainingListItem struct {
+type TrainingListItem struct {
 	ID           string  `json:"id"`
 	UserID       string  `json:"user_id"`
 	Title        string  `json:"title"`
@@ -115,8 +115,8 @@ type CoachTrainingListItem struct {
 	UpdatedAt    string  `json:"updated_at"`
 }
 
-func coachTrainingToListItem(s db.CoachTraining) CoachTrainingListItem {
-	item := CoachTrainingListItem{
+func trainingToListItem(s db.Training) TrainingListItem {
+	item := TrainingListItem{
 		ID:           s.ID.String(),
 		UserID:       s.UserID.String(),
 		Title:        s.Title,
@@ -148,7 +148,7 @@ func insertTrainingItemsRecursive(
 	result := make([]TrainingItemResponse, 0, len(items))
 
 	for i, req := range items {
-		params := db.CreateCoachTrainingItemParams{
+		params := db.CreateTrainingItemParams{
 			TrainingID: trainingID,
 			ParentID:   parentID,
 			Type:       req.Type,
@@ -202,7 +202,7 @@ func insertTrainingItemsRecursive(
 			params.SectionTitle = pgtype.Text{String: *req.SectionTitle, Valid: true}
 		}
 
-		row, err := queries.CreateCoachTrainingItem(ctx, params)
+		row, err := queries.CreateTrainingItem(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +223,7 @@ func insertTrainingItemsRecursive(
 	return result, nil
 }
 
-func dbTrainingItemToResponse(r db.CoachTrainingItem) TrainingItemResponse {
+func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	resp := TrainingItemResponse{
 		ID:       r.ID.String(),
 		Type:     r.Type,
@@ -278,7 +278,7 @@ func dbTrainingItemToResponse(r db.CoachTrainingItem) TrainingItemResponse {
 
 // buildTrainingItemTree reconstructs the nested tree from a flat list of DB rows.
 // Items are ordered by position and grouped by parent.
-func buildTrainingItemTree(rows []db.CoachTrainingItem, parentID pgtype.UUID) []TrainingItemResponse {
+func buildTrainingItemTree(rows []db.TrainingItem, parentID pgtype.UUID) []TrainingItemResponse {
 	result := make([]TrainingItemResponse, 0)
 	for _, row := range rows {
 		if row.ParentID.Bytes == parentID.Bytes && row.ParentID.Valid == parentID.Valid {
@@ -293,23 +293,23 @@ func buildTrainingItemTree(rows []db.CoachTrainingItem, parentID pgtype.UUID) []
 // CreateCoachTraining godoc
 // @Summary Create a training template
 // @Description Create a new training template with a structured item tree.
-// @Tags CoachTrainings
+// @Tags Trainings
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body CreateCoachTrainingRequest true "Training data"
-// @Success 201 {object} CoachTrainingResponse "Training created"
+// @Param request body CreateTrainingRequest true "Training data"
+// @Success 201 {object} TrainingResponse "Training created"
 // @Failure 400 {object} map[string]string "Invalid request body"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /api/coach/trainings [post]
-func (h *CoachTrainingHandler) CreateCoachTraining(c fiber.Ctx) error {
+// @Router /api/trainings [post]
+func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userIDStr); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	var req CreateCoachTrainingRequest
+	var req CreateTrainingRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
@@ -330,7 +330,7 @@ func (h *CoachTrainingHandler) CreateCoachTraining(c fiber.Ctx) error {
 	if req.TrainingType == "" {
 		req.TrainingType = "workout"
 	}
-	params := db.CreateCoachTrainingParams{
+	params := db.CreateTrainingParams{
 		UserID:       userUUID,
 		Title:        req.Title,
 		TrainingType: req.TrainingType,
@@ -346,7 +346,7 @@ func (h *CoachTrainingHandler) CreateCoachTraining(c fiber.Ctx) error {
 		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 
-	training, err := qtx.CreateCoachTraining(context.Background(), params)
+	training, err := qtx.CreateTraining(context.Background(), params)
 	if err != nil {
 		slog.Error("failed to create training", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
@@ -364,33 +364,33 @@ func (h *CoachTrainingHandler) CreateCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize training"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(buildCoachTrainingResponse(training, items))
+	return c.Status(fiber.StatusCreated).JSON(buildTrainingResponse(training, items))
 }
 
 // GetCoachTrainings godoc
 // @Summary List user's training templates
 // @Description Get all training templates for the authenticated user (without items).
-// @Tags CoachTrainings
+// @Tags Trainings
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {array} CoachTrainingListItem "List of trainings"
-// @Router /api/coach/trainings [get]
-func (h *CoachTrainingHandler) GetCoachTrainings(c fiber.Ctx) error {
+// @Success 200 {array} TrainingListItem "List of trainings"
+// @Router /api/trainings [get]
+func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userIDStr); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	trainings, err := h.queries.GetCoachTrainings(context.Background(), userUUID)
+	trainings, err := h.queries.GetTrainings(context.Background(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve trainings", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})
 	}
 
-	result := make([]CoachTrainingListItem, 0, len(trainings))
+	result := make([]TrainingListItem, 0, len(trainings))
 	for _, s := range trainings {
-		result = append(result, coachTrainingToListItem(s))
+		result = append(result, trainingToListItem(s))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -399,16 +399,16 @@ func (h *CoachTrainingHandler) GetCoachTrainings(c fiber.Ctx) error {
 // GetCoachTraining godoc
 // @Summary Get a training template
 // @Description Get a training template with its full item tree. Only the owner can access.
-// @Tags CoachTrainings
+// @Tags Trainings
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Training ID"
-// @Success 200 {object} CoachTrainingResponse "Training with items"
+// @Success 200 {object} TrainingResponse "Training with items"
 // @Failure 400 {object} map[string]string "Invalid training ID"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Training not found"
-// @Router /api/coach/trainings/{id} [get]
-func (h *CoachTrainingHandler) GetCoachTraining(c fiber.Ctx) error {
+// @Router /api/trainings/{id} [get]
+func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userIDStr); err != nil {
@@ -420,7 +420,7 @@ func (h *CoachTrainingHandler) GetCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	training, err := h.queries.GetCoachTraining(context.Background(), trainingUUID)
+	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -433,7 +433,7 @@ func (h *CoachTrainingHandler) GetCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	rows, err := h.queries.GetCoachTrainingItems(context.Background(), trainingUUID)
+	rows, err := h.queries.GetTrainingItems(context.Background(), trainingUUID)
 	if err != nil {
 		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})
@@ -442,24 +442,24 @@ func (h *CoachTrainingHandler) GetCoachTraining(c fiber.Ctx) error {
 	var zeroParent pgtype.UUID
 	items := buildTrainingItemTree(rows, zeroParent)
 
-	return c.Status(fiber.StatusOK).JSON(buildCoachTrainingResponse(training, items))
+	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
 }
 
 // UpdateCoachTraining godoc
 // @Summary Update a training template
 // @Description Replace the training metadata and items tree. Only the owner can update.
-// @Tags CoachTrainings
+// @Tags Trainings
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Training ID"
-// @Param request body UpdateCoachTrainingRequest true "Updated training data"
-// @Success 200 {object} CoachTrainingResponse "Updated training"
+// @Param request body UpdateTrainingRequest true "Updated training data"
+// @Success 200 {object} TrainingResponse "Updated training"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Training not found"
-// @Router /api/coach/trainings/{id} [put]
-func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
+// @Router /api/trainings/{id} [put]
+func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userIDStr); err != nil {
@@ -471,7 +471,7 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	existing, err := h.queries.GetCoachTraining(context.Background(), trainingUUID)
+	existing, err := h.queries.GetTraining(context.Background(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -484,7 +484,7 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	var req UpdateCoachTrainingRequest
+	var req UpdateTrainingRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
@@ -505,7 +505,7 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 	if req.TrainingType == "" {
 		req.TrainingType = "workout"
 	}
-	updateParams := db.UpdateCoachTrainingParams{
+	updateParams := db.UpdateTrainingParams{
 		ID:           trainingUUID,
 		Title:        req.Title,
 		TrainingType: req.TrainingType,
@@ -521,13 +521,13 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 		updateParams.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 
-	training, err := qtx.UpdateCoachTraining(context.Background(), updateParams)
+	training, err := qtx.UpdateTraining(context.Background(), updateParams)
 	if err != nil {
 		slog.Error("failed to update coach training", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
-	if err := qtx.DeleteCoachTrainingItems(context.Background(), trainingUUID); err != nil {
+	if err := qtx.DeleteTrainingItems(context.Background(), trainingUUID); err != nil {
 		slog.Error("failed to delete training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})
 	}
@@ -544,13 +544,13 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize update"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(buildCoachTrainingResponse(training, items))
+	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
 }
 
 // DeleteCoachTraining godoc
 // @Summary Delete a training template
 // @Description Delete a training template and all its items. Only the owner can delete.
-// @Tags CoachTrainings
+// @Tags Trainings
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Training ID"
@@ -558,8 +558,8 @@ func (h *CoachTrainingHandler) UpdateCoachTraining(c fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Invalid training ID"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Training not found"
-// @Router /api/coach/trainings/{id} [delete]
-func (h *CoachTrainingHandler) DeleteCoachTraining(c fiber.Ctx) error {
+// @Router /api/trainings/{id} [delete]
+func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userIDStr); err != nil {
@@ -571,7 +571,7 @@ func (h *CoachTrainingHandler) DeleteCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	training, err := h.queries.GetCoachTraining(context.Background(), trainingUUID)
+	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -584,7 +584,7 @@ func (h *CoachTrainingHandler) DeleteCoachTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteCoachTraining(context.Background(), trainingUUID); err != nil {
+	if err := h.queries.DeleteTraining(context.Background(), trainingUUID); err != nil {
 		slog.Error("failed to delete coach training", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete training"})
 	}
@@ -592,8 +592,8 @@ func (h *CoachTrainingHandler) DeleteCoachTraining(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Training deleted successfully"})
 }
 
-func buildCoachTrainingResponse(training db.CoachTraining, items []TrainingItemResponse) CoachTrainingResponse {
-	resp := CoachTrainingResponse{
+func buildTrainingResponse(training db.Training, items []TrainingItemResponse) TrainingResponse {
+	resp := TrainingResponse{
 		ID:           training.ID.String(),
 		UserID:       training.UserID.String(),
 		Title:        training.Title,

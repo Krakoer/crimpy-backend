@@ -2607,283 +2607,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/coach/trainings": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get all training templates for the authenticated user (without items).",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "CoachTrainings"
-                ],
-                "summary": "List user's training templates",
-                "responses": {
-                    "200": {
-                        "description": "List of trainings",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/handler.CoachTrainingListItem"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Create a new training template with a structured item tree.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "CoachTrainings"
-                ],
-                "summary": "Create a training template",
-                "parameters": [
-                    {
-                        "description": "Training data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.CreateCoachTrainingRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Training created",
-                        "schema": {
-                            "$ref": "#/definitions/handler.CoachTrainingResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request body",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/coach/trainings/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get a training template with its full item tree. Only the owner can access.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "CoachTrainings"
-                ],
-                "summary": "Get a training template",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Training ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Training with items",
-                        "schema": {
-                            "$ref": "#/definitions/handler.CoachTrainingResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid training ID",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Access denied",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Training not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Replace the training metadata and items tree. Only the owner can update.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "CoachTrainings"
-                ],
-                "summary": "Update a training template",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Training ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Updated training data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.UpdateCoachTrainingRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Updated training",
-                        "schema": {
-                            "$ref": "#/definitions/handler.CoachTrainingResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Access denied",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Training not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Delete a training template and all its items. Only the owner can delete.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "CoachTrainings"
-                ],
-                "summary": "Delete a training template",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Training ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Training deleted",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid training ID",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Access denied",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Training not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/enrollment/{token}": {
             "get": {
                 "security": [
@@ -3792,6 +3515,283 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/trainings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all training templates for the authenticated user (without items).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Trainings"
+                ],
+                "summary": "List user's training templates",
+                "responses": {
+                    "200": {
+                        "description": "List of trainings",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.TrainingListItem"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new training template with a structured item tree.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Trainings"
+                ],
+                "summary": "Create a training template",
+                "parameters": [
+                    {
+                        "description": "Training data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateTrainingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Training created",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/trainings/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a training template with its full item tree. Only the owner can access.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Trainings"
+                ],
+                "summary": "Get a training template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Training ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Training with items",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid training ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replace the training metadata and items tree. Only the owner can update.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Trainings"
+                ],
+                "summary": "Update a training template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Training ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated training data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateTrainingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated training",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a training template and all its items. Only the owner can delete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Trainings"
+                ],
+                "summary": "Delete a training template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Training ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Training deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid training ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/user": {
             "get": {
                 "security": [
@@ -4451,82 +4451,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.CoachTrainingListItem": {
-            "type": "object",
-            "properties": {
-                "comment": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "goal": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_favorite": {
-                    "type": "boolean"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "training_type": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "user_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.CoachTrainingResponse": {
-            "type": "object",
-            "properties": {
-                "comment": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "goal": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_favorite": {
-                    "type": "boolean"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.TrainingItemResponse"
-                    }
-                },
-                "title": {
-                    "type": "string"
-                },
-                "training_type": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "user_id": {
-                    "type": "string"
-                }
-            }
-        },
         "handler.CreateAssessmentRequest": {
             "type": "object",
             "properties": {
@@ -4560,35 +4484,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "id": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.CreateCoachTrainingRequest": {
-            "type": "object",
-            "properties": {
-                "comment": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "goal": {
-                    "type": "string"
-                },
-                "is_favorite": {
-                    "type": "boolean"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/handler.TrainingItemRequest"
-                    }
-                },
-                "title": {
-                    "type": "string"
-                },
-                "training_type": {
                     "type": "string"
                 }
             }
@@ -4707,6 +4602,35 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateTrainingRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "goal": {
+                    "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingItemRequest"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "training_type": {
                     "type": "string"
                 }
             }
@@ -5211,21 +5135,13 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.UpdateBuiltinTrainingWeightRequest": {
-            "type": "object",
-            "properties": {
-                "custom_weight_left": {
-                    "type": "number"
-                },
-                "custom_weight_right": {
-                    "type": "number"
-                }
-            }
-        },
-        "handler.UpdateCoachTrainingRequest": {
+        "handler.TrainingListItem": {
             "type": "object",
             "properties": {
                 "comment": {
+                    "type": "string"
+                },
+                "created_at": {
                     "type": "string"
                 },
                 "description": {
@@ -5234,13 +5150,51 @@ const docTemplate = `{
                 "goal": {
                     "type": "string"
                 },
+                "id": {
+                    "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "training_type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.TrainingResponse": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "goal": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
                 "is_favorite": {
                     "type": "boolean"
                 },
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handler.TrainingItemRequest"
+                        "$ref": "#/definitions/handler.TrainingItemResponse"
                     }
                 },
                 "title": {
@@ -5248,6 +5202,23 @@ const docTemplate = `{
                 },
                 "training_type": {
                     "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateBuiltinTrainingWeightRequest": {
+            "type": "object",
+            "properties": {
+                "custom_weight_left": {
+                    "type": "number"
+                },
+                "custom_weight_right": {
+                    "type": "number"
                 }
             }
         },
@@ -5323,6 +5294,35 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateTrainingRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "goal": {
+                    "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingItemRequest"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "training_type": {
                     "type": "string"
                 }
             }

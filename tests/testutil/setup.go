@@ -69,10 +69,10 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 		t.Logf("Warning: Failed to clean up sessions: %v", err)
 	}
 
-	// Delete coach_trainings (items cascade)
-	_, err = pool.Exec(ctx, "DELETE FROM coach_trainings WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
+	// Delete trainings (items cascade)
+	_, err = pool.Exec(ctx, "DELETE FROM trainings WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
 	if err != nil {
-		t.Logf("Warning: Failed to clean up coach_trainings: %v", err)
+		t.Logf("Warning: Failed to clean up trainings: %v", err)
 	}
 
 	// Delete programs (slots cascade)
@@ -127,12 +127,12 @@ type HandlerConfig struct {
 		AssignTag(fiber.Ctx) error
 		UnassignTag(fiber.Ctx) error
 	}
-	CoachTrainingHandler interface {
-		CreateCoachTraining(fiber.Ctx) error
-		GetCoachTrainings(fiber.Ctx) error
-		GetCoachTraining(fiber.Ctx) error
-		UpdateCoachTraining(fiber.Ctx) error
-		DeleteCoachTraining(fiber.Ctx) error
+	TrainingHandler interface {
+		CreateTraining(fiber.Ctx) error
+		GetTrainings(fiber.Ctx) error
+		GetTraining(fiber.Ctx) error
+		UpdateTraining(fiber.Ctx) error
+		DeleteTraining(fiber.Ctx) error
 	}
 	ProgramHandler interface {
 		CreateProgram(fiber.Ctx) error
@@ -201,12 +201,12 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Delete("/coach/exercises/:exercise_id/tags/:tag_id", config.TagHandler.UnassignTag)
 	}
 
-	if config.CoachTrainingHandler != nil {
-		api.Post("/coach/trainings", config.CoachTrainingHandler.CreateCoachTraining)
-		api.Get("/coach/trainings", config.CoachTrainingHandler.GetCoachTrainings)
-		api.Get("/coach/trainings/:id", config.CoachTrainingHandler.GetCoachTraining)
-		api.Put("/coach/trainings/:id", config.CoachTrainingHandler.UpdateCoachTraining)
-		api.Delete("/coach/trainings/:id", config.CoachTrainingHandler.DeleteCoachTraining)
+	if config.TrainingHandler != nil {
+		api.Post("/trainings", config.TrainingHandler.CreateTraining)
+		api.Get("/trainings", config.TrainingHandler.GetTrainings)
+		api.Get("/trainings/:id", config.TrainingHandler.GetTraining)
+		api.Put("/trainings/:id", config.TrainingHandler.UpdateTraining)
+		api.Delete("/trainings/:id", config.TrainingHandler.DeleteTraining)
 	}
 
 	if config.ProgramHandler != nil {

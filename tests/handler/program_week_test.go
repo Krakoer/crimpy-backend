@@ -26,7 +26,7 @@ func createTestCoachTrainingWithItems(t *testing.T, coachToken string, app *fibe
 			},
 		},
 	})
-	req := testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/trainings", body, coachToken)
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, coachToken)
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf("Failed to create coach training: %v", err)
@@ -61,8 +61,8 @@ func TestWeekHandler_UpsertWeek_Create(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -114,8 +114,8 @@ func TestWeekHandler_UpsertWeek_Update(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -164,8 +164,8 @@ func TestWeekHandler_UpsertWeek_WithOverrides(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -225,8 +225,8 @@ func TestWeekHandler_UpsertWeek_InvalidSession_BothFields(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -258,8 +258,8 @@ func TestWeekHandler_UpsertWeek_InvalidSession_NoField(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -347,8 +347,8 @@ func TestWeekHandler_GetWeeks(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -389,8 +389,8 @@ func TestWeekHandler_GetWeek(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -469,8 +469,8 @@ func TestWeekHandler_DeleteWeek(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -509,8 +509,8 @@ func TestWeekHandler_GetMyWeeks(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -551,8 +551,8 @@ func TestWeekHandler_GetMyWeek(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)
@@ -604,8 +604,8 @@ func TestWeekHandler_GetMyWeek_WrongUser(t *testing.T) {
 	_, otherToken := testutil.CreateTestUser(t, queries, "wk14other@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-		ProgramHandler:       handler.NewProgramHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
 	})
 
 	programID := createTestProgram(t, coachToken, userID, app)

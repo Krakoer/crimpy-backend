@@ -156,7 +156,7 @@ SELECT
   ct.title         AS training_title,
   ct.training_type AS training_type
 FROM coach_program_week_sessions s
-JOIN coach_trainings ct ON ct.id = s.training_id
+JOIN trainings ct ON ct.id = s.training_id
 WHERE s.week_id = $1
 ORDER BY s.position
 `

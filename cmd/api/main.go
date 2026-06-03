@@ -73,7 +73,7 @@ func main() {
 	coachHandler := handler.NewCoachHandler(queries, pool)
 	exerciseHandler := handler.NewExerciseHandler(queries, pool)
 	tagHandler := handler.NewTagHandler(queries, pool)
-	coachTrainingHandler := handler.NewCoachTrainingHandler(queries, pool)
+	trainingHandler := handler.NewTrainingHandler(queries, pool)
 	programHandler := handler.NewProgramHandler(queries, pool)
 
 	// Create Fiber app
@@ -155,12 +155,12 @@ func main() {
 	api.Delete("/coach/enrollments/:user_id", coachHandler.UnenrollUser)
 	api.Delete("/user/enrollment", coachHandler.LeaveCoach)
 
-	// Coach training template routes
-	api.Post("/coach/trainings", coachTrainingHandler.CreateCoachTraining)
-	api.Get("/coach/trainings", coachTrainingHandler.GetCoachTrainings)
-	api.Get("/coach/trainings/:id", coachTrainingHandler.GetCoachTraining)
-	api.Put("/coach/trainings/:id", coachTrainingHandler.UpdateCoachTraining)
-	api.Delete("/coach/trainings/:id", coachTrainingHandler.DeleteCoachTraining)
+	// Training routes (unified for all users)
+	api.Post("/trainings", trainingHandler.CreateTraining)
+	api.Get("/trainings", trainingHandler.GetTrainings)
+	api.Get("/trainings/:id", trainingHandler.GetTraining)
+	api.Put("/trainings/:id", trainingHandler.UpdateTraining)
+	api.Delete("/trainings/:id", trainingHandler.DeleteTraining)
 
 	// Exercise library routes (coach only)
 	api.Post("/coach/exercises", exerciseHandler.CreateExercise)
