@@ -2614,14 +2614,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all training templates for the authenticated coach (without items).",
+                "description": "Get all training templates for the authenticated user (without items).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "CoachTrainings"
                 ],
-                "summary": "List coach's training templates",
+                "summary": "List user's training templates",
                 "responses": {
                     "200": {
                         "description": "List of trainings",
@@ -2629,15 +2629,6 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.CoachTrainingListItem"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Not a validated coach",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
                             }
                         }
                     }
@@ -2649,7 +2640,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training template with a structured item tree. Requires a validated coach account.",
+                "description": "Create a new training template with a structured item tree.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2659,7 +2650,7 @@ const docTemplate = `{
                 "tags": [
                     "CoachTrainings"
                 ],
-                "summary": "Create a coach training template",
+                "summary": "Create a training template",
                 "parameters": [
                     {
                         "description": "Training data",
@@ -2687,15 +2678,6 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "403": {
-                        "description": "Not a validated coach",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
@@ -2715,14 +2697,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a training template with its full item tree. Only the owning coach can access.",
+                "description": "Get a training template with its full item tree. Only the owner can access.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "CoachTrainings"
                 ],
-                "summary": "Get a coach training template",
+                "summary": "Get a training template",
                 "parameters": [
                     {
                         "type": "string",
@@ -2749,7 +2731,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Not a validated coach or not owner",
+                        "description": "Access denied",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2774,7 +2756,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the training metadata and items tree. Only the owning coach can update.",
+                "description": "Replace the training metadata and items tree. Only the owner can update.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2784,7 +2766,7 @@ const docTemplate = `{
                 "tags": [
                     "CoachTrainings"
                 ],
-                "summary": "Update a coach training template",
+                "summary": "Update a training template",
                 "parameters": [
                     {
                         "type": "string",
@@ -2820,7 +2802,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Not a validated coach or not owner",
+                        "description": "Access denied",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2845,14 +2827,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a training template and all its items. Only the owning coach can delete.",
+                "description": "Delete a training template and all its items. Only the owner can delete.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "CoachTrainings"
                 ],
-                "summary": "Delete a coach training template",
+                "summary": "Delete a training template",
                 "parameters": [
                     {
                         "type": "string",
@@ -2882,7 +2864,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Not a validated coach or not owner",
+                        "description": "Access denied",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5080,9 +5062,6 @@ const docTemplate = `{
         "handler.CoachTrainingListItem": {
             "type": "object",
             "properties": {
-                "coach_id": {
-                    "type": "string"
-                },
                 "comment": {
                     "type": "string"
                 },
@@ -5097,6 +5076,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
                 },
                 "title": {
                     "type": "string"
@@ -5106,15 +5088,15 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
                 }
             }
         },
         "handler.CoachTrainingResponse": {
             "type": "object",
             "properties": {
-                "coach_id": {
-                    "type": "string"
-                },
                 "comment": {
                     "type": "string"
                 },
@@ -5129,6 +5111,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
                 },
                 "items": {
                     "type": "array",
@@ -5143,6 +5128,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -5195,6 +5183,9 @@ const docTemplate = `{
                 },
                 "goal": {
                     "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
                 },
                 "items": {
                     "type": "array",
@@ -5986,6 +5977,9 @@ const docTemplate = `{
                 },
                 "goal": {
                     "type": "string"
+                },
+                "is_favorite": {
+                    "type": "boolean"
                 },
                 "items": {
                     "type": "array",

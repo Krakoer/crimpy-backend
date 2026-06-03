@@ -1,17 +1,18 @@
 -- name: CreateCoachTraining :one
-INSERT INTO coach_trainings (coach_id, title, description, training_type, goal, comment)
-VALUES (@coach_id, @title, @description, @training_type, @goal, @comment)
+INSERT INTO coach_trainings (user_id, title, description, training_type, goal, comment, is_favorite)
+VALUES (@user_id, @title, @description, @training_type, @goal, @comment, @is_favorite)
 RETURNING *;
 
 -- name: GetCoachTraining :one
 SELECT * FROM coach_trainings WHERE id = @id;
 
 -- name: GetCoachTrainings :many
-SELECT * FROM coach_trainings WHERE coach_id = @coach_id ORDER BY title;
+SELECT * FROM coach_trainings WHERE user_id = @user_id ORDER BY title;
 
 -- name: UpdateCoachTraining :one
 UPDATE coach_trainings
-SET title = @title, description = @description, training_type = @training_type, goal = @goal, comment = @comment, updated_at = now()
+SET title = @title, description = @description, training_type = @training_type,
+    goal = @goal, comment = @comment, is_favorite = @is_favorite, updated_at = now()
 WHERE id = @id
 RETURNING *;
 

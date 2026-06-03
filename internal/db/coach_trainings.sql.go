@@ -12,38 +12,41 @@ import (
 )
 
 const createCoachTraining = `-- name: CreateCoachTraining :one
-INSERT INTO coach_trainings (coach_id, title, description, training_type, goal, comment)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, coach_id, title, description, training_type, goal, comment, created_at, updated_at
+INSERT INTO coach_trainings (user_id, title, description, training_type, goal, comment, is_favorite)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, title, description, training_type, goal, comment, is_favorite, created_at, updated_at
 `
 
 type CreateCoachTrainingParams struct {
-	CoachID      pgtype.UUID
+	UserID       pgtype.UUID
 	Title        string
 	Description  pgtype.Text
 	TrainingType string
-	Goal         string
-	Comment      string
+	Goal         pgtype.Text
+	Comment      pgtype.Text
+	IsFavorite   bool
 }
 
 func (q *Queries) CreateCoachTraining(ctx context.Context, arg CreateCoachTrainingParams) (CoachTraining, error) {
 	row := q.db.QueryRow(ctx, createCoachTraining,
-		arg.CoachID,
+		arg.UserID,
 		arg.Title,
 		arg.Description,
 		arg.TrainingType,
 		arg.Goal,
 		arg.Comment,
+		arg.IsFavorite,
 	)
 	var i CoachTraining
 	err := row.Scan(
 		&i.ID,
-		&i.CoachID,
+		&i.UserID,
 		&i.Title,
 		&i.Description,
 		&i.TrainingType,
 		&i.Goal,
 		&i.Comment,
+		&i.IsFavorite,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -164,7 +167,7 @@ func (q *Queries) DeleteCoachTrainingItems(ctx context.Context, trainingID pgtyp
 }
 
 const getCoachTraining = `-- name: GetCoachTraining :one
-SELECT id, coach_id, title, description, training_type, goal, comment, created_at, updated_at FROM coach_trainings WHERE id = $1
+SELECT id, user_id, title, description, training_type, goal, comment, is_favorite, created_at, updated_at FROM coach_trainings WHERE id = $1
 `
 
 func (q *Queries) GetCoachTraining(ctx context.Context, id pgtype.UUID) (CoachTraining, error) {
@@ -172,12 +175,13 @@ func (q *Queries) GetCoachTraining(ctx context.Context, id pgtype.UUID) (CoachTr
 	var i CoachTraining
 	err := row.Scan(
 		&i.ID,
-		&i.CoachID,
+		&i.UserID,
 		&i.Title,
 		&i.Description,
 		&i.TrainingType,
 		&i.Goal,
 		&i.Comment,
+		&i.IsFavorite,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -232,11 +236,11 @@ func (q *Queries) GetCoachTrainingItems(ctx context.Context, trainingID pgtype.U
 }
 
 const getCoachTrainings = `-- name: GetCoachTrainings :many
-SELECT id, coach_id, title, description, training_type, goal, comment, created_at, updated_at FROM coach_trainings WHERE coach_id = $1 ORDER BY title
+SELECT id, user_id, title, description, training_type, goal, comment, is_favorite, created_at, updated_at FROM coach_trainings WHERE user_id = $1 ORDER BY title
 `
 
-func (q *Queries) GetCoachTrainings(ctx context.Context, coachID pgtype.UUID) ([]CoachTraining, error) {
-	rows, err := q.db.Query(ctx, getCoachTrainings, coachID)
+func (q *Queries) GetCoachTrainings(ctx context.Context, userID pgtype.UUID) ([]CoachTraining, error) {
+	rows, err := q.db.Query(ctx, getCoachTrainings, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -246,12 +250,13 @@ func (q *Queries) GetCoachTrainings(ctx context.Context, coachID pgtype.UUID) ([
 		var i CoachTraining
 		if err := rows.Scan(
 			&i.ID,
-			&i.CoachID,
+			&i.UserID,
 			&i.Title,
 			&i.Description,
 			&i.TrainingType,
 			&i.Goal,
 			&i.Comment,
+			&i.IsFavorite,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -267,17 +272,19 @@ func (q *Queries) GetCoachTrainings(ctx context.Context, coachID pgtype.UUID) ([
 
 const updateCoachTraining = `-- name: UpdateCoachTraining :one
 UPDATE coach_trainings
-SET title = $1, description = $2, training_type = $3, goal = $4, comment = $5, updated_at = now()
-WHERE id = $6
-RETURNING id, coach_id, title, description, training_type, goal, comment, created_at, updated_at
+SET title = $1, description = $2, training_type = $3,
+    goal = $4, comment = $5, is_favorite = $6, updated_at = now()
+WHERE id = $7
+RETURNING id, user_id, title, description, training_type, goal, comment, is_favorite, created_at, updated_at
 `
 
 type UpdateCoachTrainingParams struct {
 	Title        string
 	Description  pgtype.Text
 	TrainingType string
-	Goal         string
-	Comment      string
+	Goal         pgtype.Text
+	Comment      pgtype.Text
+	IsFavorite   bool
 	ID           pgtype.UUID
 }
 
@@ -288,17 +295,19 @@ func (q *Queries) UpdateCoachTraining(ctx context.Context, arg UpdateCoachTraini
 		arg.TrainingType,
 		arg.Goal,
 		arg.Comment,
+		arg.IsFavorite,
 		arg.ID,
 	)
 	var i CoachTraining
 	err := row.Scan(
 		&i.ID,
-		&i.CoachID,
+		&i.UserID,
 		&i.Title,
 		&i.Description,
 		&i.TrainingType,
 		&i.Goal,
 		&i.Comment,
+		&i.IsFavorite,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

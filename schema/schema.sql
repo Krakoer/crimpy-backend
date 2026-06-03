@@ -183,18 +183,19 @@ CREATE TABLE "exercise_tags" (
 -- Stores coach-created training templates (structured training sessions).
 CREATE TABLE "coach_trainings" (
   "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "coach_id"      UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
   "title"         TEXT        NOT NULL,
   "description"   TEXT,
   "training_type" TEXT        NOT NULL DEFAULT 'workout',
-  "goal"          TEXT        NOT NULL DEFAULT '',
-  "comment"       TEXT        NOT NULL DEFAULT '',
+  "goal"          TEXT,
+  "comment"       TEXT,
+  "is_favorite"   BOOLEAN     NOT NULL DEFAULT FALSE,
   "created_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
-CREATE INDEX "coach_trainings_coach_id_idx" ON "coach_trainings"("coach_id");
+CREATE INDEX "coach_trainings_user_id_idx" ON "coach_trainings"("user_id");
 
 -- Stores individual items within a coach training (repeaters, hangboard reps, free notes,
 -- exercises, circuits, sections). Items are stored flat; nesting is via parent_id.

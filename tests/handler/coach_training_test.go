@@ -17,7 +17,7 @@ func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining1@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "ctraining1@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
@@ -81,36 +81,13 @@ func TestCoachTrainingHandler_Create_Success(t *testing.T) {
 	}
 }
 
-func TestCoachTrainingHandler_Create_NotCoach(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-secret-key")
-
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-
-	_, token := testutil.CreateTestUser(t, queries, "ctraining2@test.com")
-
-	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
-	})
-
-	body, _ := json.Marshal(map[string]interface{}{"title": "Training"})
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/coach/trainings", body)
-	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
-
-	resp, _ := app.Test(req)
-
-	if resp.StatusCode != fiber.StatusForbidden {
-		t.Errorf("Expected %d, got %d", fiber.StatusForbidden, resp.StatusCode)
-	}
-}
-
 func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining3@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "ctraining3@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
@@ -179,8 +156,8 @@ func TestCoachTrainingHandler_OwnershipIsolation(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token1 := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining4@test.com")
-	_, token2 := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining5@test.com")
+	_, token1 := testutil.CreateTestUser(t, queries, "ctraining4@test.com")
+	_, token2 := testutil.CreateTestUser(t, queries, "ctraining5@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
@@ -218,7 +195,7 @@ func TestCoachTrainingHandler_Update(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining6@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "ctraining6@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
@@ -284,7 +261,7 @@ func TestCoachTrainingHandler_StretchingType(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining8@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "ctraining8@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),
@@ -348,7 +325,7 @@ func TestCoachTrainingHandler_Delete(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	_, token := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining7@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "ctraining7@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTrainingHandler: handler.NewCoachTrainingHandler(queries, pool),

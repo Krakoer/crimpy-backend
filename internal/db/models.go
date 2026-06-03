@@ -79,12 +79,13 @@ type CoachProgramWeekSession struct {
 
 type CoachTraining struct {
 	ID           pgtype.UUID
-	CoachID      pgtype.UUID
+	UserID       pgtype.UUID
 	Title        string
 	Description  pgtype.Text
 	TrainingType string
-	Goal         string
-	Comment      string
+	Goal         pgtype.Text
+	Comment      pgtype.Text
+	IsFavorite   bool
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 }
