@@ -20,8 +20,8 @@ WHERE program_id = @program_id AND week_number = @week_number;
 
 -- name: CreateCoachProgramWeekSession :one
 INSERT INTO coach_program_week_sessions
-  (week_id, training_id, day_of_week, times_per_week, position, notes)
-VALUES (@week_id, @training_id, @day_of_week, @times_per_week, @position, @notes)
+  (week_id, training_id, day_of_week, times_per_week, is_everyday, position, notes)
+VALUES (@week_id, @training_id, @day_of_week, @times_per_week, @is_everyday, @position, @notes)
 RETURNING *;
 
 -- name: GetCoachProgramWeekSessions :many
@@ -31,6 +31,7 @@ SELECT
   s.training_id,
   s.day_of_week,
   s.times_per_week,
+  s.is_everyday,
   s.position,
   s.notes        AS session_notes,
   s.created_at,

@@ -25,6 +25,7 @@ type WeekSessionRequest struct {
 	TrainingID   string                   `json:"training_id"`
 	DayOfWeek    *int32                   `json:"day_of_week"`
 	TimesPerWeek *int32                   `json:"times_per_week"`
+	IsEveryday   bool                     `json:"is_everyday"`
 	Notes        *string                  `json:"notes"`
 	Overrides    []SessionOverrideRequest `json:"overrides"`
 }
@@ -47,6 +48,7 @@ type WeekSessionResponse struct {
 	TrainingType  string                    `json:"training_type"`
 	DayOfWeek     *int32                    `json:"day_of_week,omitempty"`
 	TimesPerWeek  *int32                    `json:"times_per_week,omitempty"`
+	IsEveryday    bool                      `json:"is_everyday"`
 	Position      int32                     `json:"position"`
 	Notes         *string                   `json:"notes,omitempty"`
 	Overrides     []SessionOverrideResponse `json:"overrides"`
@@ -72,11 +74,18 @@ type WeekListItem struct {
 }
 
 func validateWeekSession(s WeekSessionRequest) error {
-	if s.DayOfWeek != nil && s.TimesPerWeek != nil {
-		return errors.New("session must have either day_of_week or times_per_week, not both")
+	modes := 0
+	if s.DayOfWeek != nil {
+		modes++
 	}
-	if s.DayOfWeek == nil && s.TimesPerWeek == nil {
-		return errors.New("session must have either day_of_week or times_per_week")
+	if s.TimesPerWeek != nil {
+		modes++
+	}
+	if s.IsEveryday {
+		modes++
+	}
+	if modes != 1 {
+		return errors.New("session must have exactly one of: day_of_week, times_per_week, or is_everyday")
 	}
 	if s.DayOfWeek != nil && (*s.DayOfWeek < 0 || *s.DayOfWeek > 6) {
 		return errors.New("day_of_week must be between 0 (Monday) and 6 (Sunday)")
@@ -97,6 +106,7 @@ func (h *ProgramHandler) insertWeekSessions(ctx context.Context, qtx *db.Queries
 		params := db.CreateCoachProgramWeekSessionParams{
 			WeekID:     weekID,
 			TrainingID: trainingUUID,
+			IsEveryday: s.IsEveryday,
 			Position:   int32(i),
 		}
 		if s.DayOfWeek != nil {
@@ -139,6 +149,7 @@ func (h *ProgramHandler) insertWeekSessions(ctx context.Context, qtx *db.Queries
 			TrainingID:    session.TrainingID.String(),
 			TrainingTitle: "",
 			TrainingType:  "",
+			IsEveryday:    session.IsEveryday,
 			Position:      session.Position,
 			Overrides:     overrides,
 		}
@@ -175,6 +186,7 @@ func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWe
 			TrainingID:    s.TrainingID.String(),
 			TrainingTitle: s.TrainingTitle,
 			TrainingType:  s.TrainingType,
+			IsEveryday:    s.IsEveryday,
 			Position:      s.Position,
 			Overrides:     overridesBySession[s.ID],
 		}

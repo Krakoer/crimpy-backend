@@ -13,9 +13,9 @@ import (
 
 const createCoachProgramWeekSession = `-- name: CreateCoachProgramWeekSession :one
 INSERT INTO coach_program_week_sessions
-  (week_id, training_id, day_of_week, times_per_week, position, notes)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, week_id, training_id, day_of_week, times_per_week, position, notes, created_at, updated_at
+  (week_id, training_id, day_of_week, times_per_week, is_everyday, position, notes)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, week_id, training_id, day_of_week, times_per_week, is_everyday, position, notes, created_at, updated_at
 `
 
 type CreateCoachProgramWeekSessionParams struct {
@@ -23,6 +23,7 @@ type CreateCoachProgramWeekSessionParams struct {
 	TrainingID   pgtype.UUID
 	DayOfWeek    pgtype.Int4
 	TimesPerWeek pgtype.Int4
+	IsEveryday   bool
 	Position     int32
 	Notes        pgtype.Text
 }
@@ -33,6 +34,7 @@ func (q *Queries) CreateCoachProgramWeekSession(ctx context.Context, arg CreateC
 		arg.TrainingID,
 		arg.DayOfWeek,
 		arg.TimesPerWeek,
+		arg.IsEveryday,
 		arg.Position,
 		arg.Notes,
 	)
@@ -43,6 +45,7 @@ func (q *Queries) CreateCoachProgramWeekSession(ctx context.Context, arg CreateC
 		&i.TrainingID,
 		&i.DayOfWeek,
 		&i.TimesPerWeek,
+		&i.IsEveryday,
 		&i.Position,
 		&i.Notes,
 		&i.CreatedAt,
@@ -149,6 +152,7 @@ SELECT
   s.training_id,
   s.day_of_week,
   s.times_per_week,
+  s.is_everyday,
   s.position,
   s.notes        AS session_notes,
   s.created_at,
@@ -167,6 +171,7 @@ type GetCoachProgramWeekSessionsRow struct {
 	TrainingID    pgtype.UUID
 	DayOfWeek     pgtype.Int4
 	TimesPerWeek  pgtype.Int4
+	IsEveryday    bool
 	Position      int32
 	SessionNotes  pgtype.Text
 	CreatedAt     pgtype.Timestamptz
@@ -190,6 +195,7 @@ func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype
 			&i.TrainingID,
 			&i.DayOfWeek,
 			&i.TimesPerWeek,
+			&i.IsEveryday,
 			&i.Position,
 			&i.SessionNotes,
 			&i.CreatedAt,

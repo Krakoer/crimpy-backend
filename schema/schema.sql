@@ -266,13 +266,15 @@ CREATE TABLE "coach_program_week_sessions" (
   "training_id"    UUID        NOT NULL REFERENCES "trainings"("id") ON DELETE RESTRICT,
   "day_of_week"    INTEGER,
   "times_per_week" INTEGER,
+  "is_everyday"    BOOLEAN     NOT NULL DEFAULT FALSE,
   "position"       INTEGER     NOT NULL DEFAULT 0,
   "notes"          TEXT,
   "created_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT "cpws_mode_check" CHECK (
-    (day_of_week IS NOT NULL AND times_per_week IS NULL)
-    OR (day_of_week IS NULL AND times_per_week IS NOT NULL)
+    (day_of_week IS NOT NULL AND times_per_week IS NULL AND is_everyday = FALSE)
+    OR (day_of_week IS NULL AND times_per_week IS NOT NULL AND is_everyday = FALSE)
+    OR (day_of_week IS NULL AND times_per_week IS NULL AND is_everyday = TRUE)
   ),
   CONSTRAINT "cpws_day_range_check"
     CHECK (day_of_week IS NULL OR (day_of_week >= 0 AND day_of_week <= 6)),

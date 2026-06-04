@@ -71,6 +71,7 @@ type CoachProgramWeekSession struct {
 	TrainingID   pgtype.UUID
 	DayOfWeek    pgtype.Int4
 	TimesPerWeek pgtype.Int4
+	IsEveryday   bool
 	Position     int32
 	Notes        pgtype.Text
 	CreatedAt    pgtype.Timestamptz
