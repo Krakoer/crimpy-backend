@@ -24,3 +24,9 @@ RETURNING *;
 -- name: DeleteCoachProgram :exec
 DELETE FROM coach_programs WHERE id = @id;
 
+-- name: CountMyProgramTraining :one
+SELECT COUNT(*) FROM coach_program_week_sessions s
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE p.id = @program_id AND p.user_id = @user_id AND s.training_id = @training_id;
+

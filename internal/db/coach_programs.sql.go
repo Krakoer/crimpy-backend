@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countMyProgramTraining = `-- name: CountMyProgramTraining :one
+SELECT COUNT(*) FROM coach_program_week_sessions s
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE p.id = $1 AND p.user_id = $2 AND s.training_id = $3
+`
+
+type CountMyProgramTrainingParams struct {
+	ProgramID  pgtype.UUID
+	UserID     pgtype.UUID
+	TrainingID pgtype.UUID
+}
+
+func (q *Queries) CountMyProgramTraining(ctx context.Context, arg CountMyProgramTrainingParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countMyProgramTraining, arg.ProgramID, arg.UserID, arg.TrainingID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCoachProgram = `-- name: CreateCoachProgram :one
 INSERT INTO coach_programs (coach_id, user_id, name, objective, start_date, duration_weeks)
 VALUES ($1, $2, $3, $4, $5, $6)
