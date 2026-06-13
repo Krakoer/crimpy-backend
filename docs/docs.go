@@ -4014,6 +4014,74 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/user/programs/{program_id}/trainings/{training_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Programs"
+                ],
+                "summary": "Get a training referenced by one of my programs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Program ID",
+                        "name": "program_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Training ID",
+                        "name": "training_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Training",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Training not found in program",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/user/programs/{program_id}/weeks": {
             "get": {
                 "security": [
@@ -5462,6 +5530,9 @@ const docTemplate = `{
                 "day_of_week": {
                     "type": "integer"
                 },
+                "is_everyday": {
+                    "type": "boolean"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -5487,6 +5558,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_everyday": {
+                    "type": "boolean"
                 },
                 "notes": {
                     "type": "string"

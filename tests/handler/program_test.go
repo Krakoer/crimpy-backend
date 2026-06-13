@@ -460,3 +460,73 @@ func TestProgramHandler_GetMyProgram_WrongUser(t *testing.T) {
 		t.Errorf("Expected 403, got %d", resp.StatusCode)
 	}
 }
+
+func TestProgramHandler_GetMyProgramTraining_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "prog16coach@test.com")
+	userID, userToken := testutil.CreateTestUser(t, queries, "prog16user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	weekBody, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+		},
+	})
+	weekReq := testutil.NewJSONRequestWithAuth(http.MethodPut, fmt.Sprintf("/api/coach/clients/%s/programs/%s/weeks/1", userID, programID), weekBody, coachToken)
+	if weekResp, err := app.Test(weekReq); err != nil || weekResp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Failed to upsert week: err=%v status=%v", err, weekResp.StatusCode)
+	}
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/user/programs/%s/trainings/%s", programID, trainingID), nil, userToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["id"] != trainingID {
+		t.Errorf("Expected training id %s, got %v", trainingID, result["id"])
+	}
+}
+
+func TestProgramHandler_GetMyProgramTraining_NotInProgram(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "prog17coach@test.com")
+	userID, userToken := testutil.CreateTestUser(t, queries, "prog17user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	unrelatedTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/user/programs/%s/trainings/%s", programID, unrelatedTrainingID), nil, userToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+}

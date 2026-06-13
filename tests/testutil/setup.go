@@ -148,6 +148,7 @@ type HandlerConfig struct {
 		DeleteWeek(fiber.Ctx) error
 		GetMyWeeks(fiber.Ctx) error
 		GetMyWeek(fiber.Ctx) error
+		GetMyProgramTraining(fiber.Ctx) error
 	}
 }
 
@@ -223,6 +224,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Delete("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", config.ProgramHandler.DeleteWeek)
 		api.Get("/user/programs/:program_id/weeks", config.ProgramHandler.GetMyWeeks)
 		api.Get("/user/programs/:program_id/weeks/:week_number", config.ProgramHandler.GetMyWeek)
+		api.Get("/user/programs/:program_id/trainings/:training_id", config.ProgramHandler.GetMyProgramTraining)
 	}
 
 	return app

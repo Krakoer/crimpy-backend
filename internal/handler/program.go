@@ -413,3 +413,67 @@ func (h *ProgramHandler) GetMyProgram(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(programToResponse(program))
 }
+
+// GetMyProgramTraining godoc
+// @Summary Get a training referenced by one of my programs
+// @Description Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership.
+// @Tags Programs
+// @Produce json
+// @Security BearerAuth
+// @Param program_id path string true "Program ID"
+// @Param training_id path string true "Training ID"
+// @Success 200 {object} TrainingResponse "Training"
+// @Failure 400 {object} map[string]string "Invalid ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Training not found in program"
+// @Router /api/user/programs/{program_id}/trainings/{training_id} [get]
+func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
+	userIDStr := middleware.GetUserID(c)
+	var userUUID pgtype.UUID
+	if err := userUUID.Scan(userIDStr); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	var programUUID pgtype.UUID
+	if err := programUUID.Scan(c.Params("program_id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program ID"})
+	}
+
+	var trainingUUID pgtype.UUID
+	if err := trainingUUID.Scan(c.Params("training_id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
+	}
+
+	count, err := h.queries.CountMyProgramTraining(context.Background(), db.CountMyProgramTrainingParams{
+		ProgramID:  programUUID,
+		UserID:     userUUID,
+		TrainingID: trainingUUID,
+	})
+	if err != nil {
+		slog.Error("failed to authorize program training", "program_id", programUUID.String(), "training_id", trainingUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+	}
+	if count == 0 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	}
+
+	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
+		}
+		slog.Error("failed to retrieve training", "training_id", trainingUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+	}
+
+	rows, err := h.queries.GetTrainingItems(context.Background(), trainingUUID)
+	if err != nil {
+		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})
+	}
+
+	var zeroParent pgtype.UUID
+	items := buildTrainingItemTree(rows, zeroParent)
+
+	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
+}

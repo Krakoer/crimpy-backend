@@ -198,6 +198,7 @@ func main() {
 	api.Delete("/coach/clients/:user_id/programs/:program_id/weeks/:week_number", programHandler.DeleteWeek)
 	api.Get("/user/programs/:program_id/weeks", programHandler.GetMyWeeks)
 	api.Get("/user/programs/:program_id/weeks/:week_number", programHandler.GetMyWeek)
+	api.Get("/user/programs/:program_id/trainings/:training_id", programHandler.GetMyProgramTraining)
 
 	// Sensor config routes
 	api.Post("/sensor-configs", sensorConfigHandler.CreateSensorConfig)
