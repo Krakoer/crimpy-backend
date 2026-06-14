@@ -1,4 +1,4 @@
-h1:IlGBHgnA9jwWVWxI84n1BiqzhUSlSaDXTN6yLcW6xCM=
+h1:cU7AzCtnVLmO8wVLs4oP3PAGBnfa6t2MqsakGYvjgXQ=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -22,3 +22,4 @@ h1:IlGBHgnA9jwWVWxI84n1BiqzhUSlSaDXTN6yLcW6xCM=
 20260603201607_migrate_user_trainings_and_drop_legacy.sql h1:DbpwG23Qk90ss4TGQ4UhRcp21ADo7TmkClQVHEO9CLc=
 20260603202206_rename_to_unified_trainings.sql h1:IYkPDpu71RBNPjFaYAoELFp+6N2gpJGSZAkHymaDApA=
 20260604144604_add_everyday_sessions.sql h1:Lg7DmSdkZQASp/TUEst7a0+QPXa+9c8YLx19Ke4IEL0=
+20260614194345_add_refresh_tokens.sql h1:MEAbKF15CdIAqNx+ir8f6VfHF6302fGwDtS8Ht6PIZQ=
