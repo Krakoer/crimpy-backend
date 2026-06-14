@@ -124,6 +124,8 @@ func main() {
 	// Auth routes (public)
 	app.Post("/auth/register", authHandler.Register)
 	app.Post("/auth/login", authHandler.Login)
+	app.Post("/auth/refresh", authHandler.Refresh)
+	app.Post("/auth/logout", authHandler.Logout)
 	app.Post("/auth/verify", authHandler.VerifyEmail)
 	app.Post("/auth/resend-verification", authHandler.ResendVerificationEmail)
 

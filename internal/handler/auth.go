@@ -280,9 +280,18 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
+	refreshToken, err := h.issueRefreshToken(context.Background(), user.ID)
+	if err != nil {
+		slog.Error("failed to create refresh token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to generate token",
+		})
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Login successful",
-		"token":   token,
+		"message":       "Login successful",
+		"token":         token,
+		"refresh_token": refreshToken,
 		"user": UserResponse{
 			ID:             user.ID.String(),
 			Email:          user.Email,
@@ -295,6 +304,115 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 			CreatedAt:      user.CreatedAt.Time.String(),
 		},
 	})
+}
+
+func (h *AuthHandler) issueRefreshToken(ctx context.Context, userID pgtype.UUID) (string, error) {
+	raw, err := utils.GenerateRefreshToken()
+	if err != nil {
+		return "", err
+	}
+	expiresAt := pgtype.Timestamptz{}
+	if err := expiresAt.Scan(time.Now().Add(utils.RefreshTokenTTL)); err != nil {
+		return "", err
+	}
+	_, err = h.queries.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+		UserID:    userID,
+		TokenHash: utils.HashToken(raw),
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// Refresh godoc
+// @Summary Refresh access token
+// @Description Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body RefreshRequest true "Refresh token"
+// @Success 200 {object} map[string]string "New access and refresh tokens"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 401 {object} map[string]string "Invalid or expired refresh token"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/refresh [post]
+func (h *AuthHandler) Refresh(c fiber.Ctx) error {
+	var req RefreshRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if req.RefreshToken == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Refresh token is required"})
+	}
+
+	stored, err := h.queries.GetRefreshTokenByHash(context.Background(), utils.HashToken(req.RefreshToken))
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+		}
+		slog.Error("failed to look up refresh token", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+	}
+
+	if stored.Revoked || stored.ExpiresAt.Time.Before(time.Now()) {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+	}
+
+	user, err := h.queries.GetUserByID(context.Background(), stored.UserID)
+	if err != nil {
+		slog.Error("failed to load user for refresh", "user_id", stored.UserID.String(), "error", err)
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+	}
+
+	if err := h.queries.RevokeRefreshToken(context.Background(), stored.ID); err != nil {
+		slog.Error("failed to revoke refresh token", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+	}
+
+	accessToken, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+	newRefresh, err := h.issueRefreshToken(context.Background(), user.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"token":         accessToken,
+		"refresh_token": newRefresh,
+	})
+}
+
+// Logout godoc
+// @Summary Logout
+// @Description Revoke a refresh token. Always succeeds so clients can clear local state.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body RefreshRequest true "Refresh token to revoke"
+// @Success 200 {object} map[string]string "Logged out"
+// @Router /auth/logout [post]
+func (h *AuthHandler) Logout(c fiber.Ctx) error {
+	var req RefreshRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
+	}
+	if req.RefreshToken != "" {
+		stored, err := h.queries.GetRefreshTokenByHash(context.Background(), utils.HashToken(req.RefreshToken))
+		if err == nil {
+			if err := h.queries.RevokeRefreshToken(context.Background(), stored.ID); err != nil {
+				slog.Error("failed to revoke refresh token on logout", "error", err)
+			}
+		}
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 }
 
 type ChangePasswordRequest struct {

@@ -95,6 +95,8 @@ type HandlerConfig struct {
 	AuthHandler interface {
 		Register(fiber.Ctx) error
 		Login(fiber.Ctx) error
+		Refresh(fiber.Ctx) error
+		Logout(fiber.Ctx) error
 		ChangePassword(fiber.Ctx) error
 		GetCurrentUser(fiber.Ctx) error
 	}
@@ -159,6 +161,8 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	if config.AuthHandler != nil {
 		app.Post("/auth/register", config.AuthHandler.Register)
 		app.Post("/auth/login", config.AuthHandler.Login)
+		app.Post("/auth/refresh", config.AuthHandler.Refresh)
+		app.Post("/auth/logout", config.AuthHandler.Logout)
 	}
 
 	// Protected routes

@@ -700,3 +700,120 @@ func TestAuthHandler_GetCurrentUser_NoAuth(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", fiber.StatusUnauthorized, resp.StatusCode)
 	}
 }
+
+func registerAndLogin(t *testing.T, app *fiber.App, email, password string) (string, string) {
+	t.Helper()
+	registerBody, _ := json.Marshal(map[string]interface{}{
+		"email":     email,
+		"password":  password,
+		"firstname": "Refresh",
+		"lastname":  "Tester",
+	})
+	if _, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/register", registerBody)); err != nil {
+		t.Fatalf("Failed to register user: %v", err)
+	}
+
+	loginBody, _ := json.Marshal(map[string]interface{}{"email": email, "password": password})
+	resp, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/login", loginBody))
+	if err != nil {
+		t.Fatalf("Failed to login: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 on login, got %d", resp.StatusCode)
+	}
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+	token, _ := response["token"].(string)
+	refreshToken, _ := response["refresh_token"].(string)
+	return token, refreshToken
+}
+
+func TestAuthHandler_Login_ReturnsRefreshToken(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries),
+	})
+
+	_, refreshToken := registerAndLogin(t, app, "refresh-login@test.com", "password123")
+	if refreshToken == "" {
+		t.Error("Expected refresh_token in login response")
+	}
+}
+
+func TestAuthHandler_Refresh_Success(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries),
+	})
+
+	_, refreshToken := registerAndLogin(t, app, "refresh-ok@test.com", "password123")
+
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": refreshToken})
+	resp, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body))
+	if err != nil {
+		t.Fatalf("Refresh request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+	if response["token"] == nil || response["token"] == "" {
+		t.Error("Expected new access token")
+	}
+	newRefresh, _ := response["refresh_token"].(string)
+	if newRefresh == "" || newRefresh == refreshToken {
+		t.Error("Expected a rotated refresh token")
+	}
+}
+
+func TestAuthHandler_Refresh_InvalidToken(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries),
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": "not-a-real-token"})
+	resp, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body))
+	if err != nil {
+		t.Fatalf("Refresh request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestAuthHandler_Refresh_RotatedTokenRejected(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries),
+	})
+
+	_, refreshToken := registerAndLogin(t, app, "refresh-rotate@test.com", "password123")
+
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": refreshToken})
+	if _, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body)); err != nil {
+		t.Fatalf("First refresh failed: %v", err)
+	}
+
+	resp, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body))
+	if err != nil {
+		t.Fatalf("Second refresh failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 reusing rotated token, got %d", resp.StatusCode)
+	}
+}
