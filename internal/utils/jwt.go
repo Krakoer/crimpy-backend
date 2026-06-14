@@ -16,6 +16,10 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// AccessTokenTTL is the lifetime of an access JWT. Kept short because clients
+// transparently mint new ones with their refresh token.
+const AccessTokenTTL = time.Hour
+
 // GenerateJWT generates a JWT token for a user
 func GenerateJWT(userID, email string, isAdmin, isCoach bool) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
@@ -29,7 +33,7 @@ func GenerateJWT(userID, email string, isAdmin, isCoach bool) (string, error) {
 		IsAdmin: isAdmin,
 		IsCoach: isCoach,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour * 7)), // 7 days
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
