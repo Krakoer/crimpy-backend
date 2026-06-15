@@ -119,6 +119,10 @@ func parseAndValidateProgramRequest(req CreateProgramRequest) (pgtype.Date, erro
 	if err != nil {
 		return pgtype.Date{}, errors.New("start_date must be in YYYY-MM-DD format")
 	}
+	// Program weeks run Monday to Sunday, so a program must start on a Monday.
+	if t.Weekday() != time.Monday {
+		return pgtype.Date{}, errors.New("start_date must be a Monday")
+	}
 	return pgtype.Date{Time: t, Valid: true}, nil
 }
 

@@ -187,6 +187,34 @@ func TestProgramHandler_Create_MissingName(t *testing.T) {
 	}
 }
 
+func TestProgramHandler_Create_NonMondayStart(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "progmonday@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "progmondayuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		ProgramHandler: handler.NewProgramHandler(queries, pool),
+	})
+
+	// 2026-06-07 is a Sunday.
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":       "Test Program",
+		"start_date": "2026-06-07",
+	})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a non-Monday start, got %d", resp.StatusCode)
+	}
+}
+
 func TestProgramHandler_Create_InvalidDate(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
@@ -228,10 +256,11 @@ func TestProgramHandler_GetPrograms(t *testing.T) {
 		ProgramHandler: handler.NewProgramHandler(queries, pool),
 	})
 
+	mondays := []string{"2026-06-01", "2026-06-08"}
 	for i := 0; i < 2; i++ {
 		body, _ := json.Marshal(map[string]interface{}{
 			"name":       fmt.Sprintf("Program %d", i+1),
-			"start_date": fmt.Sprintf("2026-0%d-01", i+6),
+			"start_date": mondays[i],
 		})
 		req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
 		app.Test(req)
@@ -330,7 +359,7 @@ func TestProgramHandler_Update(t *testing.T) {
 
 	updateBody, _ := json.Marshal(map[string]interface{}{
 		"name":       "Updated Name",
-		"start_date": "2026-07-01",
+		"start_date": "2026-07-06",
 	})
 	req := testutil.NewJSONRequestWithAuth(http.MethodPut, fmt.Sprintf("/api/coach/clients/%s/programs/%s", userID, programID), updateBody, coachToken)
 	resp, err := app.Test(req)
