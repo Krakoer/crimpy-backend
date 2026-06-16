@@ -5256,6 +5256,9 @@ const docTemplate = `{
                 "exercise_id": {
                     "type": "string"
                 },
+                "exercise_name": {
+                    "type": "string"
+                },
                 "free_text": {
                     "type": "string"
                 },

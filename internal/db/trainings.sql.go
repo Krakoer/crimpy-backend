@@ -189,18 +189,48 @@ func (q *Queries) GetTraining(ctx context.Context, id pgtype.UUID) (Training, er
 }
 
 const getTrainingItems = `-- name: GetTrainingItems :many
-SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, worktime_seconds, hand, free_text, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, section_title, created_at, updated_at FROM training_items WHERE training_id = $1 ORDER BY position
+SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.reps, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.free_text, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.section_title, training_items.created_at, training_items.updated_at, exercises.name AS exercise_name
+FROM training_items
+LEFT JOIN exercises ON exercises.id = training_items.exercise_id
+WHERE training_items.training_id = $1
+ORDER BY training_items.position
 `
 
-func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]TrainingItem, error) {
+type GetTrainingItemsRow struct {
+	ID               pgtype.UUID
+	TrainingID       pgtype.UUID
+	ParentID         pgtype.UUID
+	Type             string
+	Position         int32
+	Cycles           pgtype.Int4
+	CycleRestSeconds pgtype.Int4
+	Reps             pgtype.Int4
+	Duration         pgtype.Int4
+	RestSeconds      pgtype.Int4
+	ExerciseID       pgtype.UUID
+	WorktimeSeconds  pgtype.Int4
+	Hand             pgtype.Text
+	FreeText         pgtype.Text
+	Loads            []byte
+	LeftLoads        []byte
+	HandPositions    []byte
+	EdgeSizesMm      []byte
+	LoadIsMax        bool
+	SectionTitle     pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	ExerciseName     pgtype.Text
+}
+
+func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]GetTrainingItemsRow, error) {
 	rows, err := q.db.Query(ctx, getTrainingItems, trainingID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []TrainingItem
+	var items []GetTrainingItemsRow
 	for rows.Next() {
-		var i TrainingItem
+		var i GetTrainingItemsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TrainingID,
@@ -224,6 +254,7 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 			&i.SectionTitle,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExerciseName,
 		); err != nil {
 			return nil, err
 		}

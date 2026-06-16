@@ -76,6 +76,7 @@ type TrainingItemResponse struct {
 	Duration         *int32                 `json:"duration,omitempty"`
 	RestSeconds      *int32                 `json:"rest_seconds,omitempty"`
 	ExerciseID       *string                `json:"exercise_id,omitempty"`
+	ExerciseName     *string                `json:"exercise_name,omitempty"`
 	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
 	Hand             *string                `json:"hand,omitempty"`
 	FreeText         *string                `json:"free_text,omitempty"`
@@ -278,16 +279,48 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 
 // buildTrainingItemTree reconstructs the nested tree from a flat list of DB rows.
 // Items are ordered by position and grouped by parent.
-func buildTrainingItemTree(rows []db.TrainingItem, parentID pgtype.UUID) []TrainingItemResponse {
+func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) []TrainingItemResponse {
 	result := make([]TrainingItemResponse, 0)
 	for _, row := range rows {
 		if row.ParentID.Bytes == parentID.Bytes && row.ParentID.Valid == parentID.Valid {
-			resp := dbTrainingItemToResponse(row)
+			resp := dbTrainingItemToResponse(trainingItemFromRow(row))
+			if row.ExerciseName.Valid {
+				resp.ExerciseName = &row.ExerciseName.String
+			}
 			resp.Items = buildTrainingItemTree(rows, row.ID)
 			result = append(result, resp)
 		}
 	}
 	return result
+}
+
+// trainingItemFromRow drops the joined exercise_name so the shared response
+// mapper can be reused.
+func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
+	return db.TrainingItem{
+		ID:               r.ID,
+		TrainingID:       r.TrainingID,
+		ParentID:         r.ParentID,
+		Type:             r.Type,
+		Position:         r.Position,
+		Cycles:           r.Cycles,
+		CycleRestSeconds: r.CycleRestSeconds,
+		Reps:             r.Reps,
+		Duration:         r.Duration,
+		RestSeconds:      r.RestSeconds,
+		ExerciseID:       r.ExerciseID,
+		WorktimeSeconds:  r.WorktimeSeconds,
+		Hand:             r.Hand,
+		FreeText:         r.FreeText,
+		Loads:            r.Loads,
+		LeftLoads:        r.LeftLoads,
+		HandPositions:    r.HandPositions,
+		EdgeSizesMm:      r.EdgeSizesMm,
+		LoadIsMax:        r.LoadIsMax,
+		SectionTitle:     r.SectionTitle,
+		CreatedAt:        r.CreatedAt,
+		UpdatedAt:        r.UpdatedAt,
+	}
 }
 
 // CreateCoachTraining godoc

@@ -42,7 +42,11 @@ INSERT INTO training_items (
 RETURNING *;
 
 -- name: GetTrainingItems :many
-SELECT * FROM training_items WHERE training_id = @training_id ORDER BY position;
+SELECT training_items.*, exercises.name AS exercise_name
+FROM training_items
+LEFT JOIN exercises ON exercises.id = training_items.exercise_id
+WHERE training_items.training_id = @training_id
+ORDER BY training_items.position;
 
 -- name: DeleteTrainingItems :exec
 DELETE FROM training_items WHERE training_id = @training_id;
