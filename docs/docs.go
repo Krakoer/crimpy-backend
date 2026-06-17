@@ -5167,6 +5167,9 @@ const docTemplate = `{
         "handler.TrainingItemRequest": {
             "type": "object",
             "properties": {
+                "comment": {
+                    "type": "string"
+                },
                 "cycle_rest_seconds": {
                     "type": "integer"
                 },
@@ -5238,6 +5241,9 @@ const docTemplate = `{
         "handler.TrainingItemResponse": {
             "type": "object",
             "properties": {
+                "comment": {
+                    "type": "string"
+                },
                 "cycle_rest_seconds": {
                     "type": "integer"
                 },

@@ -194,6 +194,8 @@ CREATE TABLE "training_items" (
   "hand"                 TEXT,
   -- Free item text content
   "free_text"            TEXT,
+  -- Optional coach comment shown to the athlete (e.g. "first rep in pronation")
+  "comment"              TEXT,
   -- Per-rep configurable fields (JSONB arrays sized by reps)
   -- loads: [{value: float, unit: string}] per rep; right-hand or both-hands loads
   "loads"                JSONB,

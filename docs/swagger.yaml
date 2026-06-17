@@ -395,6 +395,8 @@ definitions:
     type: object
   handler.TrainingItemRequest:
     properties:
+      comment:
+        type: string
       cycle_rest_seconds:
         type: integer
       cycles:
@@ -442,6 +444,8 @@ definitions:
     type: object
   handler.TrainingItemResponse:
     properties:
+      comment:
+        type: string
       cycle_rest_seconds:
         type: integer
       cycles:

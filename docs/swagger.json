@@ -5164,6 +5164,9 @@
         "handler.TrainingItemRequest": {
             "type": "object",
             "properties": {
+                "comment": {
+                    "type": "string"
+                },
                 "cycle_rest_seconds": {
                     "type": "integer"
                 },
@@ -5235,6 +5238,9 @@
         "handler.TrainingItemResponse": {
             "type": "object",
             "properties": {
+                "comment": {
+                    "type": "string"
+                },
                 "cycle_rest_seconds": {
                     "type": "integer"
                 },

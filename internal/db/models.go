@@ -199,6 +199,7 @@ type TrainingItem struct {
 	WorktimeSeconds  pgtype.Int4
 	Hand             pgtype.Text
 	FreeText         pgtype.Text
+	Comment          pgtype.Text
 	Loads            []byte
 	LeftLoads        []byte
 	HandPositions    []byte

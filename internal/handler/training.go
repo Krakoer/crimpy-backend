@@ -14,6 +14,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// maxItemCommentLen caps the per-item coach comment length, matching the client input limit.
+const maxItemCommentLen = 200
+
+// truncateRunes shortens s to at most n runes, preserving multi-byte characters.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
+}
+
 type TrainingHandler struct {
 	queries *db.Queries
 	pool    *pgxpool.Pool
@@ -36,6 +48,7 @@ type TrainingItemRequest struct {
 	WorktimeSeconds  *int32                `json:"worktime_seconds"`
 	Hand             *string               `json:"hand"`
 	FreeText         *string               `json:"free_text"`
+	Comment          *string               `json:"comment"`
 	LoadIsMax        bool                  `json:"load_is_max"`
 	Loads            json.RawMessage       `json:"loads"           swaggertype:"array,object"`
 	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
@@ -80,6 +93,7 @@ type TrainingItemResponse struct {
 	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
 	Hand             *string                `json:"hand,omitempty"`
 	FreeText         *string                `json:"free_text,omitempty"`
+	Comment          *string                `json:"comment,omitempty"`
 	LoadIsMax        bool                   `json:"load_is_max"`
 	Loads            json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
 	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
@@ -186,6 +200,9 @@ func insertTrainingItemsRecursive(
 		if req.FreeText != nil {
 			params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
 		}
+		if req.Comment != nil {
+			params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
+		}
 		params.LoadIsMax = req.LoadIsMax
 		if len(req.Loads) > 0 && string(req.Loads) != "null" {
 			params.Loads = req.Loads
@@ -258,6 +275,9 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if r.FreeText.Valid {
 		resp.FreeText = &r.FreeText.String
 	}
+	if r.Comment.Valid {
+		resp.Comment = &r.Comment.String
+	}
 	resp.LoadIsMax = r.LoadIsMax
 	if len(r.Loads) > 0 {
 		resp.Loads = json.RawMessage(r.Loads)
@@ -312,6 +332,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		WorktimeSeconds:  r.WorktimeSeconds,
 		Hand:             r.Hand,
 		FreeText:         r.FreeText,
+		Comment:          r.Comment,
 		Loads:            r.Loads,
 		LeftLoads:        r.LeftLoads,
 		HandPositions:    r.HandPositions,
