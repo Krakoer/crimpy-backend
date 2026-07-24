@@ -213,12 +213,17 @@ func (h *CoachHandler) AcceptEnrollment(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
-	if err := qtx.UseEnrollmentToken(context.Background(), db.UseEnrollmentTokenParams{
+	// Guarded by used_at IS NULL so concurrent requests cannot consume the same token.
+	tag, err := qtx.UseEnrollmentToken(context.Background(), db.UseEnrollmentTokenParams{
 		Token:  token,
 		UsedBy: userUUID,
-	}); err != nil {
+	})
+	if err != nil {
 		slog.Error("failed to mark token as used", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process enrollment"})
+	}
+	if tag.RowsAffected() == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Token has already been used"})
 	}
 
 	enrollment, err := qtx.CreateCoachEnrollment(context.Background(), db.CreateCoachEnrollmentParams{

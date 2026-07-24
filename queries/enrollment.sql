@@ -18,10 +18,10 @@ FROM enrollment_tokens et
 JOIN users u ON u.id = et.coach_id
 WHERE et.token = $1;
 
--- name: UseEnrollmentToken :exec
+-- name: UseEnrollmentToken :execresult
 UPDATE enrollment_tokens
 SET used_at = NOW(), used_by = $2
-WHERE token = $1;
+WHERE token = $1 AND used_at IS NULL;
 
 -- name: GetCoachEnrollmentTokens :many
 SELECT * FROM enrollment_tokens

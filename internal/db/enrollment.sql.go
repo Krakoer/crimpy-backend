@@ -275,10 +275,10 @@ func (q *Queries) GetEnrollmentsByCoach(ctx context.Context, coachID pgtype.UUID
 	return items, nil
 }
 
-const useEnrollmentToken = `-- name: UseEnrollmentToken :exec
+const useEnrollmentToken = `-- name: UseEnrollmentToken :execresult
 UPDATE enrollment_tokens
 SET used_at = NOW(), used_by = $2
-WHERE token = $1
+WHERE token = $1 AND used_at IS NULL
 `
 
 type UseEnrollmentTokenParams struct {
@@ -286,7 +286,6 @@ type UseEnrollmentTokenParams struct {
 	UsedBy pgtype.UUID
 }
 
-func (q *Queries) UseEnrollmentToken(ctx context.Context, arg UseEnrollmentTokenParams) error {
-	_, err := q.db.Exec(ctx, useEnrollmentToken, arg.Token, arg.UsedBy)
-	return err
+func (q *Queries) UseEnrollmentToken(ctx context.Context, arg UseEnrollmentTokenParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, useEnrollmentToken, arg.Token, arg.UsedBy)
 }
