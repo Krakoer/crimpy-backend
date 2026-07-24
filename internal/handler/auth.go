@@ -14,6 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// minPasswordLength is the shortest password accepted at registration and on change.
+const minPasswordLength = 6
+
 type AuthHandler struct {
 	queries *db.Queries
 }
@@ -80,6 +83,12 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 	if !strings.Contains(req.Email, "@") {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid email format",
+		})
+	}
+
+	if len(req.Password) < minPasswordLength {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Password must be at least 6 characters",
 		})
 	}
 
@@ -464,7 +473,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
-	if len(req.NewPassword) < 6 {
+	if len(req.NewPassword) < minPasswordLength {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "New password must be at least 6 characters",
 		})
