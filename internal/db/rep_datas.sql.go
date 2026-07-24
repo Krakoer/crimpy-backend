@@ -59,47 +59,6 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 	return i, err
 }
 
-const deleteRepData = `-- name: DeleteRepData :exec
-DELETE FROM rep_datas WHERE id = $1
-`
-
-func (q *Queries) DeleteRepData(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteRepData, id)
-	return err
-}
-
-const deleteSessionRepDatas = `-- name: DeleteSessionRepDatas :exec
-DELETE FROM rep_datas WHERE session_id = $1
-`
-
-func (q *Queries) DeleteSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteSessionRepDatas, sessionID)
-	return err
-}
-
-const getRepData = `-- name: GetRepData :one
-SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at FROM rep_datas WHERE id = $1
-`
-
-func (q *Queries) GetRepData(ctx context.Context, id pgtype.UUID) (RepData, error) {
-	row := q.db.QueryRow(ctx, getRepData, id)
-	var i RepData
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.AverageWeight,
-		&i.SessionID,
-		&i.IsRest,
-		&i.RightHand,
-		&i.Duration,
-		&i.TargetWeight,
-		&i.Index,
-		&i.GripPosition,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
 SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
 `

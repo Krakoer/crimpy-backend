@@ -58,6 +58,3 @@ SELECT o.*
 FROM coach_program_session_overrides o
 JOIN coach_program_week_sessions s ON s.id = o.session_id
 WHERE s.week_id = @week_id;
-
--- name: DeleteCoachProgramSessionOverrides :exec
-DELETE FROM coach_program_session_overrides WHERE session_id = @session_id;

@@ -105,39 +105,6 @@ func (q *Queries) GetCoachEnrollment(ctx context.Context, arg GetCoachEnrollment
 	return i, err
 }
 
-const getCoachEnrollmentTokens = `-- name: GetCoachEnrollmentTokens :many
-SELECT id, coach_id, token, expires_at, used_at, used_by FROM enrollment_tokens
-WHERE coach_id = $1
-ORDER BY expires_at DESC
-`
-
-func (q *Queries) GetCoachEnrollmentTokens(ctx context.Context, coachID pgtype.UUID) ([]EnrollmentToken, error) {
-	rows, err := q.db.Query(ctx, getCoachEnrollmentTokens, coachID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []EnrollmentToken
-	for rows.Next() {
-		var i EnrollmentToken
-		if err := rows.Scan(
-			&i.ID,
-			&i.CoachID,
-			&i.Token,
-			&i.ExpiresAt,
-			&i.UsedAt,
-			&i.UsedBy,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getEnrollmentByUser = `-- name: GetEnrollmentByUser :one
 SELECT
     ce.id,

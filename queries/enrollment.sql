@@ -23,11 +23,6 @@ UPDATE enrollment_tokens
 SET used_at = NOW(), used_by = $2
 WHERE token = $1 AND used_at IS NULL;
 
--- name: GetCoachEnrollmentTokens :many
-SELECT * FROM enrollment_tokens
-WHERE coach_id = $1
-ORDER BY expires_at DESC;
-
 -- name: GetCoachEnrollment :one
 SELECT id, coach_id, user_id, enrolled_at
 FROM coach_enrollments

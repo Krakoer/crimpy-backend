@@ -150,51 +150,6 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Se
 	return items, nil
 }
 
-const getUserSessionsByType = `-- name: GetUserSessionsByType :many
-SELECT id, user_id, name, notes, date, is_assessment, session_type, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at FROM sessions WHERE user_id = $1 AND session_type = $2 ORDER BY date DESC
-`
-
-type GetUserSessionsByTypeParams struct {
-	UserID      pgtype.UUID
-	SessionType int32
-}
-
-func (q *Queries) GetUserSessionsByType(ctx context.Context, arg GetUserSessionsByTypeParams) ([]Session, error) {
-	rows, err := q.db.Query(ctx, getUserSessionsByType, arg.UserID, arg.SessionType)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Session
-	for rows.Next() {
-		var i Session
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Name,
-			&i.Notes,
-			&i.Date,
-			&i.IsAssessment,
-			&i.SessionType,
-			&i.Duration,
-			&i.RepeaterSets,
-			&i.RepeaterReps,
-			&i.RepeaterWorkTime,
-			&i.RepeaterRestTime,
-			&i.RepeaterSetRest,
-			&i.RepeaterSplitHand,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4

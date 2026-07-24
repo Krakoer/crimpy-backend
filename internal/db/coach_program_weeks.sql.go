@@ -54,15 +54,6 @@ func (q *Queries) CreateCoachProgramWeekSession(ctx context.Context, arg CreateC
 	return i, err
 }
 
-const deleteCoachProgramSessionOverrides = `-- name: DeleteCoachProgramSessionOverrides :exec
-DELETE FROM coach_program_session_overrides WHERE session_id = $1
-`
-
-func (q *Queries) DeleteCoachProgramSessionOverrides(ctx context.Context, sessionID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteCoachProgramSessionOverrides, sessionID)
-	return err
-}
-
 const deleteCoachProgramWeek = `-- name: DeleteCoachProgramWeek :exec
 DELETE FROM coach_program_weeks
 WHERE program_id = $1 AND week_number = $2

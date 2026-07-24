@@ -13,9 +13,6 @@ SELECT * FROM sessions WHERE id = $1;
 -- name: GetUserSessions :many
 SELECT * FROM sessions WHERE user_id = $1 ORDER BY date DESC;
 
--- name: GetUserSessionsByType :many
-SELECT * FROM sessions WHERE user_id = $1 AND session_type = $2 ORDER BY date DESC;
-
 -- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4

@@ -79,40 +79,6 @@ func (q *Queries) DeleteExercise(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
-const getCoachExercises = `-- name: GetCoachExercises :many
-SELECT id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at FROM exercises WHERE coach_id = $1 ORDER BY name
-`
-
-func (q *Queries) GetCoachExercises(ctx context.Context, coachID pgtype.UUID) ([]Exercise, error) {
-	rows, err := q.db.Query(ctx, getCoachExercises, coachID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Exercise
-	for rows.Next() {
-		var i Exercise
-		if err := rows.Scan(
-			&i.ID,
-			&i.CoachID,
-			&i.Name,
-			&i.Description,
-			&i.Comment,
-			&i.VideoLink,
-			&i.IsFavorite,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getCoachFavoriteExercises = `-- name: GetCoachFavoriteExercises :many
 SELECT id, coach_id, name, description, comment, video_link, is_favorite, created_at, updated_at FROM exercises WHERE coach_id = $1 AND is_favorite = true ORDER BY name
 `
