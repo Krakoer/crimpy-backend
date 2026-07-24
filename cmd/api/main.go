@@ -101,6 +101,8 @@ func main() {
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
 	app.Use(recover.New())
+	// Response bodies are deliberately not logged: handlers already log the
+	// cause of a failure, and bodies can carry user data.
 	app.Use(func(c fiber.Ctx) error {
 		err := c.Next()
 		if status := c.Response().StatusCode(); status >= 400 {
@@ -109,7 +111,6 @@ func main() {
 				"method", c.Method(),
 				"path", c.Path(),
 				"ip", c.IP(),
-				"body", string(c.Response().Body()),
 			)
 		}
 		return err

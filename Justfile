@@ -31,6 +31,10 @@ status:
 test:
     DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret ENV=test go test -v ./tests/...
 
+test-coverage:
+    DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret ENV=test go test -coverpkg=./internal/... -coverprofile=coverage.out ./tests/...
+    go tool cover -html=coverage.out -o coverage.html
+
 swagger:
     swag init -g cmd/api/main.go -o docs
 
