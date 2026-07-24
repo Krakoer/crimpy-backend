@@ -30,6 +30,29 @@ var validItemTypes = map[string]bool{
 	"group":         true,
 }
 
+// defaultTrainingType applies when a client omits training_type.
+const defaultTrainingType = "workout"
+
+// validTrainingTypes is the set of accepted training_type values. It mirrors the
+// trainings_training_type_check constraint in schema/schema.sql.
+var validTrainingTypes = map[string]bool{
+	"crimpy":     true,
+	"climbing":   true,
+	"stretching": true,
+	"workout":    true,
+}
+
+// normalizeTrainingType defaults an omitted type and rejects unknown ones.
+func normalizeTrainingType(trainingType string) (string, error) {
+	if trainingType == "" {
+		return defaultTrainingType, nil
+	}
+	if !validTrainingTypes[trainingType] {
+		return "", fmt.Errorf("invalid training type %q", trainingType)
+	}
+	return trainingType, nil
+}
+
 // validateTrainingItems rejects unknown item types and over-deep trees before
 // any row is written.
 func validateTrainingItems(items []TrainingItemRequest, depth int) error {
@@ -414,6 +437,11 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	trainingType, err := normalizeTrainingType(req.TrainingType)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
@@ -423,13 +451,10 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
-	if req.TrainingType == "" {
-		req.TrainingType = "workout"
-	}
 	params := db.CreateTrainingParams{
 		UserID:       userUUID,
 		Title:        req.Title,
-		TrainingType: req.TrainingType,
+		TrainingType: trainingType,
 		IsFavorite:   req.IsFavorite,
 	}
 	if req.Description != nil {
@@ -555,6 +580,11 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	trainingType, err := normalizeTrainingType(req.TrainingType)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
@@ -564,13 +594,10 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
-	if req.TrainingType == "" {
-		req.TrainingType = "workout"
-	}
 	updateParams := db.UpdateTrainingParams{
 		ID:           trainingUUID,
 		Title:        req.Title,
-		TrainingType: req.TrainingType,
+		TrainingType: trainingType,
 		IsFavorite:   req.IsFavorite,
 	}
 	if req.Description != nil {

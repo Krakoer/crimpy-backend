@@ -166,7 +166,9 @@ CREATE TABLE "trainings" (
   "is_favorite"   BOOLEAN     NOT NULL DEFAULT FALSE,
   "created_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "trainings_training_type_check"
+    CHECK (training_type IN ('crimpy', 'climbing', 'stretching', 'workout'))
 );
 
 CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
