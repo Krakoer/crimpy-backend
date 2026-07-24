@@ -1,0 +1,5 @@
+FROM arigaio/atlas:1.2.3
+WORKDIR /work
+COPY atlas.hcl ./
+COPY migrations ./migrations
+ENTRYPOINT [ "/atlas", "migrate", "apply", "--env", "prod" ]
