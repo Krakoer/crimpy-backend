@@ -111,14 +111,14 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 	// Create user in database based on account type
 	var user db.User
 	if req.IsCoach {
-		user, err = h.queries.CreateCoachUser(context.Background(), db.CreateCoachUserParams{
+		user, err = h.queries.CreateCoachUser(c.Context(), db.CreateCoachUserParams{
 			Email:     req.Email,
 			Password:  hashedPassword,
 			Firstname: req.Firstname,
 			Lastname:  req.Lastname,
 		})
 	} else {
-		user, err = h.queries.CreateUser(context.Background(), db.CreateUserParams{
+		user, err = h.queries.CreateUser(c.Context(), db.CreateUserParams{
 			Email:     req.Email,
 			Password:  hashedPassword,
 			Firstname: req.Firstname,
@@ -140,7 +140,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 
 	if utils.IsTestEnv() {
 		// Auto-verify email in test environment
-		err = h.queries.VerifyUserEmail(context.Background(), user.ID)
+		err = h.queries.VerifyUserEmail(c.Context(), user.ID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to verify email",
@@ -181,7 +181,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 	expiresAt := pgtype.Timestamptz{}
 	expiresAt.Scan(time.Now().Add(24 * time.Hour))
 
-	err = h.queries.SetVerificationToken(context.Background(), db.SetVerificationTokenParams{
+	err = h.queries.SetVerificationToken(c.Context(), db.SetVerificationTokenParams{
 		ID:                         user.ID,
 		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
 		VerificationTokenExpiresAt: expiresAt,
@@ -261,7 +261,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.queries.GetUserByEmail(context.Background(), req.Email)
+	user, err := h.queries.GetUserByEmail(c.Context(), req.Email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -295,7 +295,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	refreshToken, err := h.issueRefreshToken(context.Background(), user.ID)
+	refreshToken, err := h.issueRefreshToken(c.Context(), user.ID)
 	if err != nil {
 		slog.Error("failed to create refresh token", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -366,7 +366,7 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Refresh token is required"})
 	}
 
-	stored, err := h.queries.GetRefreshTokenByHash(context.Background(), utils.HashToken(req.RefreshToken))
+	stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
@@ -379,13 +379,13 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
-	user, err := h.queries.GetUserByID(context.Background(), stored.UserID)
+	user, err := h.queries.GetUserByID(c.Context(), stored.UserID)
 	if err != nil {
 		slog.Error("failed to load user for refresh", "user_id", stored.UserID.String(), "error", err)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
-	if err := h.queries.RevokeRefreshToken(context.Background(), stored.ID); err != nil {
+	if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
 		slog.Error("failed to revoke refresh token", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
@@ -394,7 +394,7 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
-	newRefresh, err := h.issueRefreshToken(context.Background(), user.ID)
+	newRefresh, err := h.issueRefreshToken(c.Context(), user.ID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
@@ -420,9 +420,9 @@ func (h *AuthHandler) Logout(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 	}
 	if req.RefreshToken != "" {
-		stored, err := h.queries.GetRefreshTokenByHash(context.Background(), utils.HashToken(req.RefreshToken))
+		stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
 		if err == nil {
-			if err := h.queries.RevokeRefreshToken(context.Background(), stored.ID); err != nil {
+			if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
 				slog.Error("failed to revoke refresh token on logout", "error", err)
 			}
 		}
@@ -496,7 +496,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.queries.GetUserByID(context.Background(), userUUID)
+	user, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -531,7 +531,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.UpdateUserPassword(context.Background(), db.UpdateUserPasswordParams{
+	err = h.queries.UpdateUserPassword(c.Context(), db.UpdateUserPasswordParams{
 		ID:       userUUID,
 		Password: hashedPassword,
 	})
@@ -543,7 +543,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 	}
 
 	// Sessions established with the old password must not survive the change.
-	if err := h.queries.RevokeUserRefreshTokens(context.Background(), userUUID); err != nil {
+	if err := h.queries.RevokeUserRefreshTokens(c.Context(), userUUID); err != nil {
 		slog.Error("failed to revoke refresh tokens after password change", "target_user_id", targetUserID, "error", err)
 	}
 
@@ -574,7 +574,7 @@ func (h *AuthHandler) GetCurrentUser(c fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.queries.GetUserByID(context.Background(), userUUID)
+	user, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -630,7 +630,7 @@ func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.queries.GetUserByVerificationToken(context.Background(), pgtype.Text{String: req.Token, Valid: true})
+	user, err := h.queries.GetUserByVerificationToken(c.Context(), pgtype.Text{String: req.Token, Valid: true})
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -643,7 +643,7 @@ func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.VerifyUserEmail(context.Background(), user.ID)
+	err = h.queries.VerifyUserEmail(c.Context(), user.ID)
 	if err != nil {
 		slog.Error("failed to update email verification status", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -697,7 +697,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.queries.GetUserByEmail(context.Background(), req.Email)
+	user, err := h.queries.GetUserByEmail(c.Context(), req.Email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -717,7 +717,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 	}
 
 	// Check cooldown (10 minutes)
-	lastSent, err := h.queries.GetVerificationEmailSentAt(context.Background(), req.Email)
+	lastSent, err := h.queries.GetVerificationEmailSentAt(c.Context(), req.Email)
 	if err == nil && lastSent.Valid {
 		timeSinceLastSent := time.Since(lastSent.Time)
 		if timeSinceLastSent < 10*time.Minute {
@@ -740,7 +740,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 	expiresAt := pgtype.Timestamptz{}
 	expiresAt.Scan(time.Now().Add(24 * time.Hour))
 
-	err = h.queries.SetVerificationToken(context.Background(), db.SetVerificationTokenParams{
+	err = h.queries.SetVerificationToken(c.Context(), db.SetVerificationTokenParams{
 		ID:                         user.ID,
 		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
 		VerificationTokenExpiresAt: expiresAt,

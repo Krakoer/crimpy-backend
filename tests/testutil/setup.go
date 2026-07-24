@@ -159,6 +159,10 @@ type HandlerConfig struct {
 func SetupFiberApp(config HandlerConfig) *fiber.App {
 	app := fiber.New()
 
+	// Mirror the production middleware stack so handlers get the same
+	// request-scoped context they get when served by cmd/api.
+	app.Use(middleware.RequestContext())
+
 	// Public routes
 	if config.AuthHandler != nil {
 		app.Post("/auth/register", config.AuthHandler.Register)

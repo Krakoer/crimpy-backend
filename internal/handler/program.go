@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"errors"
@@ -52,7 +51,7 @@ func (h *ProgramHandler) verifyClientEnrolled(c fiber.Ctx, coachUUID pgtype.UUID
 		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid client ID"})
 		return pgtype.UUID{}, false
 	}
-	_, err := h.queries.GetCoachEnrollment(context.Background(), db.GetCoachEnrollmentParams{
+	_, err := h.queries.GetCoachEnrollment(c.Context(), db.GetCoachEnrollmentParams{
 		CoachID: coachUUID,
 		UserID:  clientUUID,
 	})
@@ -74,7 +73,7 @@ func (h *ProgramHandler) verifyProgramOwnership(c fiber.Ctx, coachUUID, clientUU
 		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program ID"})
 		return pgtype.UUID{}, false
 	}
-	program, err := h.queries.GetCoachProgram(context.Background(), programUUID)
+	program, err := h.queries.GetCoachProgram(c.Context(), programUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Program not found"})
@@ -173,7 +172,7 @@ func (h *ProgramHandler) CreateProgram(c fiber.Ctx) error {
 		params.DurationWeeks = pgtype.Int4{Int32: *req.DurationWeeks, Valid: true}
 	}
 
-	program, err := h.queries.CreateCoachProgram(context.Background(), params)
+	program, err := h.queries.CreateCoachProgram(c.Context(), params)
 	if err != nil {
 		slog.Error("failed to create program", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create program"})
@@ -202,7 +201,7 @@ func (h *ProgramHandler) GetPrograms(c fiber.Ctx) error {
 		return nil
 	}
 
-	programs, err := h.queries.GetCoachProgramsForClient(context.Background(), db.GetCoachProgramsForClientParams{
+	programs, err := h.queries.GetCoachProgramsForClient(c.Context(), db.GetCoachProgramsForClientParams{
 		CoachID: coachUUID,
 		UserID:  clientUUID,
 	})
@@ -245,7 +244,7 @@ func (h *ProgramHandler) GetProgram(c fiber.Ctx) error {
 		return nil
 	}
 
-	program, err := h.queries.GetCoachProgram(context.Background(), programUUID)
+	program, err := h.queries.GetCoachProgram(c.Context(), programUUID)
 	if err != nil {
 		slog.Error("failed to retrieve program", "program_id", programUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve program"})
@@ -305,7 +304,7 @@ func (h *ProgramHandler) UpdateProgram(c fiber.Ctx) error {
 		updateParams.DurationWeeks = pgtype.Int4{Int32: *req.DurationWeeks, Valid: true}
 	}
 
-	program, err := h.queries.UpdateCoachProgram(context.Background(), updateParams)
+	program, err := h.queries.UpdateCoachProgram(c.Context(), updateParams)
 	if err != nil {
 		slog.Error("failed to update program", "program_id", programUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update program"})
@@ -341,7 +340,7 @@ func (h *ProgramHandler) DeleteProgram(c fiber.Ctx) error {
 		return nil
 	}
 
-	if err := h.queries.DeleteCoachProgram(context.Background(), programUUID); err != nil {
+	if err := h.queries.DeleteCoachProgram(c.Context(), programUUID); err != nil {
 		slog.Error("failed to delete program", "program_id", programUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete program"})
 	}
@@ -365,7 +364,7 @@ func (h *ProgramHandler) GetMyPrograms(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	programs, err := h.queries.GetMyPrograms(context.Background(), userUUID)
+	programs, err := h.queries.GetMyPrograms(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve user programs", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve programs"})
@@ -402,7 +401,7 @@ func (h *ProgramHandler) GetMyProgram(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program ID"})
 	}
 
-	program, err := h.queries.GetCoachProgram(context.Background(), programUUID)
+	program, err := h.queries.GetCoachProgram(c.Context(), programUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Program not found"})
@@ -448,7 +447,7 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	count, err := h.queries.CountMyProgramTraining(context.Background(), db.CountMyProgramTrainingParams{
+	count, err := h.queries.CountMyProgramTraining(c.Context(), db.CountMyProgramTrainingParams{
 		ProgramID:  programUUID,
 		UserID:     userUUID,
 		TrainingID: trainingUUID,
@@ -461,7 +460,7 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
+	training, err := h.queries.GetTraining(c.Context(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -470,7 +469,7 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
 	}
 
-	rows, err := h.queries.GetTrainingItems(context.Background(), trainingUUID)
+	rows, err := h.queries.GetTrainingItems(c.Context(), trainingUUID)
 	if err != nil {
 		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})

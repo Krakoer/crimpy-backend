@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -69,7 +68,7 @@ func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) 
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid builtin_training_id"})
 	}
 
-	weight, err := h.queries.CreateBuiltinTrainingWeight(context.Background(), db.CreateBuiltinTrainingWeightParams{
+	weight, err := h.queries.CreateBuiltinTrainingWeight(c.Context(), db.CreateBuiltinTrainingWeightParams{
 		ID:                id,
 		UserID:            userUUID,
 		BuiltinTrainingID: builtinID,
@@ -106,7 +105,7 @@ func (h *BuiltinTrainingWeightHandler) GetBuiltinTrainingWeights(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	weights, err := h.queries.GetUserBuiltinTrainingWeights(context.Background(), userUUID)
+	weights, err := h.queries.GetUserBuiltinTrainingWeights(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve builtin training weights", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve builtin training weights"})
@@ -140,7 +139,7 @@ func (h *BuiltinTrainingWeightHandler) UpdateBuiltinTrainingWeight(c fiber.Ctx) 
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
-	existing, err := h.queries.GetBuiltinTrainingWeight(context.Background(), id)
+	existing, err := h.queries.GetBuiltinTrainingWeight(c.Context(), id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Builtin training weight not found"})
 	}
@@ -161,7 +160,7 @@ func (h *BuiltinTrainingWeightHandler) UpdateBuiltinTrainingWeight(c fiber.Ctx) 
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	updated, err := h.queries.UpdateBuiltinTrainingWeight(context.Background(), db.UpdateBuiltinTrainingWeightParams{
+	updated, err := h.queries.UpdateBuiltinTrainingWeight(c.Context(), db.UpdateBuiltinTrainingWeightParams{
 		ID:                id,
 		CustomWeightLeft:  req.CustomWeightLeft,
 		CustomWeightRight: req.CustomWeightRight,
@@ -195,7 +194,7 @@ func (h *BuiltinTrainingWeightHandler) DeleteBuiltinTrainingWeight(c fiber.Ctx) 
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
-	existing, err := h.queries.GetBuiltinTrainingWeight(context.Background(), id)
+	existing, err := h.queries.GetBuiltinTrainingWeight(c.Context(), id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Builtin training weight not found"})
 	}
@@ -211,7 +210,7 @@ func (h *BuiltinTrainingWeightHandler) DeleteBuiltinTrainingWeight(c fiber.Ctx) 
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteBuiltinTrainingWeight(context.Background(), id); err != nil {
+	if err := h.queries.DeleteBuiltinTrainingWeight(c.Context(), id); err != nil {
 		slog.Error("failed to delete builtin training weight", "user_id", userID, "weight_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete builtin training weight"})
 	}

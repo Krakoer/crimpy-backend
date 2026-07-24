@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -98,7 +97,7 @@ func requireValidatedCoach(c fiber.Ctx, queries *db.Queries) (pgtype.UUID, bool)
 		return pgtype.UUID{}, false
 	}
 
-	coach, err := queries.GetUserByID(context.Background(), coachUUID)
+	coach, err := queries.GetUserByID(c.Context(), coachUUID)
 	if err != nil {
 		c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve coach"})
 		return pgtype.UUID{}, false
@@ -154,7 +153,7 @@ func (h *ExerciseHandler) CreateExercise(c fiber.Ctx) error {
 		params.VideoLink = pgtype.Text{String: *req.VideoLink, Valid: true}
 	}
 
-	exercise, err := h.queries.CreateExercise(context.Background(), params)
+	exercise, err := h.queries.CreateExercise(c.Context(), params)
 	if err != nil {
 		slog.Error("failed to create exercise", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create exercise"})
@@ -216,7 +215,7 @@ func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
 		Lim:        limit,
 		Off:        offset,
 	}
-	exercises, err := h.queries.SearchCoachExercises(context.Background(), searchParams)
+	exercises, err := h.queries.SearchCoachExercises(c.Context(), searchParams)
 	if err != nil {
 		slog.Error("failed to retrieve exercises", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
@@ -227,7 +226,7 @@ func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
 		NameFilter: nameFilter,
 		TagIds:     tagIDs,
 	}
-	total, err := h.queries.CountCoachExercises(context.Background(), countParams)
+	total, err := h.queries.CountCoachExercises(c.Context(), countParams)
 	if err != nil {
 		slog.Error("failed to count exercises", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
@@ -238,7 +237,7 @@ func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
 		exerciseIDs = append(exerciseIDs, e.ID)
 	}
 
-	tagRows, err := h.queries.GetExerciseTagsByIDs(context.Background(), exerciseIDs)
+	tagRows, err := h.queries.GetExerciseTagsByIDs(c.Context(), exerciseIDs)
 	if err != nil {
 		slog.Error("failed to retrieve exercise tags", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
@@ -282,7 +281,7 @@ func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
 	}
 
-	exercise, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	exercise, err := h.queries.GetExercise(c.Context(), exerciseUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
@@ -295,7 +294,7 @@ func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	tags, err := h.queries.GetExerciseTags(context.Background(), exerciseUUID)
+	tags, err := h.queries.GetExerciseTags(c.Context(), exerciseUUID)
 	if err != nil {
 		slog.Error("failed to retrieve exercise tags", "exercise_id", exerciseUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
@@ -329,7 +328,7 @@ func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
 	}
 
-	existing, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	existing, err := h.queries.GetExercise(c.Context(), exerciseUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
@@ -365,13 +364,13 @@ func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
 		params.VideoLink = pgtype.Text{String: *req.VideoLink, Valid: true}
 	}
 
-	updated, err := h.queries.UpdateExercise(context.Background(), params)
+	updated, err := h.queries.UpdateExercise(c.Context(), params)
 	if err != nil {
 		slog.Error("failed to update exercise", "exercise_id", exerciseUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
 	}
 
-	tags, err := h.queries.GetExerciseTags(context.Background(), exerciseUUID)
+	tags, err := h.queries.GetExerciseTags(c.Context(), exerciseUUID)
 	if err != nil {
 		slog.Error("failed to retrieve exercise tags", "exercise_id", exerciseUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
@@ -403,7 +402,7 @@ func (h *ExerciseHandler) DeleteExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
 	}
 
-	exercise, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	exercise, err := h.queries.GetExercise(c.Context(), exerciseUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
@@ -416,7 +415,7 @@ func (h *ExerciseHandler) DeleteExercise(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteExercise(context.Background(), exerciseUUID); err != nil {
+	if err := h.queries.DeleteExercise(c.Context(), exerciseUUID); err != nil {
 		slog.Error("failed to delete exercise", "exercise_id", exerciseUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete exercise"})
 	}
@@ -453,7 +452,7 @@ func (h *ExerciseHandler) SetExerciseFavorite(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
 	}
 
-	existing, err := h.queries.GetExercise(context.Background(), exerciseUUID)
+	existing, err := h.queries.GetExercise(c.Context(), exerciseUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
@@ -471,7 +470,7 @@ func (h *ExerciseHandler) SetExerciseFavorite(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	updated, err := h.queries.SetExerciseFavorite(context.Background(), db.SetExerciseFavoriteParams{
+	updated, err := h.queries.SetExerciseFavorite(c.Context(), db.SetExerciseFavoriteParams{
 		ID:         exerciseUUID,
 		IsFavorite: req.IsFavorite,
 	})
@@ -480,7 +479,7 @@ func (h *ExerciseHandler) SetExerciseFavorite(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
 	}
 
-	tags, err := h.queries.GetExerciseTags(context.Background(), exerciseUUID)
+	tags, err := h.queries.GetExerciseTags(c.Context(), exerciseUUID)
 	if err != nil {
 		slog.Error("failed to retrieve exercise tags", "exercise_id", exerciseUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update exercise"})
@@ -504,13 +503,13 @@ func (h *ExerciseHandler) GetFavoriteExercises(c fiber.Ctx) error {
 		return nil
 	}
 
-	exercises, err := h.queries.GetCoachFavoriteExercises(context.Background(), coachUUID)
+	exercises, err := h.queries.GetCoachFavoriteExercises(c.Context(), coachUUID)
 	if err != nil {
 		slog.Error("failed to retrieve favorite exercises", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})
 	}
 
-	tagRows, err := h.queries.GetCoachExerciseTags(context.Background(), coachUUID)
+	tagRows, err := h.queries.GetCoachExerciseTags(c.Context(), coachUUID)
 	if err != nil {
 		slog.Error("failed to retrieve exercise tags", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercises"})

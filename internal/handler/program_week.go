@@ -303,12 +303,12 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		}
 	}
 
-	tx, err := h.pool.Begin(context.Background())
+	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
 
@@ -319,28 +319,28 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	if req.Notes != nil {
 		upsertParams.Notes = pgtype.Text{String: *req.Notes, Valid: true}
 	}
-	week, err := qtx.UpsertCoachProgramWeek(context.Background(), upsertParams)
+	week, err := qtx.UpsertCoachProgramWeek(c.Context(), upsertParams)
 	if err != nil {
 		slog.Error("failed to upsert week", "program_id", programUUID.String(), "week_number", weekNum, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := qtx.DeleteCoachProgramWeekSessions(context.Background(), week.ID); err != nil {
+	if err := qtx.DeleteCoachProgramWeekSessions(c.Context(), week.ID); err != nil {
 		slog.Error("failed to delete week sessions", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to replace week sessions"})
 	}
 
-	if _, err := h.insertWeekSessions(context.Background(), qtx, week.ID, req.Sessions); err != nil {
+	if _, err := h.insertWeekSessions(c.Context(), qtx, week.ID, req.Sessions); err != nil {
 		slog.Error("failed to insert week sessions", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create week sessions"})
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(c.Context()); err != nil {
 		slog.Error("failed to commit week upsert", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize week"})
 	}
 
-	sessions, overrides, err := h.loadWeekData(context.Background(), week.ID)
+	sessions, overrides, err := h.loadWeekData(c.Context(), week.ID)
 	if err != nil {
 		slog.Error("failed to load week data after upsert", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
@@ -375,7 +375,7 @@ func (h *ProgramHandler) GetWeeks(c fiber.Ctx) error {
 		return nil
 	}
 
-	weeks, err := h.queries.GetCoachProgramWeeks(context.Background(), programUUID)
+	weeks, err := h.queries.GetCoachProgramWeeks(c.Context(), programUUID)
 	if err != nil {
 		slog.Error("failed to retrieve program weeks", "program_id", programUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve weeks"})
@@ -420,7 +420,7 @@ func (h *ProgramHandler) GetWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	week, err := h.queries.GetCoachProgramWeek(context.Background(), db.GetCoachProgramWeekParams{
+	week, err := h.queries.GetCoachProgramWeek(c.Context(), db.GetCoachProgramWeekParams{
 		ProgramID:  programUUID,
 		WeekNumber: weekNum,
 	})
@@ -432,7 +432,7 @@ func (h *ProgramHandler) GetWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	sessions, overrides, err := h.loadWeekData(context.Background(), week.ID)
+	sessions, overrides, err := h.loadWeekData(c.Context(), week.ID)
 	if err != nil {
 		slog.Error("failed to load week data", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
@@ -473,7 +473,7 @@ func (h *ProgramHandler) DeleteWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if err := h.queries.DeleteCoachProgramWeek(context.Background(), db.DeleteCoachProgramWeekParams{
+	if err := h.queries.DeleteCoachProgramWeek(c.Context(), db.DeleteCoachProgramWeekParams{
 		ProgramID:  programUUID,
 		WeekNumber: weekNum,
 	}); err != nil {
@@ -507,7 +507,7 @@ func (h *ProgramHandler) GetMyWeeks(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program ID"})
 	}
 
-	program, err := h.queries.GetCoachProgram(context.Background(), programUUID)
+	program, err := h.queries.GetCoachProgram(c.Context(), programUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Program not found"})
@@ -519,7 +519,7 @@ func (h *ProgramHandler) GetMyWeeks(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	weeks, err := h.queries.GetCoachProgramWeeks(context.Background(), programUUID)
+	weeks, err := h.queries.GetCoachProgramWeeks(c.Context(), programUUID)
 	if err != nil {
 		slog.Error("failed to retrieve program weeks", "program_id", programUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve weeks"})
@@ -556,7 +556,7 @@ func (h *ProgramHandler) GetMyWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program ID"})
 	}
 
-	program, err := h.queries.GetCoachProgram(context.Background(), programUUID)
+	program, err := h.queries.GetCoachProgram(c.Context(), programUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Program not found"})
@@ -573,7 +573,7 @@ func (h *ProgramHandler) GetMyWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	week, err := h.queries.GetCoachProgramWeek(context.Background(), db.GetCoachProgramWeekParams{
+	week, err := h.queries.GetCoachProgramWeek(c.Context(), db.GetCoachProgramWeekParams{
 		ProgramID:  programUUID,
 		WeekNumber: weekNum,
 	})
@@ -585,7 +585,7 @@ func (h *ProgramHandler) GetMyWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	sessions, overrides, err := h.loadWeekData(context.Background(), week.ID)
+	sessions, overrides, err := h.loadWeekData(c.Context(), week.ID)
 	if err != nil {
 		slog.Error("failed to load week data", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})

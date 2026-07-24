@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"crypto/rand"
@@ -78,7 +77,7 @@ func (h *CoachHandler) GenerateEnrollmentToken(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	coach, err := h.queries.GetUserByID(context.Background(), coachUUID)
+	coach, err := h.queries.GetUserByID(c.Context(), coachUUID)
 	if err != nil {
 		slog.Error("failed to retrieve coach", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve coach"})
@@ -98,7 +97,7 @@ func (h *CoachHandler) GenerateEnrollmentToken(c fiber.Ctx) error {
 	expiresAt := pgtype.Timestamptz{}
 	expiresAt.Scan(time.Now().Add(7 * 24 * time.Hour))
 
-	record, err := h.queries.CreateEnrollmentToken(context.Background(), db.CreateEnrollmentTokenParams{
+	record, err := h.queries.CreateEnrollmentToken(c.Context(), db.CreateEnrollmentTokenParams{
 		CoachID:   coachUUID,
 		Token:     tokenStr,
 		ExpiresAt: expiresAt,
@@ -131,7 +130,7 @@ func (h *CoachHandler) GetEnrollmentTokenInfo(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Token is required"})
 	}
 
-	record, err := h.queries.GetEnrollmentTokenByValue(context.Background(), token)
+	record, err := h.queries.GetEnrollmentTokenByValue(c.Context(), token)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Token not found"})
@@ -183,7 +182,7 @@ func (h *CoachHandler) AcceptEnrollment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	record, err := h.queries.GetEnrollmentTokenByValue(context.Background(), token)
+	record, err := h.queries.GetEnrollmentTokenByValue(c.Context(), token)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Token not found"})
@@ -204,17 +203,17 @@ func (h *CoachHandler) AcceptEnrollment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Coach cannot enroll themselves"})
 	}
 
-	tx, err := h.pool.Begin(context.Background())
+	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to process enrollment"})
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
 
 	// Guarded by used_at IS NULL so concurrent requests cannot consume the same token.
-	tag, err := qtx.UseEnrollmentToken(context.Background(), db.UseEnrollmentTokenParams{
+	tag, err := qtx.UseEnrollmentToken(c.Context(), db.UseEnrollmentTokenParams{
 		Token:  token,
 		UsedBy: userUUID,
 	})
@@ -226,7 +225,7 @@ func (h *CoachHandler) AcceptEnrollment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Token has already been used"})
 	}
 
-	enrollment, err := qtx.CreateCoachEnrollment(context.Background(), db.CreateCoachEnrollmentParams{
+	enrollment, err := qtx.CreateCoachEnrollment(c.Context(), db.CreateCoachEnrollmentParams{
 		CoachID: record.CoachID,
 		UserID:  userUUID,
 	})
@@ -238,7 +237,7 @@ func (h *CoachHandler) AcceptEnrollment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create enrollment"})
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(c.Context()); err != nil {
 		slog.Error("failed to commit enrollment transaction", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize enrollment"})
 	}
@@ -274,7 +273,7 @@ func (h *CoachHandler) GetCoachEnrollments(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	enrollments, err := h.queries.GetEnrollmentsByCoach(context.Background(), coachUUID)
+	enrollments, err := h.queries.GetEnrollmentsByCoach(c.Context(), coachUUID)
 	if err != nil {
 		slog.Error("failed to retrieve coach enrollments", "coach_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve enrollments"})
@@ -312,7 +311,7 @@ func (h *CoachHandler) GetUserEnrollment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	enrollment, err := h.queries.GetEnrollmentByUser(context.Background(), userUUID)
+	enrollment, err := h.queries.GetEnrollmentByUser(c.Context(), userUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not enrolled with any coach"})
@@ -359,7 +358,7 @@ func (h *CoachHandler) UnenrollUser(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	tag, err := h.queries.DeleteCoachEnrollment(context.Background(), db.DeleteCoachEnrollmentParams{
+	tag, err := h.queries.DeleteCoachEnrollment(c.Context(), db.DeleteCoachEnrollmentParams{
 		CoachID: coachUUID,
 		UserID:  targetUUID,
 	})
@@ -392,7 +391,7 @@ func (h *CoachHandler) LeaveCoach(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	tag, err := h.queries.DeleteUserEnrollment(context.Background(), userUUID)
+	tag, err := h.queries.DeleteUserEnrollment(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to delete user enrollment", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to leave coach"})
@@ -427,7 +426,7 @@ func (h *CoachHandler) verifyCoachClientRelationship(c fiber.Ctx, clientIDStr st
 		return pgtype.UUID{}, false
 	}
 
-	_, err := h.queries.GetCoachEnrollment(context.Background(), db.GetCoachEnrollmentParams{
+	_, err := h.queries.GetCoachEnrollment(c.Context(), db.GetCoachEnrollmentParams{
 		CoachID: coachUUID,
 		UserID:  clientUUID,
 	})
@@ -460,7 +459,7 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 		return nil
 	}
 
-	sessions, err := h.queries.GetUserSessions(context.Background(), clientUUID)
+	sessions, err := h.queries.GetUserSessions(c.Context(), clientUUID)
 	if err != nil {
 		slog.Error("failed to retrieve client sessions", "client_id", c.Params("user_id"), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
@@ -493,7 +492,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
 	}
 
-	session, err := h.queries.GetSession(context.Background(), sessionUUID)
+	session, err := h.queries.GetSession(c.Context(), sessionUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
@@ -502,8 +501,8 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(context.Background(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(context.Background(), session.ID)
+	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
+	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"session":     session,
@@ -528,7 +527,7 @@ func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {
 		return nil
 	}
 
-	assessments, err := h.queries.GetUserAssessments(context.Background(), clientUUID)
+	assessments, err := h.queries.GetUserAssessments(c.Context(), clientUUID)
 	if err != nil {
 		slog.Error("failed to retrieve client assessments", "client_id", c.Params("user_id"), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})

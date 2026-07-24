@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -58,7 +57,7 @@ func (h *PinnedBuiltinTrainingHandler) PinBuiltinTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	pinned, err := h.queries.PinBuiltinTraining(context.Background(), db.PinBuiltinTrainingParams{
+	pinned, err := h.queries.PinBuiltinTraining(c.Context(), db.PinBuiltinTrainingParams{
 		BuiltinTrainingID: builtinID,
 		UserID:            userUUID,
 	})
@@ -92,7 +91,7 @@ func (h *PinnedBuiltinTrainingHandler) GetPinnedBuiltinTrainings(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	pinned, err := h.queries.GetUserPinnedBuiltinTrainings(context.Background(), userUUID)
+	pinned, err := h.queries.GetUserPinnedBuiltinTrainings(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve pinned builtin trainings", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve pinned builtin trainings"})
@@ -132,7 +131,7 @@ func (h *PinnedBuiltinTrainingHandler) UnpinBuiltinTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	if err := h.queries.UnpinBuiltinTraining(context.Background(), db.UnpinBuiltinTrainingParams{
+	if err := h.queries.UnpinBuiltinTraining(c.Context(), db.UnpinBuiltinTrainingParams{
 		BuiltinTrainingID: builtinID,
 		UserID:            userUUID,
 	}); err != nil {

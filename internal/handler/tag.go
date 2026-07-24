@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"log/slog"
 	"time"
@@ -82,7 +81,7 @@ func (h *TagHandler) CreateTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Color is required"})
 	}
 
-	tag, err := h.queries.CreateTag(context.Background(), db.CreateTagParams{
+	tag, err := h.queries.CreateTag(c.Context(), db.CreateTagParams{
 		CoachID: coachUUID,
 		Name:    req.Name,
 		Color:   req.Color,
@@ -110,7 +109,7 @@ func (h *TagHandler) GetTags(c fiber.Ctx) error {
 		return nil
 	}
 
-	tags, err := h.queries.GetCoachTags(context.Background(), coachUUID)
+	tags, err := h.queries.GetCoachTags(c.Context(), coachUUID)
 	if err != nil {
 		slog.Error("failed to retrieve tags", "coach_id", coachUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve tags"})
@@ -149,7 +148,7 @@ func (h *TagHandler) UpdateTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tag ID"})
 	}
 
-	existing, err := h.queries.GetTag(context.Background(), tagUUID)
+	existing, err := h.queries.GetTag(c.Context(), tagUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Tag not found"})
@@ -177,7 +176,7 @@ func (h *TagHandler) UpdateTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Color is required"})
 	}
 
-	updated, err := h.queries.UpdateTag(context.Background(), db.UpdateTagParams{
+	updated, err := h.queries.UpdateTag(c.Context(), db.UpdateTagParams{
 		ID:    tagUUID,
 		Name:  req.Name,
 		Color: req.Color,
@@ -213,7 +212,7 @@ func (h *TagHandler) DeleteTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid tag ID"})
 	}
 
-	existing, err := h.queries.GetTag(context.Background(), tagUUID)
+	existing, err := h.queries.GetTag(c.Context(), tagUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Tag not found"})
@@ -229,7 +228,7 @@ func (h *TagHandler) DeleteTag(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteTag(context.Background(), tagUUID); err != nil {
+	if err := h.queries.DeleteTag(c.Context(), tagUUID); err != nil {
 		slog.Error("failed to delete tag", "tag_id", tagUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete tag"})
 	}
@@ -261,7 +260,7 @@ func (h *TagHandler) AssignTag(c fiber.Ctx) error {
 		return nil
 	}
 
-	if err := h.queries.AssignTagToExercise(context.Background(), db.AssignTagToExerciseParams{
+	if err := h.queries.AssignTagToExercise(c.Context(), db.AssignTagToExerciseParams{
 		ExerciseID: exerciseUUID,
 		TagID:      tagUUID,
 	}); err != nil {
@@ -296,7 +295,7 @@ func (h *TagHandler) UnassignTag(c fiber.Ctx) error {
 		return nil
 	}
 
-	if err := h.queries.UnassignTagFromExercise(context.Background(), db.UnassignTagFromExerciseParams{
+	if err := h.queries.UnassignTagFromExercise(c.Context(), db.UnassignTagFromExerciseParams{
 		ExerciseID: exerciseUUID,
 		TagID:      tagUUID,
 	}); err != nil {
@@ -320,7 +319,7 @@ func parseExerciseAndTagIDs(c fiber.Ctx, queries *db.Queries, coachUUID pgtype.U
 		return pgtype.UUID{}, pgtype.UUID{}, false
 	}
 
-	exercise, err := queries.GetExercise(context.Background(), exerciseUUID)
+	exercise, err := queries.GetExercise(c.Context(), exerciseUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
@@ -334,7 +333,7 @@ func parseExerciseAndTagIDs(c fiber.Ctx, queries *db.Queries, coachUUID pgtype.U
 		return pgtype.UUID{}, pgtype.UUID{}, false
 	}
 
-	tag, err := queries.GetTag(context.Background(), tagUUID)
+	tag, err := queries.GetTag(c.Context(), tagUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Tag not found"})

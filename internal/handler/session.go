@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -156,16 +155,16 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		repeaterSplitHand.Valid = true
 	}
 
-	tx, err := h.pool.Begin(context.Background())
+	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
 
-	session, err := qtx.CreateSession(context.Background(), db.CreateSessionParams{
+	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
 		UserID:            userUUID,
 		Name:              req.Name,
 		Notes:             req.Notes,
@@ -186,7 +185,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	}
 
 	for _, rd := range req.RepDatas {
-		_, err := qtx.CreateRepData(context.Background(), db.CreateRepDataParams{
+		_, err := qtx.CreateRepData(c.Context(), db.CreateRepDataParams{
 			UserID:        userUUID,
 			AverageWeight: rd.AverageWeight,
 			SessionID:     session.ID,
@@ -220,7 +219,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			gripPosition.Valid = true
 		}
 
-		_, err := qtx.CreateAssessment(context.Background(), db.CreateAssessmentParams{
+		_, err := qtx.CreateAssessment(c.Context(), db.CreateAssessmentParams{
 			UserID:       userUUID,
 			Type:         a.Type,
 			RightValue:   rightValue,
@@ -234,7 +233,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		}
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(c.Context()); err != nil {
 		slog.Error("failed to commit session transaction", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize session"})
 	}
@@ -264,7 +263,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	sessions, err := h.queries.GetUserSessions(context.Background(), userUUID)
+	sessions, err := h.queries.GetUserSessions(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve sessions", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
@@ -296,7 +295,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
 	}
 
-	session, err := h.queries.GetSession(context.Background(), sessionUUID)
+	session, err := h.queries.GetSession(c.Context(), sessionUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
@@ -314,8 +313,8 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(context.Background(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(context.Background(), session.ID)
+	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
+	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
 
 	return c.JSON(fiber.Map{
 		"session":     session,
@@ -351,7 +350,7 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	session, err := h.queries.GetSession(context.Background(), sessionUUID)
+	session, err := h.queries.GetSession(c.Context(), sessionUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
@@ -369,7 +368,7 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	updated, err := h.queries.UpdateSession(context.Background(), db.UpdateSessionParams{
+	updated, err := h.queries.UpdateSession(c.Context(), db.UpdateSessionParams{
 		ID:       sessionUUID,
 		Name:     req.Name,
 		Notes:    req.Notes,
@@ -404,7 +403,7 @@ func (h *SessionHandler) DeleteSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
 	}
 
-	session, err := h.queries.GetSession(context.Background(), sessionUUID)
+	session, err := h.queries.GetSession(c.Context(), sessionUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
@@ -422,7 +421,7 @@ func (h *SessionHandler) DeleteSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteSession(context.Background(), sessionUUID); err != nil {
+	if err := h.queries.DeleteSession(c.Context(), sessionUUID); err != nil {
 		slog.Error("failed to delete session", "user_id", userID, "session_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete session"})
 	}

@@ -407,12 +407,12 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	tx, err := h.pool.Begin(context.Background())
+	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
 
@@ -435,20 +435,20 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 
-	training, err := qtx.CreateTraining(context.Background(), params)
+	training, err := qtx.CreateTraining(c.Context(), params)
 	if err != nil {
 		slog.Error("failed to create training", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
 	}
 
 	var zeroParent pgtype.UUID
-	items, err := insertTrainingItemsRecursive(context.Background(), qtx, training.ID, zeroParent, req.Items)
+	items, err := insertTrainingItemsRecursive(c.Context(), qtx, training.ID, zeroParent, req.Items)
 	if err != nil {
 		slog.Error("failed to insert training items", "training_id", training.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training items"})
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(c.Context()); err != nil {
 		slog.Error("failed to commit training transaction", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize training"})
 	}
@@ -471,7 +471,7 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	trainings, err := h.queries.GetTrainings(context.Background(), userUUID)
+	trainings, err := h.queries.GetTrainings(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve trainings", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})
@@ -509,7 +509,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
+	training, err := h.queries.GetTraining(c.Context(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -522,7 +522,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	rows, err := h.queries.GetTrainingItems(context.Background(), trainingUUID)
+	rows, err := h.queries.GetTrainingItems(c.Context(), trainingUUID)
 	if err != nil {
 		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})
@@ -560,7 +560,7 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	existing, err := h.queries.GetTraining(context.Background(), trainingUUID)
+	existing, err := h.queries.GetTraining(c.Context(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -586,12 +586,12 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	tx, err := h.pool.Begin(context.Background())
+	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
 
@@ -614,25 +614,25 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		updateParams.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 
-	training, err := qtx.UpdateTraining(context.Background(), updateParams)
+	training, err := qtx.UpdateTraining(c.Context(), updateParams)
 	if err != nil {
 		slog.Error("failed to update coach training", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
-	if err := qtx.DeleteTrainingItems(context.Background(), trainingUUID); err != nil {
+	if err := qtx.DeleteTrainingItems(c.Context(), trainingUUID); err != nil {
 		slog.Error("failed to delete training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})
 	}
 
 	var zeroParent pgtype.UUID
-	items, err := insertTrainingItemsRecursive(context.Background(), qtx, trainingUUID, zeroParent, req.Items)
+	items, err := insertTrainingItemsRecursive(c.Context(), qtx, trainingUUID, zeroParent, req.Items)
 	if err != nil {
 		slog.Error("failed to insert training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(c.Context()); err != nil {
 		slog.Error("failed to commit training update", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize update"})
 	}
@@ -664,7 +664,7 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
 	}
 
-	training, err := h.queries.GetTraining(context.Background(), trainingUUID)
+	training, err := h.queries.GetTraining(c.Context(), trainingUUID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
@@ -677,7 +677,7 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteTraining(context.Background(), trainingUUID); err != nil {
+	if err := h.queries.DeleteTraining(c.Context(), trainingUUID); err != nil {
 		slog.Error("failed to delete coach training", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete training"})
 	}

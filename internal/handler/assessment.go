@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -61,7 +60,7 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session_id"})
 	}
 
-	session, err := h.queries.GetSession(context.Background(), sessionUUID)
+	session, err := h.queries.GetSession(c.Context(), sessionUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
@@ -92,7 +91,7 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		gripPosition.Valid = true
 	}
 
-	assessment, err := h.queries.CreateAssessment(context.Background(), db.CreateAssessmentParams{
+	assessment, err := h.queries.CreateAssessment(c.Context(), db.CreateAssessmentParams{
 		UserID:       userUUID,
 		Type:         req.Type,
 		RightValue:   rightValue,
@@ -129,7 +128,7 @@ func (h *AssessmentHandler) GetAssessments(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	assessments, err := h.queries.GetUserAssessments(context.Background(), userUUID)
+	assessments, err := h.queries.GetUserAssessments(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve assessments", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
@@ -160,7 +159,7 @@ func (h *AssessmentHandler) DeleteAssessment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment ID"})
 	}
 
-	assessment, err := h.queries.GetAssessment(context.Background(), id)
+	assessment, err := h.queries.GetAssessment(c.Context(), id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Assessment not found"})
 	}
@@ -176,7 +175,7 @@ func (h *AssessmentHandler) DeleteAssessment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteAssessment(context.Background(), id); err != nil {
+	if err := h.queries.DeleteAssessment(c.Context(), id); err != nil {
 		slog.Error("failed to delete assessment", "user_id", userID, "assessment_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete assessment"})
 	}

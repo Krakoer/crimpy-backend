@@ -101,6 +101,7 @@ func main() {
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
 	app.Use(recover.New())
+	app.Use(middleware.RequestContext())
 	// Response bodies are deliberately not logged: handlers already log the
 	// cause of a failure, and bodies can carry user data.
 	app.Use(func(c fiber.Ctx) error {

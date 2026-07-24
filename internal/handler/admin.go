@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -50,7 +49,7 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 		})
 	}
 
-	coaches, err := h.queries.GetPendingCoaches(context.Background())
+	coaches, err := h.queries.GetPendingCoaches(c.Context())
 	if err != nil {
 		slog.Error("failed to retrieve pending coaches", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -104,7 +103,7 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		})
 	}
 
-	coach, err := h.queries.GetUserByID(context.Background(), userUUID)
+	coach, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -118,7 +117,7 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.ValidateCoach(context.Background(), userUUID)
+	err = h.queries.ValidateCoach(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to validate coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -160,7 +159,7 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 		})
 	}
 
-	err := h.queries.RejectCoach(context.Background(), userUUID)
+	err := h.queries.RejectCoach(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to reject coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -192,7 +191,7 @@ func (h *AdminHandler) ListUsers(c fiber.Ctx) error {
 		})
 	}
 
-	users, err := h.queries.ListAllUsers(context.Background())
+	users, err := h.queries.ListAllUsers(c.Context())
 	if err != nil {
 		slog.Error("failed to retrieve users", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -248,7 +247,7 @@ func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.queries.GetUserByID(context.Background(), userUUID)
+	user, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "User not found",
@@ -261,7 +260,7 @@ func (h *AdminHandler) DeleteUser(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.DeleteUser(context.Background(), userUUID)
+	err = h.queries.DeleteUser(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to delete user", "target_user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

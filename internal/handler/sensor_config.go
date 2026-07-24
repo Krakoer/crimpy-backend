@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
@@ -69,7 +68,7 @@ func (h *SensorConfigHandler) CreateSensorConfig(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	config, err := h.queries.CreateSensorConfig(context.Background(), db.CreateSensorConfigParams{
+	config, err := h.queries.CreateSensorConfig(c.Context(), db.CreateSensorConfigParams{
 		ID:     id,
 		UserID: userUUID,
 		Name:   req.Name,
@@ -107,7 +106,7 @@ func (h *SensorConfigHandler) GetSensorConfigs(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	configs, err := h.queries.GetUserSensorConfigs(context.Background(), userUUID)
+	configs, err := h.queries.GetUserSensorConfigs(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve sensor configs", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sensor configs"})
@@ -141,7 +140,7 @@ func (h *SensorConfigHandler) UpdateSensorConfig(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sensor config ID"})
 	}
 
-	existing, err := h.queries.GetSensorConfig(context.Background(), id)
+	existing, err := h.queries.GetSensorConfig(c.Context(), id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Sensor config not found"})
 	}
@@ -162,7 +161,7 @@ func (h *SensorConfigHandler) UpdateSensorConfig(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	updated, err := h.queries.UpdateSensorConfig(context.Background(), db.UpdateSensorConfigParams{
+	updated, err := h.queries.UpdateSensorConfig(c.Context(), db.UpdateSensorConfigParams{
 		ID:    id,
 		Name:  req.Name,
 		Index: req.Index,
@@ -198,7 +197,7 @@ func (h *SensorConfigHandler) DeleteSensorConfig(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sensor config ID"})
 	}
 
-	existing, err := h.queries.GetSensorConfig(context.Background(), id)
+	existing, err := h.queries.GetSensorConfig(c.Context(), id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Sensor config not found"})
 	}
@@ -214,7 +213,7 @@ func (h *SensorConfigHandler) DeleteSensorConfig(c fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
-	if err := h.queries.DeleteSensorConfig(context.Background(), id); err != nil {
+	if err := h.queries.DeleteSensorConfig(c.Context(), id); err != nil {
 		slog.Error("failed to delete sensor config", "user_id", userID, "config_id", idStr, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete sensor config"})
 	}
