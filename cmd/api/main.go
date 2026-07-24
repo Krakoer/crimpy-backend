@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"crimpy/backend/internal/database"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
@@ -44,6 +45,17 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 
+// pruneExpiredRefreshTokens deletes expired refresh tokens daily. Rotation issues
+// a new row on every refresh, so without this the table grows without bound.
+func pruneExpiredRefreshTokens(queries *db.Queries) {
+	for {
+		if err := queries.DeleteExpiredRefreshTokens(context.Background()); err != nil {
+			slog.Error("failed to prune expired refresh tokens", "error", err)
+		}
+		time.Sleep(24 * time.Hour)
+	}
+}
+
 func main() {
 	env := os.Getenv("ENV")
 	logCloser := applogger.Init(env)
@@ -63,6 +75,8 @@ func main() {
 	if err := utils.InitializeAdminAccount(queries); err != nil {
 		log.Printf("Warning: Failed to initialize admin account: %v", err)
 	}
+
+	go pruneExpiredRefreshTokens(queries)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(queries)
