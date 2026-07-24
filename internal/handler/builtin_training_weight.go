@@ -72,7 +72,7 @@ func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) 
 	weight, err := h.queries.CreateBuiltinTrainingWeight(context.Background(), db.CreateBuiltinTrainingWeightParams{
 		ID:                id,
 		UserID:            userUUID,
-		BuiltinTraningID:  builtinID,
+		BuiltinTrainingID: builtinID,
 		CustomWeightLeft:  req.CustomWeightLeft,
 		CustomWeightRight: req.CustomWeightRight,
 	})

@@ -1,5 +1,5 @@
 -- name: CreateBuiltinTrainingWeight :one
-INSERT INTO builtin_training_weights (id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right)
+INSERT INTO builtin_training_weights (id, user_id, builtin_training_id, custom_weight_left, custom_weight_right)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 

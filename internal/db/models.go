@@ -22,7 +22,7 @@ type Assessment struct {
 type BuiltinTrainingWeight struct {
 	ID                pgtype.UUID
 	UserID            pgtype.UUID
-	BuiltinTraningID  pgtype.UUID
+	BuiltinTrainingID pgtype.UUID
 	CustomWeightLeft  float32
 	CustomWeightRight float32
 	UpdatedAt         pgtype.Timestamptz

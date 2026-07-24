@@ -109,7 +109,7 @@ CREATE TABLE "sensor_configs" (
 CREATE TABLE "builtin_training_weights" (
   "id"                  UUID        NOT NULL,
   "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "builtin_traning_id"  UUID        NOT NULL,
+  "builtin_training_id" UUID        NOT NULL,
   "custom_weight_left"  REAL        NOT NULL,
   "custom_weight_right" REAL        NOT NULL,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),

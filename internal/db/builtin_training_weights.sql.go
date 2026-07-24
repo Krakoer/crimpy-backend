@@ -12,15 +12,15 @@ import (
 )
 
 const createBuiltinTrainingWeight = `-- name: CreateBuiltinTrainingWeight :one
-INSERT INTO builtin_training_weights (id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right)
+INSERT INTO builtin_training_weights (id, user_id, builtin_training_id, custom_weight_left, custom_weight_right)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right, updated_at
+RETURNING id, user_id, builtin_training_id, custom_weight_left, custom_weight_right, updated_at
 `
 
 type CreateBuiltinTrainingWeightParams struct {
 	ID                pgtype.UUID
 	UserID            pgtype.UUID
-	BuiltinTraningID  pgtype.UUID
+	BuiltinTrainingID pgtype.UUID
 	CustomWeightLeft  float32
 	CustomWeightRight float32
 }
@@ -29,7 +29,7 @@ func (q *Queries) CreateBuiltinTrainingWeight(ctx context.Context, arg CreateBui
 	row := q.db.QueryRow(ctx, createBuiltinTrainingWeight,
 		arg.ID,
 		arg.UserID,
-		arg.BuiltinTraningID,
+		arg.BuiltinTrainingID,
 		arg.CustomWeightLeft,
 		arg.CustomWeightRight,
 	)
@@ -37,7 +37,7 @@ func (q *Queries) CreateBuiltinTrainingWeight(ctx context.Context, arg CreateBui
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuiltinTraningID,
+		&i.BuiltinTrainingID,
 		&i.CustomWeightLeft,
 		&i.CustomWeightRight,
 		&i.UpdatedAt,
@@ -55,7 +55,7 @@ func (q *Queries) DeleteBuiltinTrainingWeight(ctx context.Context, id pgtype.UUI
 }
 
 const getBuiltinTrainingWeight = `-- name: GetBuiltinTrainingWeight :one
-SELECT id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right, updated_at FROM builtin_training_weights WHERE id = $1
+SELECT id, user_id, builtin_training_id, custom_weight_left, custom_weight_right, updated_at FROM builtin_training_weights WHERE id = $1
 `
 
 func (q *Queries) GetBuiltinTrainingWeight(ctx context.Context, id pgtype.UUID) (BuiltinTrainingWeight, error) {
@@ -64,7 +64,7 @@ func (q *Queries) GetBuiltinTrainingWeight(ctx context.Context, id pgtype.UUID) 
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuiltinTraningID,
+		&i.BuiltinTrainingID,
 		&i.CustomWeightLeft,
 		&i.CustomWeightRight,
 		&i.UpdatedAt,
@@ -73,7 +73,7 @@ func (q *Queries) GetBuiltinTrainingWeight(ctx context.Context, id pgtype.UUID) 
 }
 
 const getUserBuiltinTrainingWeights = `-- name: GetUserBuiltinTrainingWeights :many
-SELECT id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right, updated_at FROM builtin_training_weights WHERE user_id = $1
+SELECT id, user_id, builtin_training_id, custom_weight_left, custom_weight_right, updated_at FROM builtin_training_weights WHERE user_id = $1
 `
 
 func (q *Queries) GetUserBuiltinTrainingWeights(ctx context.Context, userID pgtype.UUID) ([]BuiltinTrainingWeight, error) {
@@ -88,7 +88,7 @@ func (q *Queries) GetUserBuiltinTrainingWeights(ctx context.Context, userID pgty
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.BuiltinTraningID,
+			&i.BuiltinTrainingID,
 			&i.CustomWeightLeft,
 			&i.CustomWeightRight,
 			&i.UpdatedAt,
@@ -107,7 +107,7 @@ const updateBuiltinTrainingWeight = `-- name: UpdateBuiltinTrainingWeight :one
 UPDATE builtin_training_weights
 SET custom_weight_left = $2, custom_weight_right = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, builtin_traning_id, custom_weight_left, custom_weight_right, updated_at
+RETURNING id, user_id, builtin_training_id, custom_weight_left, custom_weight_right, updated_at
 `
 
 type UpdateBuiltinTrainingWeightParams struct {
@@ -122,7 +122,7 @@ func (q *Queries) UpdateBuiltinTrainingWeight(ctx context.Context, arg UpdateBui
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuiltinTraningID,
+		&i.BuiltinTrainingID,
 		&i.CustomWeightLeft,
 		&i.CustomWeightRight,
 		&i.UpdatedAt,
