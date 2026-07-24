@@ -232,5 +232,5 @@ func main() {
 		port = "3000"
 	}
 
-	log.Fatal(app.Listen(":"+port), fiber.ListenConfig{DisableStartupMessage: os.Getenv("ENV") == "production"})
+	log.Fatal(app.Listen(":"+port, fiber.ListenConfig{DisableStartupMessage: env == "production"}))
 }
