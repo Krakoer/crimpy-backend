@@ -16,7 +16,9 @@ CREATE TABLE "users" (
   PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "users_email_key" ON "users" ("email");
+-- Emails are stored normalized to lowercase; the index enforces that two
+-- addresses differing only by case cannot both be registered.
+CREATE UNIQUE INDEX "users_email_key" ON "users" (lower("email"));
 
 -- Long-lived refresh tokens used to mint new short-lived access tokens.
 -- Only the SHA-256 hash of the token is stored.

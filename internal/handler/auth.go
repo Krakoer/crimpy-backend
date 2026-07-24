@@ -17,6 +17,12 @@ import (
 // minPasswordLength is the shortest password accepted at registration and on change.
 const minPasswordLength = 6
 
+// normalizeEmail makes address comparison case and whitespace insensitive.
+// Every read and write of users.email goes through it.
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 type AuthHandler struct {
 	queries *db.Queries
 }
@@ -71,6 +77,8 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 			"error": "Invalid request body",
 		})
 	}
+
+	req.Email = normalizeEmail(req.Email)
 
 	// Validate required fields
 	if req.Email == "" || req.Password == "" || req.Firstname == "" || req.Lastname == "" {
@@ -244,6 +252,8 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 			"error": "Invalid request body",
 		})
 	}
+
+	req.Email = normalizeEmail(req.Email)
 
 	if req.Email == "" || req.Password == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -678,6 +688,8 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 			"error": "Invalid request body",
 		})
 	}
+
+	req.Email = normalizeEmail(req.Email)
 
 	if req.Email == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
