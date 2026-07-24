@@ -40,8 +40,7 @@ services:
       - traefik.http.routers.crimpypg.rule=Host(`pg.crimpy.app`)
       - traefik.http.routers.crimpypg.entrypoints=websecure
       - traefik.http.routers.crimpypg.tls.certresolver=dnsResolver
-      - traefik.http.routers.crimpypg.middlewares=traefik-ip
-      - traefik.http.middlewares.traefik-ip.ipallowlist.sourcerange=10.14.0.0/16
+      - traefik.http.routers.crimpypg.middlewares=vpn-only@file
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_MAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PWD}
@@ -53,29 +52,20 @@ services:
 
   migrate:
     container_name: crimpy_migrate
-    image: arigaio/atlas:latest
+    image: krakoer/crimpy-migrate:${VERSION:-latest}
     env_file:
       - .env.prod
     environment:
       DATABASE_URL: ${DATABASE_URL}
     networks:
       - crimpy_net
-    command:
-      - migrate
-      - apply
-      - --url
-      - ${DATABASE_URL}
-      - --dir
-      - file://migrations
-    volumes:
-      - ./migrations:/migrations
     depends_on:
       db:
         condition: service_healthy
 
   api:
     container_name: crimpy_api
-    image: ${DOCKERHUB_USERNAME}/crimpy-api:${API_VERSION:-latest}
+    image: krakoer/crimpy-api:${VERSION:-latest}
     env_file:
       - .env.prod
     environment:
@@ -88,6 +78,12 @@ services:
       - ${PORT:-3000}
     volumes:
       - ./logs:/logs
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:${PORT:-3000}/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     labels:
       - traefik.enable=true
       - traefik.http.routers.crimpy-api.rule=Host(`api.crimpy.app`)

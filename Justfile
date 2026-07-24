@@ -40,7 +40,8 @@ swagger:
 
 prod-up:
     mkdir -p pgdata
-    docker compose --env-file .env.prod up -d --build
+    docker compose --env-file .env.prod pull
+    docker compose --env-file .env.prod up -d
 
 prod-down:
     docker compose --env-file .env.prod down
@@ -56,6 +57,7 @@ prod-pull:
     docker compose --env-file .env.prod up -d
 
 preprod-up:
+    docker compose --env-file .env.preprod -f docker-compose.preprod.yml pull
     docker compose --env-file .env.preprod -f docker-compose.preprod.yml up -d
 
 preprod-down:
