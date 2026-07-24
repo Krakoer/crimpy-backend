@@ -19,7 +19,7 @@ func TestSessionHandler_CreateSession_Success(t *testing.T) {
 
 	userID, token := testutil.CreateTestUser(t, queries, "session1@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -65,7 +65,7 @@ func TestSessionHandler_CreateSession_MissingName(t *testing.T) {
 
 	_, token := testutil.CreateTestUser(t, queries, "session2@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -93,7 +93,7 @@ func TestSessionHandler_CreateSession_Unauthorized(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -126,7 +126,7 @@ func TestSessionHandler_GetSessions_Success(t *testing.T) {
 
 	_, token := testutil.CreateTestUser(t, queries, "session3@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -174,7 +174,7 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 
 	_, token := testutil.CreateTestUser(t, queries, "session4@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -234,7 +234,7 @@ func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
 	_, token1 := testutil.CreateTestUser(t, queries, "session5@test.com")
 	_, token2 := testutil.CreateTestUser(t, queries, "session6@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -280,7 +280,7 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 
 	_, token := testutil.CreateTestUser(t, queries, "session7@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -345,7 +345,7 @@ func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
 	_, token1 := testutil.CreateTestUser(t, queries, "session8@test.com")
 	_, token2 := testutil.CreateTestUser(t, queries, "session9@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -397,7 +397,7 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 
 	_, token := testutil.CreateTestUser(t, queries, "session10@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})
@@ -453,7 +453,7 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 	_, token1 := testutil.CreateTestUser(t, queries, "session11@test.com")
 	_, token2 := testutil.CreateTestUser(t, queries, "session12@test.com")
 
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler: sessionHandler,
 	})

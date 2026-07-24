@@ -9,15 +9,18 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type SessionHandler struct {
 	queries *db.Queries
+	pool    *pgxpool.Pool
 }
 
-func NewSessionHandler(queries *db.Queries) *SessionHandler {
+func NewSessionHandler(queries *db.Queries, pool *pgxpool.Pool) *SessionHandler {
 	return &SessionHandler{
 		queries: queries,
+		pool:    pool,
 	}
 }
 
@@ -153,7 +156,16 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		repeaterSplitHand.Valid = true
 	}
 
-	session, err := h.queries.CreateSession(context.Background(), db.CreateSessionParams{
+	tx, err := h.pool.Begin(context.Background())
+	if err != nil {
+		slog.Error("failed to begin transaction", "user_id", userID, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+	}
+	defer tx.Rollback(context.Background())
+
+	qtx := h.queries.WithTx(tx)
+
+	session, err := qtx.CreateSession(context.Background(), db.CreateSessionParams{
 		UserID:            userUUID,
 		Name:              req.Name,
 		Notes:             req.Notes,
@@ -174,7 +186,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	}
 
 	for _, rd := range req.RepDatas {
-		_, err := h.queries.CreateRepData(context.Background(), db.CreateRepDataParams{
+		_, err := qtx.CreateRepData(context.Background(), db.CreateRepDataParams{
 			UserID:        userUUID,
 			AverageWeight: rd.AverageWeight,
 			SessionID:     session.ID,
@@ -208,7 +220,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			gripPosition.Valid = true
 		}
 
-		_, err := h.queries.CreateAssessment(context.Background(), db.CreateAssessmentParams{
+		_, err := qtx.CreateAssessment(context.Background(), db.CreateAssessmentParams{
 			UserID:       userUUID,
 			Type:         a.Type,
 			RightValue:   rightValue,
@@ -220,6 +232,11 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			slog.Error("failed to create assessment", "user_id", userID, "session_id", session.ID, "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 		}
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		slog.Error("failed to commit session transaction", "user_id", userID, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize session"})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(session)

@@ -65,7 +65,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(queries)
 	adminHandler := handler.NewAdminHandler(queries)
-	sessionHandler := handler.NewSessionHandler(queries)
+	sessionHandler := handler.NewSessionHandler(queries, pool)
 	assessmentHandler := handler.NewAssessmentHandler(queries)
 	sensorConfigHandler := handler.NewSensorConfigHandler(queries)
 	builtinWeightHandler := handler.NewBuiltinTrainingWeightHandler(queries)
