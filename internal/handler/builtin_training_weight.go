@@ -17,6 +17,14 @@ func NewBuiltinTrainingWeightHandler(queries *db.Queries) *BuiltinTrainingWeight
 	return &BuiltinTrainingWeightHandler{queries: queries}
 }
 
+func (h *BuiltinTrainingWeightHandler) ownedWeight() ownedResource[db.BuiltinTrainingWeight] {
+	return ownedResource[db.BuiltinTrainingWeight]{
+		label: "Builtin training weight",
+		fetch: h.queries.GetBuiltinTrainingWeight,
+		owner: func(w db.BuiltinTrainingWeight) pgtype.UUID { return w.UserID },
+	}
+}
+
 type CreateBuiltinTrainingWeightRequest struct {
 	ID                string  `json:"id"`
 	BuiltinTrainingID string  `json:"builtin_training_id"`
@@ -133,26 +141,9 @@ func (h *BuiltinTrainingWeightHandler) GetBuiltinTrainingWeights(c fiber.Ctx) er
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/builtin-training-weights/{id} [put]
 func (h *BuiltinTrainingWeightHandler) UpdateBuiltinTrainingWeight(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var id pgtype.UUID
-	if err := id.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
-	}
-
-	existing, err := h.queries.GetBuiltinTrainingWeight(c.Context(), id)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Builtin training weight not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if existing.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to builtin training weight", "user_id", userID, "weight_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, id, ok := h.ownedWeight().require(c)
+	if !ok {
+		return nil
 	}
 
 	var req UpdateBuiltinTrainingWeightRequest
@@ -166,7 +157,7 @@ func (h *BuiltinTrainingWeightHandler) UpdateBuiltinTrainingWeight(c fiber.Ctx) 
 		CustomWeightRight: req.CustomWeightRight,
 	})
 	if err != nil {
-		slog.Error("failed to update builtin training weight", "user_id", userID, "weight_id", idStr, "error", err)
+		slog.Error("failed to update builtin training weight", "weight_id", id.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update builtin training weight"})
 	}
 
@@ -188,30 +179,13 @@ func (h *BuiltinTrainingWeightHandler) UpdateBuiltinTrainingWeight(c fiber.Ctx) 
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/builtin-training-weights/{id} [delete]
 func (h *BuiltinTrainingWeightHandler) DeleteBuiltinTrainingWeight(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var id pgtype.UUID
-	if err := id.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid ID"})
-	}
-
-	existing, err := h.queries.GetBuiltinTrainingWeight(c.Context(), id)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Builtin training weight not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if existing.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to builtin training weight", "user_id", userID, "weight_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, id, ok := h.ownedWeight().require(c)
+	if !ok {
+		return nil
 	}
 
 	if err := h.queries.DeleteBuiltinTrainingWeight(c.Context(), id); err != nil {
-		slog.Error("failed to delete builtin training weight", "user_id", userID, "weight_id", idStr, "error", err)
+		slog.Error("failed to delete builtin training weight", "weight_id", id.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete builtin training weight"})
 	}
 

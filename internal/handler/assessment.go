@@ -25,6 +25,14 @@ func NewAssessmentHandler(queries *db.Queries) *AssessmentHandler {
 	return &AssessmentHandler{queries: queries}
 }
 
+func (h *AssessmentHandler) ownedAssessment() ownedResource[db.Assessment] {
+	return ownedResource[db.Assessment]{
+		label: "Assessment",
+		fetch: h.queries.GetAssessment,
+		owner: func(a db.Assessment) pgtype.UUID { return a.UserID },
+	}
+}
+
 // CreateAssessment godoc
 // @Summary Create an assessment linked to an existing session
 // @Description Create a new assessment result for the authenticated user, linked to an existing session they own
@@ -153,30 +161,13 @@ func (h *AssessmentHandler) GetAssessments(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/assessments/{id} [delete]
 func (h *AssessmentHandler) DeleteAssessment(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var id pgtype.UUID
-	if err := id.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment ID"})
-	}
-
-	assessment, err := h.queries.GetAssessment(c.Context(), id)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Assessment not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if assessment.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to assessment", "user_id", userID, "assessment_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, id, ok := h.ownedAssessment().require(c)
+	if !ok {
+		return nil
 	}
 
 	if err := h.queries.DeleteAssessment(c.Context(), id); err != nil {
-		slog.Error("failed to delete assessment", "user_id", userID, "assessment_id", idStr, "error", err)
+		slog.Error("failed to delete assessment", "assessment_id", id.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete assessment"})
 	}
 

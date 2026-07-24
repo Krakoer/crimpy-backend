@@ -83,6 +83,14 @@ func exerciseToResponse(e db.Exercise, tags []db.Tag) ExerciseResponse {
 	return resp
 }
 
+func (h *ExerciseHandler) ownedExercise() ownedResource[db.Exercise] {
+	return ownedResource[db.Exercise]{
+		label: "Exercise",
+		fetch: h.queries.GetExercise,
+		owner: func(e db.Exercise) pgtype.UUID { return e.CoachID },
+	}
+}
+
 func requireValidatedCoach(c fiber.Ctx, queries *db.Queries) (pgtype.UUID, bool) {
 	if !middleware.IsCoach(c) {
 		c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Coach account required"})
@@ -271,27 +279,13 @@ func (h *ExerciseHandler) GetExercises(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Exercise not found"
 // @Router /api/coach/exercises/{id} [get]
 func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
-	coachUUID, ok := requireValidatedCoach(c, h.queries)
-	if !ok {
+	if _, ok := requireValidatedCoach(c, h.queries); !ok {
 		return nil
 	}
 
-	var exerciseUUID pgtype.UUID
-	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
-	}
-
-	exercise, err := h.queries.GetExercise(c.Context(), exerciseUUID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
-		}
-		slog.Error("failed to retrieve exercise", "exercise_id", exerciseUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
-	}
-
-	if exercise.CoachID.Bytes != coachUUID.Bytes {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	exercise, exerciseUUID, ok := h.ownedExercise().require(c)
+	if !ok {
+		return nil
 	}
 
 	tags, err := h.queries.GetExerciseTags(c.Context(), exerciseUUID)
@@ -318,27 +312,13 @@ func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Exercise not found"
 // @Router /api/coach/exercises/{id} [put]
 func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
-	coachUUID, ok := requireValidatedCoach(c, h.queries)
-	if !ok {
+	if _, ok := requireValidatedCoach(c, h.queries); !ok {
 		return nil
 	}
 
-	var exerciseUUID pgtype.UUID
-	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
-	}
-
-	existing, err := h.queries.GetExercise(c.Context(), exerciseUUID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
-		}
-		slog.Error("failed to retrieve exercise for update", "exercise_id", exerciseUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
-	}
-
-	if existing.CoachID.Bytes != coachUUID.Bytes {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, exerciseUUID, ok := h.ownedExercise().require(c)
+	if !ok {
+		return nil
 	}
 
 	var req UpdateExerciseRequest
@@ -392,27 +372,13 @@ func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Exercise not found"
 // @Router /api/coach/exercises/{id} [delete]
 func (h *ExerciseHandler) DeleteExercise(c fiber.Ctx) error {
-	coachUUID, ok := requireValidatedCoach(c, h.queries)
-	if !ok {
+	if _, ok := requireValidatedCoach(c, h.queries); !ok {
 		return nil
 	}
 
-	var exerciseUUID pgtype.UUID
-	if err := exerciseUUID.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid exercise ID"})
-	}
-
-	exercise, err := h.queries.GetExercise(c.Context(), exerciseUUID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Exercise not found"})
-		}
-		slog.Error("failed to retrieve exercise for delete", "exercise_id", exerciseUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve exercise"})
-	}
-
-	if exercise.CoachID.Bytes != coachUUID.Bytes {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, exerciseUUID, ok := h.ownedExercise().require(c)
+	if !ok {
+		return nil
 	}
 
 	if err := h.queries.DeleteExercise(c.Context(), exerciseUUID); err != nil {

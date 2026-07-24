@@ -17,6 +17,14 @@ func NewSensorConfigHandler(queries *db.Queries) *SensorConfigHandler {
 	return &SensorConfigHandler{queries: queries}
 }
 
+func (h *SensorConfigHandler) ownedSensorConfig() ownedResource[db.SensorConfig] {
+	return ownedResource[db.SensorConfig]{
+		label: "Sensor config",
+		fetch: h.queries.GetSensorConfig,
+		owner: func(s db.SensorConfig) pgtype.UUID { return s.UserID },
+	}
+}
+
 type CreateSensorConfigRequest struct {
 	ID    string  `json:"id"`
 	Name  string  `json:"name"`
@@ -134,26 +142,9 @@ func (h *SensorConfigHandler) GetSensorConfigs(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sensor-configs/{id} [put]
 func (h *SensorConfigHandler) UpdateSensorConfig(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var id pgtype.UUID
-	if err := id.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sensor config ID"})
-	}
-
-	existing, err := h.queries.GetSensorConfig(c.Context(), id)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Sensor config not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if existing.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to sensor config", "user_id", userID, "config_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, id, ok := h.ownedSensorConfig().require(c)
+	if !ok {
+		return nil
 	}
 
 	var req UpdateSensorConfigRequest
@@ -169,7 +160,7 @@ func (h *SensorConfigHandler) UpdateSensorConfig(c fiber.Ctx) error {
 		Coef:  req.Coef,
 	})
 	if err != nil {
-		slog.Error("failed to update sensor config", "user_id", userID, "config_id", idStr, "error", err)
+		slog.Error("failed to update sensor config", "config_id", id.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update sensor config"})
 	}
 
@@ -191,30 +182,13 @@ func (h *SensorConfigHandler) UpdateSensorConfig(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sensor-configs/{id} [delete]
 func (h *SensorConfigHandler) DeleteSensorConfig(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var id pgtype.UUID
-	if err := id.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sensor config ID"})
-	}
-
-	existing, err := h.queries.GetSensorConfig(c.Context(), id)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Sensor config not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if existing.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to sensor config", "user_id", userID, "config_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, id, ok := h.ownedSensorConfig().require(c)
+	if !ok {
+		return nil
 	}
 
 	if err := h.queries.DeleteSensorConfig(c.Context(), id); err != nil {
-		slog.Error("failed to delete sensor config", "user_id", userID, "config_id", idStr, "error", err)
+		slog.Error("failed to delete sensor config", "config_id", id.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete sensor config"})
 	}
 

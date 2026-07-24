@@ -23,6 +23,15 @@ func NewSessionHandler(queries *db.Queries, pool *pgxpool.Pool) *SessionHandler 
 	}
 }
 
+func (h *SessionHandler) ownedSession() ownedResource[db.Session] {
+	return ownedResource[db.Session]{
+		label:      "Session",
+		fetch:      h.queries.GetSession,
+		owner:      func(s db.Session) pgtype.UUID { return s.UserID },
+		allowAdmin: true,
+	}
+}
+
 type CreateSessionRequest struct {
 	Name              string              `json:"name"`
 	Notes             string              `json:"notes"`
@@ -289,28 +298,9 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Session not found"
 // @Router /api/sessions/{id} [get]
 func (h *SessionHandler) GetSession(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var sessionUUID pgtype.UUID
-	if err := sessionUUID.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
-	}
-
-	session, err := h.queries.GetSession(c.Context(), sessionUUID)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	isAdmin := middleware.IsAdmin(c)
-
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if !isAdmin && session.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to session", "user_id", userID, "session_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	session, _, ok := h.ownedSession().require(c)
+	if !ok {
+		return nil
 	}
 
 	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
@@ -339,33 +329,14 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions/{id} [put]
 func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var sessionUUID pgtype.UUID
-	if err := sessionUUID.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
+	_, sessionUUID, ok := h.ownedSession().require(c)
+	if !ok {
+		return nil
 	}
 
 	var req UpdateSessionRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	session, err := h.queries.GetSession(c.Context(), sessionUUID)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	isAdmin := middleware.IsAdmin(c)
-
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if !isAdmin && session.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to session", "user_id", userID, "session_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
 	}
 
 	updated, err := h.queries.UpdateSession(c.Context(), db.UpdateSessionParams{
@@ -375,7 +346,7 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		Duration: req.Duration,
 	})
 	if err != nil {
-		slog.Error("failed to update session", "user_id", userID, "session_id", idStr, "error", err)
+		slog.Error("failed to update session", "session_id", sessionUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update session"})
 	}
 
@@ -397,32 +368,13 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions/{id} [delete]
 func (h *SessionHandler) DeleteSession(c fiber.Ctx) error {
-	idStr := c.Params("id")
-	var sessionUUID pgtype.UUID
-	if err := sessionUUID.Scan(idStr); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
-	}
-
-	session, err := h.queries.GetSession(c.Context(), sessionUUID)
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
-	}
-
-	userID := middleware.GetUserID(c)
-	isAdmin := middleware.IsAdmin(c)
-
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	if !isAdmin && session.UserID.Bytes != userUUID.Bytes {
-		slog.Warn("access denied to session", "user_id", userID, "session_id", idStr)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, sessionUUID, ok := h.ownedSession().require(c)
+	if !ok {
+		return nil
 	}
 
 	if err := h.queries.DeleteSession(c.Context(), sessionUUID); err != nil {
-		slog.Error("failed to delete session", "user_id", userID, "session_id", idStr, "error", err)
+		slog.Error("failed to delete session", "session_id", sessionUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete session"})
 	}
 

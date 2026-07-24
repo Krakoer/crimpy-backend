@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -64,6 +63,14 @@ type TrainingHandler struct {
 
 func NewTrainingHandler(queries *db.Queries, pool *pgxpool.Pool) *TrainingHandler {
 	return &TrainingHandler{queries: queries, pool: pool}
+}
+
+func (h *TrainingHandler) ownedTraining() ownedResource[db.Training] {
+	return ownedResource[db.Training]{
+		label: "Training",
+		fetch: h.queries.GetTraining,
+		owner: func(t db.Training) pgtype.UUID { return t.UserID },
+	}
 }
 
 // TrainingItemRequest represents one item in the training tree.
@@ -498,28 +505,9 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Training not found"
 // @Router /api/trainings/{id} [get]
 func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
-	userIDStr := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userIDStr); err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	var trainingUUID pgtype.UUID
-	if err := trainingUUID.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
-	}
-
-	training, err := h.queries.GetTraining(c.Context(), trainingUUID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
-		}
-		slog.Error("failed to retrieve training", "training_id", trainingUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
-	}
-
-	if training.UserID.Bytes != userUUID.Bytes {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	training, trainingUUID, ok := h.ownedTraining().require(c)
+	if !ok {
+		return nil
 	}
 
 	rows, err := h.queries.GetTrainingItems(c.Context(), trainingUUID)
@@ -549,28 +537,9 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Training not found"
 // @Router /api/trainings/{id} [put]
 func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
-	userIDStr := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userIDStr); err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	var trainingUUID pgtype.UUID
-	if err := trainingUUID.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
-	}
-
-	existing, err := h.queries.GetTraining(c.Context(), trainingUUID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
-		}
-		slog.Error("failed to retrieve training for update", "training_id", trainingUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
-	}
-
-	if existing.UserID.Bytes != userUUID.Bytes {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, trainingUUID, ok := h.ownedTraining().require(c)
+	if !ok {
+		return nil
 	}
 
 	var req UpdateTrainingRequest
@@ -653,28 +622,9 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Training not found"
 // @Router /api/trainings/{id} [delete]
 func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
-	userIDStr := middleware.GetUserID(c)
-	var userUUID pgtype.UUID
-	if err := userUUID.Scan(userIDStr); err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
-	}
-
-	var trainingUUID pgtype.UUID
-	if err := trainingUUID.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
-	}
-
-	training, err := h.queries.GetTraining(c.Context(), trainingUUID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Training not found"})
-		}
-		slog.Error("failed to retrieve training for delete", "training_id", trainingUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
-	}
-
-	if training.UserID.Bytes != userUUID.Bytes {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+	_, trainingUUID, ok := h.ownedTraining().require(c)
+	if !ok {
+		return nil
 	}
 
 	if err := h.queries.DeleteTraining(c.Context(), trainingUUID); err != nil {
