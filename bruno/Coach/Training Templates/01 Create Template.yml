@@ -23,7 +23,7 @@ http:
             "items": []
           },
           {
-            "type": "hangboard",
+            "type": "hangboard_rep",
             "position": 1,
             "cycles": 3,
             "cycle_rest_seconds": 120,

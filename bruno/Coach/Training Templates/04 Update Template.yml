@@ -17,7 +17,7 @@ http:
         "description": "Updated with extra warm-up",
         "items": [
           {
-            "type": "hangboard",
+            "type": "hangboard_rep",
             "position": 0,
             "cycles": 4,
             "cycle_rest_seconds": 120,

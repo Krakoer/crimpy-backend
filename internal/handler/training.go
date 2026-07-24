@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -16,6 +17,36 @@ import (
 
 // maxItemCommentLen caps the per-item coach comment length, matching the client input limit.
 const maxItemCommentLen = 200
+
+// maxItemDepth caps how deeply items may nest, bounding recursion on untrusted input.
+const maxItemDepth = 10
+
+// validItemTypes is the set of accepted training item discriminators.
+var validItemTypes = map[string]bool{
+	"repeater":      true,
+	"hangboard_rep": true,
+	"free":          true,
+	"exercise":      true,
+	"circuit":       true,
+	"group":         true,
+}
+
+// validateTrainingItems rejects unknown item types and over-deep trees before
+// any row is written.
+func validateTrainingItems(items []TrainingItemRequest, depth int) error {
+	if len(items) > 0 && depth > maxItemDepth {
+		return fmt.Errorf("items nested more than %d levels deep", maxItemDepth)
+	}
+	for _, item := range items {
+		if !validItemTypes[item.Type] {
+			return fmt.Errorf("invalid item type %q", item.Type)
+		}
+		if err := validateTrainingItems(item.Items, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // truncateRunes shortens s to at most n runes, preserving multi-byte characters.
 func truncateRunes(s string, n int) string {
@@ -372,6 +403,10 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Title is required"})
 	}
 
+	if err := validateTrainingItems(req.Items, 1); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	tx, err := h.pool.Begin(context.Background())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
@@ -545,6 +580,10 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 
 	if req.Title == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Title is required"})
+	}
+
+	if err := validateTrainingItems(req.Items, 1); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	tx, err := h.pool.Begin(context.Background())
