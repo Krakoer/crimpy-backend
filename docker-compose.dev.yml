@@ -12,6 +12,11 @@ services:
     image: dpage/pgadmin4
     container_name: crimpy_pgadmin4
     restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
     ports:
       - 8888:80
     environment:
