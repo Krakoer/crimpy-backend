@@ -152,13 +152,52 @@ Tests use the `handler_test` package and verify:
 
 ## Production Deployment
 
-### Initial VPS Setup
+Deployment is pull-based: nothing is built on the server. Every commit produces
+published images, and a release is promoted by pointing an environment at a tag.
+
+### Published images
+
+Both images are built from the same commit and share the same tags, so migrations
+are always version-matched to the api that runs them.
+
+| Image | Contents |
+| --- | --- |
+| `krakoer/crimpy-api` | The API server |
+| `krakoer/crimpy-migrate` | Atlas CLI with `migrations/` and `atlas.hcl` baked in |
+
+| Trigger | Tags published |
+| --- | --- |
+| Push to `main` | `:edge` |
+| Push of tag `vX.Y.Z` | `:vX.Y.Z` and `:latest` |
+
+### Version selection
+
+A single `VERSION` variable in the environment file selects both images, which
+keeps a promotion atomic and prevents api/migration skew:
 
 ```bash
-# Clone repository on VPS
-git clone <repository-url>
-cd crimpy-backend
+VERSION=edge      # preproduction, tracks main
+VERSION=v1.0.0    # production, pinned to a validated release
+```
 
+### Running migrations
+
+The migrate image needs no repository checkout and no bind mount. It reads
+`DATABASE_URL` from the environment and applies every pending migration, exiting
+0 when there is nothing left to apply:
+
+```bash
+docker run --rm \
+  -e DATABASE_URL='postgres://user:pass@db:5432/crimpy?sslmode=disable' \
+  krakoer/crimpy-migrate:v1.0.0
+```
+
+In compose the `migrate` service runs this once and the `api` service waits on
+`service_completed_successfully`, so a failed migration blocks a bad api start.
+
+### Initial VPS setup
+
+```bash
 # Configure environment
 cp .env.prod.example .env.prod
 nano .env.prod  # Edit with production values
@@ -166,14 +205,14 @@ nano .env.prod  # Edit with production values
 # Set secure credentials:
 # - DB_USER, DB_PASSWORD (avoid special chars like % and &)
 # - JWT_SECRET (generate with: openssl rand -base64 32)
-# - DOCKERHUB_USERNAME (your DockerHub username)
-# - DATABASE_URL (update with your DB_PASSWORD)
+# - DATABASE_URL (update with your DB_PASSWORD, keep 'db' as hostname)
+# - VERSION (the released tag to run)
 
-# Start services
+# Pull the images and start services
 just prod-up
 ```
 
-### Automated Deployment with GitHub Actions
+### Automated builds with GitHub Actions
 
 **One-time GitHub setup:**
 1. Go to repository Settings ; Secrets and variables ; Actions
@@ -189,30 +228,36 @@ git push origin v1.0.0
 ```
 
 GitHub Actions automatically:
-- Builds Docker image for multiple platforms
-- Pushes to DockerHub with version tag + `latest`
-- Creates GitHub release
+- Builds both images for linux/amd64 and linux/arm64
+- Pushes them to DockerHub with the version tag + `latest`
+- Creates a GitHub release
 
-**Deploy to VPS:**
+**Promote to production:**
 
 ```bash
-# On VPS
-cd /path/to/crimpy-backend
+# Edit .env.prod: VERSION=v1.0.0 (the tag preproduction already validated)
 just prod-pull
 ```
 
 **Rollback:**
 
 ```bash
-# Edit .env.prod: API_VERSION=v0.9.0
+# Edit .env.prod: VERSION=v0.9.0
 just prod-pull
 ```
+
+### Health endpoint
+
+`GET /health` is public and unauthenticated. It pings the database pool and
+returns 200 with `{"status":"ok"}`, or 503 with `{"status":"unavailable"}` when
+the pool cannot serve queries. Container healthchecks, health-gated rolling
+updates, and uptime monitoring all use this path.
 
 ### Production Commands
 
 ```bash
-just prod-up       # Start production (with build)
-just prod-pull     # Pull latest images and restart
+just prod-up       # Pull images and start production
+just prod-pull     # Pull the selected version and restart
 just prod-down     # Stop production
 just prod-logs     # View API logs
 just prod-restart  # Restart API service
@@ -246,13 +291,12 @@ JWT_SECRET=devsecret
 ENV=development
 ```
 
-**Production** (set via `.env.prod`):
+**Production** (set via `.env.prod`, see [.env.prod.example](.env.prod.example) for the full list):
 ```bash
+VERSION=v1.0.0
 DATABASE_URL=postgres://...
 JWT_SECRET=<strong-random-secret>
 PORT=3000
-DOCKERHUB_USERNAME=<your-username>
-API_VERSION=latest
 ```
 
 ## Code Style
