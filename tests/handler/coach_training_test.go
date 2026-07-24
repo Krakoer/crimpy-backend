@@ -97,8 +97,8 @@ func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 		"title": "Strength",
 		"items": []map[string]interface{}{
 			{
-				"type":          "section",
-				"section_title": "Warm-up",
+				"type":        "group",
+				"group_title": "Warm-up",
 				"items": []map[string]interface{}{
 					{
 						"type": "exercise",
@@ -133,18 +133,18 @@ func TestCoachTrainingHandler_GetWithItems(t *testing.T) {
 
 	items := result["items"].([]interface{})
 	if len(items) != 1 {
-		t.Fatalf("Expected 1 section, got %d", len(items))
+		t.Fatalf("Expected 1 group, got %d", len(items))
 	}
 
-	section := items[0].(map[string]interface{})
-	if section["type"] != "section" {
-		t.Errorf("Expected type 'section', got %v", section["type"])
+	group := items[0].(map[string]interface{})
+	if group["type"] != "group" {
+		t.Errorf("Expected type 'group', got %v", group["type"])
 	}
-	if section["section_title"] != "Warm-up" {
-		t.Errorf("Expected section_title 'Warm-up', got %v", section["section_title"])
+	if group["group_title"] != "Warm-up" {
+		t.Errorf("Expected group_title 'Warm-up', got %v", group["group_title"])
 	}
 
-	children := section["items"].([]interface{})
+	children := group["items"].([]interface{})
 	if len(children) != 1 {
 		t.Errorf("Expected 1 child exercise, got %d", len(children))
 	}

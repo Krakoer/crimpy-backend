@@ -28,7 +28,7 @@ INSERT INTO training_items (
   worktime_seconds, hand,
   free_text, comment, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
-  section_title
+  group_title
 ) VALUES (
   @training_id, @parent_id, @type, @position,
   @cycles, @cycle_rest_seconds,
@@ -37,7 +37,7 @@ INSERT INTO training_items (
   @worktime_seconds, @hand,
   @free_text, @comment, @load_is_max,
   @loads, @left_loads, @hand_positions, @edge_sizes_mm,
-  @section_title
+  @group_title
 )
 RETURNING *;
 

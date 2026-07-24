@@ -36,7 +36,7 @@ func NewTrainingHandler(queries *db.Queries, pool *pgxpool.Pool) *TrainingHandle
 }
 
 // TrainingItemRequest represents one item in the training tree.
-// Circuits and sections carry nested Items; repeaters and hangboard reps are leaves.
+// Circuits and groups carry nested Items; repeaters and hangboard reps are leaves.
 type TrainingItemRequest struct {
 	Type             string                `json:"type"`
 	Cycles           *int32                `json:"cycles"`
@@ -54,7 +54,7 @@ type TrainingItemRequest struct {
 	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
 	HandPositions    json.RawMessage       `json:"hand_positions"  swaggertype:"array,object"`
 	EdgeSizesMm      json.RawMessage       `json:"edge_sizes_mm"   swaggertype:"array,integer"`
-	SectionTitle     *string               `json:"section_title"`
+	GroupTitle       *string               `json:"group_title"`
 	Items            []TrainingItemRequest `json:"items"`
 }
 
@@ -99,7 +99,7 @@ type TrainingItemResponse struct {
 	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
 	HandPositions    json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
 	EdgeSizesMm      json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
-	SectionTitle     *string                `json:"section_title,omitempty"`
+	GroupTitle       *string                `json:"group_title,omitempty"`
 	Items            []TrainingItemResponse `json:"items,omitempty"`
 }
 
@@ -216,8 +216,8 @@ func insertTrainingItemsRecursive(
 		if len(req.EdgeSizesMm) > 0 && string(req.EdgeSizesMm) != "null" {
 			params.EdgeSizesMm = req.EdgeSizesMm
 		}
-		if req.SectionTitle != nil {
-			params.SectionTitle = pgtype.Text{String: *req.SectionTitle, Valid: true}
+		if req.GroupTitle != nil {
+			params.GroupTitle = pgtype.Text{String: *req.GroupTitle, Valid: true}
 		}
 
 		row, err := queries.CreateTrainingItem(ctx, params)
@@ -291,8 +291,8 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if len(r.EdgeSizesMm) > 0 {
 		resp.EdgeSizesMm = json.RawMessage(r.EdgeSizesMm)
 	}
-	if r.SectionTitle.Valid {
-		resp.SectionTitle = &r.SectionTitle.String
+	if r.GroupTitle.Valid {
+		resp.GroupTitle = &r.GroupTitle.String
 	}
 	return resp
 }
@@ -338,7 +338,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		HandPositions:    r.HandPositions,
 		EdgeSizesMm:      r.EdgeSizesMm,
 		LoadIsMax:        r.LoadIsMax,
-		SectionTitle:     r.SectionTitle,
+		GroupTitle:       r.GroupTitle,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,
 	}

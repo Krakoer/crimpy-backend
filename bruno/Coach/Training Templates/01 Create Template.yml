@@ -17,8 +17,8 @@ http:
         "description": "A structured session for beginner climbers",
         "items": [
           {
-            "type": "section",
-            "section_title": "Warm-up",
+            "type": "group",
+            "group_title": "Warm-up",
             "position": 0,
             "items": []
           },

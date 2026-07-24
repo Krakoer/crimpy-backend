@@ -411,6 +411,8 @@ definitions:
         type: string
       free_text:
         type: string
+      group_title:
+        type: string
       hand:
         type: string
       hand_positions:
@@ -435,8 +437,6 @@ definitions:
         type: integer
       rest_seconds:
         type: integer
-      section_title:
-        type: string
       type:
         type: string
       worktime_seconds:
@@ -461,6 +461,8 @@ definitions:
       exercise_name:
         type: string
       free_text:
+        type: string
+      group_title:
         type: string
       hand:
         type: string
@@ -490,8 +492,6 @@ definitions:
         type: integer
       rest_seconds:
         type: integer
-      section_title:
-        type: string
       type:
         type: string
       worktime_seconds:

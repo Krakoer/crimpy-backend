@@ -5191,6 +5191,9 @@ const docTemplate = `{
                 "free_text": {
                     "type": "string"
                 },
+                "group_title": {
+                    "type": "string"
+                },
                 "hand": {
                     "type": "string"
                 },
@@ -5226,9 +5229,6 @@ const docTemplate = `{
                 },
                 "rest_seconds": {
                     "type": "integer"
-                },
-                "section_title": {
-                    "type": "string"
                 },
                 "type": {
                     "type": "string"
@@ -5266,6 +5266,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "free_text": {
+                    "type": "string"
+                },
+                "group_title": {
                     "type": "string"
                 },
                 "hand": {
@@ -5309,9 +5312,6 @@ const docTemplate = `{
                 },
                 "rest_seconds": {
                     "type": "integer"
-                },
-                "section_title": {
-                    "type": "string"
                 },
                 "type": {
                     "type": "string"

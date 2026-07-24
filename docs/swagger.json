@@ -5188,6 +5188,9 @@
                 "free_text": {
                     "type": "string"
                 },
+                "group_title": {
+                    "type": "string"
+                },
                 "hand": {
                     "type": "string"
                 },
@@ -5223,9 +5226,6 @@
                 },
                 "rest_seconds": {
                     "type": "integer"
-                },
-                "section_title": {
-                    "type": "string"
                 },
                 "type": {
                     "type": "string"
@@ -5263,6 +5263,9 @@
                     "type": "string"
                 },
                 "free_text": {
+                    "type": "string"
+                },
+                "group_title": {
                     "type": "string"
                 },
                 "hand": {
@@ -5306,9 +5309,6 @@
                 },
                 "rest_seconds": {
                     "type": "integer"
-                },
-                "section_title": {
-                    "type": "string"
                 },
                 "type": {
                     "type": "string"

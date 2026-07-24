@@ -170,9 +170,9 @@ CREATE TABLE "trainings" (
 CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
 
 -- Stores individual items within a training (repeaters, hangboard reps, free notes,
--- exercises, circuits, sections). Items are stored flat; nesting is via parent_id.
+-- exercises, circuits, groups). Items are stored flat; nesting is via parent_id.
 -- Per-rep configurable fields are stored as JSONB arrays sized by the number of reps.
--- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'section'
+-- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'group'
 CREATE TABLE "training_items" (
   "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
   "training_id"          UUID        NOT NULL REFERENCES "trainings"("id") ON DELETE CASCADE,
@@ -207,8 +207,8 @@ CREATE TABLE "training_items" (
   "edge_sizes_mm"        JSONB,
   -- Whether load is maximum effort (as hard as possible) rather than a fixed value
   "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
-  -- Section-specific
-  "section_title"        TEXT,
+  -- Group-specific
+  "group_title"          TEXT,
   "created_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
