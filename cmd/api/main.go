@@ -11,12 +11,14 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	_ "crimpy/backend/docs"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
@@ -121,13 +123,18 @@ func main() {
 		httpSwagger.URL("/swagger/doc.json"),
 	)))
 
-	// Auth routes (public)
-	app.Post("/auth/register", authHandler.Register)
-	app.Post("/auth/login", authHandler.Login)
-	app.Post("/auth/refresh", authHandler.Refresh)
+	// Auth routes (public). Rate limited per IP to slow credential and token guessing.
+	authLimiter := limiter.New(limiter.Config{
+		Max:        20,
+		Expiration: time.Minute,
+		Next:       func(c fiber.Ctx) bool { return env == "test" },
+	})
+	app.Post("/auth/register", authLimiter, authHandler.Register)
+	app.Post("/auth/login", authLimiter, authHandler.Login)
+	app.Post("/auth/refresh", authLimiter, authHandler.Refresh)
 	app.Post("/auth/logout", authHandler.Logout)
-	app.Post("/auth/verify", authHandler.VerifyEmail)
-	app.Post("/auth/resend-verification", authHandler.ResendVerificationEmail)
+	app.Post("/auth/verify", authLimiter, authHandler.VerifyEmail)
+	app.Post("/auth/resend-verification", authLimiter, authHandler.ResendVerificationEmail)
 
 	// Protected routes - require authentication
 	api := app.Group("/api", middleware.AuthMiddleware())
