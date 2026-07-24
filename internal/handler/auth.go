@@ -6,7 +6,6 @@ import (
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -122,10 +121,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		})
 	}
 
-	// Check if in test environment
-	isTestEnv := os.Getenv("DATABASE_URL") == "postgres://user:pass@localhost:5432/crimpy?sslmode=disable"
-
-	if isTestEnv {
+	if utils.IsTestEnv() {
 		// Auto-verify email in test environment
 		err = h.queries.VerifyUserEmail(context.Background(), user.ID)
 		if err != nil {

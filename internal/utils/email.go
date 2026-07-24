@@ -22,11 +22,8 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")
 	baseUrl := os.Getenv("BASE_URL")
 
-	// Skip email sending in test environment if credentials not configured
 	if resendAPIKey == "" || emailFrom == "" {
-		// Check if we're in a test environment
-		if os.Getenv("DATABASE_URL") == "postgres://user:pass@localhost:5432/crimpy?sslmode=disable" {
-			// Test environment - skip email sending
+		if IsTestEnv() {
 			return nil
 		}
 		return fmt.Errorf("RESEND_API_KEY or RESEND_EMAIL_FROM not set")

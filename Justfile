@@ -29,7 +29,7 @@ status:
     docker compose -f docker-compose.dev.yml ps
 
 test:
-    DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret go test -v ./tests/...
+    DATABASE_URL=postgres://user:pass@localhost:5432/crimpy?sslmode=disable JWT_SECRET=devsecret ENV=test go test -v ./tests/...
 
 swagger:
     swag init -g cmd/api/main.go -o docs

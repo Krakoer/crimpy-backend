@@ -35,6 +35,8 @@ func SetupTestDB(t *testing.T) (*pgxpool.Pool, *db.Queries) {
 		t.Skip("DATABASE_URL not set, skipping integration tests")
 	}
 
+	t.Setenv("ENV", "test")
+
 	pool, err := database.NewConnection()
 	if err != nil {
 		t.Fatalf("Failed to connect to test database: %v", err)
