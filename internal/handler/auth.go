@@ -523,6 +523,11 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
+	// Sessions established with the old password must not survive the change.
+	if err := h.queries.RevokeUserRefreshTokens(context.Background(), userUUID); err != nil {
+		slog.Error("failed to revoke refresh tokens after password change", "target_user_id", targetUserID, "error", err)
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Password updated successfully",
 	})
