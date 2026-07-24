@@ -45,6 +45,10 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 
+// healthCheckTimeout bounds the database ping behind /health so an unreachable
+// database answers fast instead of stalling the probe.
+const healthCheckTimeout = 2 * time.Second
+
 // pruneExpiredRefreshTokens deletes expired refresh tokens daily. Rotation issues
 // a new row on every refresh, so without this the table grows without bound.
 func pruneExpiredRefreshTokens(queries *db.Queries) {
@@ -130,7 +134,17 @@ func main() {
 		return c.JSON(fiber.Map{"message": "Crimpy Backend API"})
 	})
 
+	// Readiness probe used by container healthchecks and uptime monitoring.
+	// Reports unavailable when the database pool cannot serve queries, so a
+	// rolling update never routes traffic to an instance that cannot work.
 	app.Get("/health", func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), healthCheckTimeout)
+		defer cancel()
+
+		if err := pool.Ping(ctx); err != nil {
+			slog.Warn("health check failed", "error", err)
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unavailable"})
+		}
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
