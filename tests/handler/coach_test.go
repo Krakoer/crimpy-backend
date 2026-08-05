@@ -4,7 +4,10 @@ import (
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -445,5 +448,80 @@ func TestAdminHandler_RejectCoach_InvalidID(t *testing.T) {
 
 	if response["error"] != "Invalid user ID" {
 		t.Errorf("Expected invalid user ID error, got %v", response["error"])
+	}
+}
+
+func readCoachListBody(t *testing.T, app *fiber.App, url, token string) string {
+	t.Helper()
+	req := testutil.NewJSONRequestWithAuth(http.MethodGet, url, nil, token)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+	return strings.TrimSpace(string(body))
+}
+
+func TestCoachHandler_GetClientSessions_EmptyReturnsArray(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachHandler: handler.NewCoachHandler(queries, pool),
+	})
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "emptysessionscoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "emptysessionsuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	body := readCoachListBody(t, app, fmt.Sprintf("/api/coach/clients/%s/sessions", userID), coachToken)
+
+	if body != "[]" {
+		t.Errorf("Expected empty array for a client with no sessions, got %q", body)
+	}
+}
+
+func TestCoachHandler_GetClientAssessments_EmptyReturnsArray(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachHandler: handler.NewCoachHandler(queries, pool),
+	})
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "emptyassesscoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "emptyassessuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	body := readCoachListBody(t, app, fmt.Sprintf("/api/coach/clients/%s/assessments", userID), coachToken)
+
+	if body != "[]" {
+		t.Errorf("Expected empty array for a client with no assessments, got %q", body)
+	}
+}
+
+func TestAdminHandler_GetPendingCoaches_EmptyReturnsArray(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AdminHandler: handler.NewAdminHandler(queries),
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "emptypendingadmin@test.com")
+
+	body := readCoachListBody(t, app, "/api/admin/coaches/pending", adminToken)
+
+	if body != "[]" {
+		t.Errorf("Expected empty array when no coaches are pending, got %q", body)
 	}
 }

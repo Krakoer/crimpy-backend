@@ -57,7 +57,7 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 		})
 	}
 
-	var response []CoachResponse
+	response := make([]CoachResponse, 0, len(coaches))
 	for _, coach := range coaches {
 		response = append(response, CoachResponse{
 			ID:             coach.ID.String(),
@@ -199,7 +199,7 @@ func (h *AdminHandler) ListUsers(c fiber.Ctx) error {
 		})
 	}
 
-	var response []UserResponse
+	response := make([]UserResponse, 0, len(users))
 	for _, user := range users {
 		response = append(response, UserResponse{
 			ID:             user.ID.String(),

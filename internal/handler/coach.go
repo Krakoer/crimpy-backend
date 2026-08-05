@@ -465,6 +465,9 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
 	}
 
+	if sessions == nil {
+		sessions = []db.Session{}
+	}
 	return c.Status(fiber.StatusOK).JSON(sessions)
 }
 
@@ -504,6 +507,13 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
 	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
 
+	if repDatas == nil {
+		repDatas = []db.RepData{}
+	}
+	if assessments == nil {
+		assessments = []db.Assessment{}
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"session":     session,
 		"rep_datas":   repDatas,
@@ -533,5 +543,8 @@ func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
 	}
 
+	if assessments == nil {
+		assessments = []db.GetUserAssessmentsRow{}
+	}
 	return c.Status(fiber.StatusOK).JSON(assessments)
 }

@@ -138,6 +138,12 @@ type HandlerConfig struct {
 		UpdateTraining(fiber.Ctx) error
 		DeleteTraining(fiber.Ctx) error
 	}
+	CoachHandler interface {
+		GetCoachEnrollments(fiber.Ctx) error
+		GetClientSessions(fiber.Ctx) error
+		GetClientSession(fiber.Ctx) error
+		GetClientAssessments(fiber.Ctx) error
+	}
 	ProgramHandler interface {
 		CreateProgram(fiber.Ctx) error
 		GetPrograms(fiber.Ctx) error
@@ -191,6 +197,13 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/admin/coaches/pending", config.AdminHandler.GetPendingCoaches)
 		api.Put("/admin/coaches/:id/validate", config.AdminHandler.ValidateCoach)
 		api.Put("/admin/coaches/:id/reject", config.AdminHandler.RejectCoach)
+	}
+
+	if config.CoachHandler != nil {
+		api.Get("/coach/enrollments", config.CoachHandler.GetCoachEnrollments)
+		api.Get("/coach/clients/:user_id/sessions", config.CoachHandler.GetClientSessions)
+		api.Get("/coach/clients/:user_id/sessions/:session_id", config.CoachHandler.GetClientSession)
+		api.Get("/coach/clients/:user_id/assessments", config.CoachHandler.GetClientAssessments)
 	}
 
 	if config.ExerciseHandler != nil {
