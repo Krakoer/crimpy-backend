@@ -33,6 +33,104 @@ var validItemTypes = map[string]bool{
 // defaultTrainingType applies when a client omits training_type.
 const defaultTrainingType = "workout"
 
+// variableTargetFields is the set of scalar item fields that may be expressed as
+// a percentage of an assessment result instead of a fixed number.
+var variableTargetFields = map[string]bool{
+	"duration": true,
+	"reps":     true,
+}
+
+// assessmentTypeCount bounds the assessment type discriminator shared with the
+// app: 0 critical force, 1 max force, 2 sixty percent endurance.
+const assessmentTypeCount = 3
+
+// percentAssessmentUnit marks a load expressed as a percentage of an assessment
+// result. The load value carries the percentage, as it does for percent_bw.
+const percentAssessmentUnit = "percent_assessment"
+
+// variableTarget references the athlete last result for an assessment. Percent
+// applies to that result; fallback is used when the assessment was never done.
+type variableTarget struct {
+	AssessmentType *int32   `json:"assessment_type"`
+	Percent        *float64 `json:"percent"`
+	Fallback       *float64 `json:"fallback"`
+}
+
+func (t variableTarget) validate(field string) error {
+	if t.AssessmentType == nil || *t.AssessmentType < 0 || *t.AssessmentType >= assessmentTypeCount {
+		return fmt.Errorf("%s: invalid assessment_type", field)
+	}
+	if t.Percent == nil || *t.Percent <= 0 {
+		return fmt.Errorf("%s: percent must be greater than 0", field)
+	}
+	if t.Fallback == nil || *t.Fallback < 0 {
+		return fmt.Errorf("%s: fallback must be zero or more", field)
+	}
+	return nil
+}
+
+// validateVariableTargets rejects unknown fields and malformed references so a
+// client cannot store a target the app would silently drop when resolving it.
+func validateVariableTargets(raw json.RawMessage) error {
+	if !hasJSONValue(raw) {
+		return nil
+	}
+	var targets map[string]variableTarget
+	if err := json.Unmarshal(raw, &targets); err != nil {
+		return fmt.Errorf("invalid variable_targets: %w", err)
+	}
+	for field, target := range targets {
+		if !variableTargetFields[field] {
+			return fmt.Errorf("invalid variable target field %q", field)
+		}
+		if err := target.validate(field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadWithTarget is the subset of a load entry needed to check assessment
+// references. Loads are otherwise stored as opaque JSON.
+type loadWithTarget struct {
+	Unit string `json:"unit"`
+	variableTarget
+}
+
+// validateLoads checks the assessment reference of every percent_assessment
+// load. Each hand carries its own flat array, one entry per row.
+func validateLoads(raw json.RawMessage) error {
+	if !hasJSONValue(raw) {
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return fmt.Errorf("invalid loads: %w", err)
+	}
+	for _, entry := range entries {
+		var load loadWithTarget
+		if err := json.Unmarshal(entry, &load); err != nil {
+			return fmt.Errorf("invalid loads: %w", err)
+		}
+		if load.Unit != percentAssessmentUnit {
+			continue
+		}
+		if load.AssessmentType == nil || *load.AssessmentType < 0 || *load.AssessmentType >= assessmentTypeCount {
+			return fmt.Errorf("load: invalid assessment_type")
+		}
+		if load.Fallback == nil || *load.Fallback < 0 {
+			return fmt.Errorf("load: fallback must be zero or more")
+		}
+	}
+	return nil
+}
+
+// hasJSONValue reports whether raw holds something other than an absent or null
+// JSON value.
+func hasJSONValue(raw json.RawMessage) bool {
+	return len(raw) > 0 && string(raw) != "null"
+}
+
 // validTrainingTypes is the set of accepted training_type values. It mirrors the
 // trainings_training_type_check constraint in schema/schema.sql.
 var validTrainingTypes = map[string]bool{
@@ -65,6 +163,14 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 		}
 		if err := validateItemArrays(item); err != nil {
 			return err
+		}
+		if err := validateVariableTargets(item.VariableTargets); err != nil {
+			return err
+		}
+		for _, loads := range []json.RawMessage{item.Loads, item.LeftLoads} {
+			if err := validateLoads(loads); err != nil {
+				return err
+			}
 		}
 		if err := validateTrainingItems(item.Items, depth+1); err != nil {
 			return err
@@ -119,6 +225,7 @@ type TrainingItemRequest struct {
 	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
 	HandPositions    json.RawMessage       `json:"hand_positions"  swaggertype:"array,object"`
 	EdgeSizesMm      json.RawMessage       `json:"edge_sizes_mm"   swaggertype:"array,integer"`
+	VariableTargets  json.RawMessage       `json:"variable_targets" swaggertype:"object"`
 	GroupTitle       *string               `json:"group_title"`
 	Items            []TrainingItemRequest `json:"items"`
 }
@@ -165,6 +272,7 @@ type TrainingItemResponse struct {
 	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
 	HandPositions    json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
 	EdgeSizesMm      json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
+	VariableTargets  json.RawMessage        `json:"variable_targets,omitempty" swaggertype:"object"`
 	GroupTitle       *string                `json:"group_title,omitempty"`
 	Items            []TrainingItemResponse `json:"items,omitempty"`
 }
@@ -273,17 +381,20 @@ func insertTrainingItemsRecursive(
 			params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
 		}
 		params.LoadIsMax = req.LoadIsMax
-		if len(req.Loads) > 0 && string(req.Loads) != "null" {
+		if hasJSONValue(req.Loads) {
 			params.Loads = req.Loads
 		}
-		if len(req.LeftLoads) > 0 && string(req.LeftLoads) != "null" {
+		if hasJSONValue(req.LeftLoads) {
 			params.LeftLoads = req.LeftLoads
 		}
-		if len(req.HandPositions) > 0 && string(req.HandPositions) != "null" {
+		if hasJSONValue(req.HandPositions) {
 			params.HandPositions = req.HandPositions
 		}
-		if len(req.EdgeSizesMm) > 0 && string(req.EdgeSizesMm) != "null" {
+		if hasJSONValue(req.EdgeSizesMm) {
 			params.EdgeSizesMm = req.EdgeSizesMm
+		}
+		if hasJSONValue(req.VariableTargets) {
+			params.VariableTargets = req.VariableTargets
 		}
 		if req.GroupTitle != nil {
 			params.GroupTitle = pgtype.Text{String: *req.GroupTitle, Valid: true}
@@ -363,6 +474,9 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if len(r.EdgeSizesMm) > 0 {
 		resp.EdgeSizesMm = json.RawMessage(r.EdgeSizesMm)
 	}
+	if len(r.VariableTargets) > 0 {
+		resp.VariableTargets = json.RawMessage(r.VariableTargets)
+	}
 	if r.GroupTitle.Valid {
 		resp.GroupTitle = &r.GroupTitle.String
 	}
@@ -411,6 +525,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		HandPositions:    r.HandPositions,
 		EdgeSizesMm:      r.EdgeSizesMm,
 		LoadIsMax:        r.LoadIsMax,
+		VariableTargets:  r.VariableTargets,
 		GroupTitle:       r.GroupTitle,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,

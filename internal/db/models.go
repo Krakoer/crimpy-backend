@@ -206,6 +206,7 @@ type TrainingItem struct {
 	HandPositions    []byte
 	EdgeSizesMm      []byte
 	LoadIsMax        bool
+	VariableTargets  []byte
 	GroupTitle       pgtype.Text
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz

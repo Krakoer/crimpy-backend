@@ -5245,6 +5245,9 @@
                 "type": {
                     "type": "string"
                 },
+                "variable_targets": {
+                    "type": "object"
+                },
                 "worktime_seconds": {
                     "type": "integer"
                 }
@@ -5342,6 +5345,9 @@
                 },
                 "type": {
                     "type": "string"
+                },
+                "variable_targets": {
+                    "type": "object"
                 },
                 "worktime_seconds": {
                     "type": "integer"

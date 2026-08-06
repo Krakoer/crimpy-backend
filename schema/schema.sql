@@ -232,6 +232,11 @@ CREATE TABLE "training_items" (
   "edge_sizes_mm"        JSONB,
   -- Whether load is maximum effort (as hard as possible) rather than a fixed value
   "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
+  -- Scalar fields expressed as a percentage of the athlete last assessment
+  -- instead of a fixed number, keyed by field name ('duration', 'reps'):
+  -- {"duration": {"assessment_type": 2, "percent": 75, "fallback": 60}}
+  -- Loads carry the same reference inline, as a 'percent_assessment' unit.
+  "variable_targets"     JSONB,
   -- Group-specific
   "group_title"          TEXT,
   "created_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),
