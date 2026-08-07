@@ -53,8 +53,52 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
-// validateTrainingItems rejects unknown item types and over-deep trees before
-// any row is written.
+// maxItemArrayLen caps how many entries a configuration array may carry. The
+// widest legitimate layout is one entry per set and rep, doubled for the
+// interleaved split-hand loads, which stays far below this bound.
+const maxItemArrayLen = 1000
+
+// validateItemArray rejects a configuration field that is not a JSON array, and
+// arrays long enough to bloat the stored row. An absent or null field passes:
+// every one of them is optional, and app-created items omit edge_sizes_mm.
+// Only the shape is checked, not the length against reps and cycles: the
+// legitimate lengths are 1, reps and cycles * reps, doubled for split loads,
+// and hand_positions is indexed by hand rather than by row.
+func validateItemArray(field string, raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return fmt.Errorf("%s must be an array", field)
+	}
+	if len(entries) > maxItemArrayLen {
+		return fmt.Errorf("%s holds more than %d entries", field, maxItemArrayLen)
+	}
+	return nil
+}
+
+// validateItemArrays checks every opaque configuration array of a single item.
+func validateItemArrays(item TrainingItemRequest) error {
+	fields := []struct {
+		name string
+		raw  json.RawMessage
+	}{
+		{"loads", item.Loads},
+		{"left_loads", item.LeftLoads},
+		{"hand_positions", item.HandPositions},
+		{"edge_sizes_mm", item.EdgeSizesMm},
+	}
+	for _, field := range fields {
+		if err := validateItemArray(field.name, field.raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateTrainingItems rejects unknown item types, over-deep trees and
+// malformed configuration arrays before any row is written.
 func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 	if len(items) > 0 && depth > maxItemDepth {
 		return fmt.Errorf("items nested more than %d levels deep", maxItemDepth)
@@ -62,6 +106,9 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 	for _, item := range items {
 		if !validItemTypes[item.Type] {
 			return fmt.Errorf("invalid item type %q", item.Type)
+		}
+		if err := validateItemArrays(item); err != nil {
+			return err
 		}
 		if err := validateTrainingItems(item.Items, depth+1); err != nil {
 			return err
