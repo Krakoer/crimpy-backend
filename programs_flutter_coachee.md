@@ -199,7 +199,7 @@ These map directly to fields on a `coach_training_item`:
 |-----------------------|-----------------------------------|-----------------------------|
 | `loads`               | `[{value: float, unit: string}]`  | exercise, hangboard (right) |
 | `left_loads`          | `[{value: float, unit: string}]`  | hangboard split mode (left) |
-| `hand_positions`      | `[string]`                        | exercise / hangboard        |
+| `hand_positions`      | `[[string]]`, one array per hand  | exercise / hangboard        |
 | `edge_sizes_mm`       | `[int]`                           | hangboard                   |
 | `reps`                | `int`                             | exercise, hangboard         |
 | `cycles`              | `int`                             | circuit, hangboard          |
@@ -208,8 +208,20 @@ These map directly to fields on a `coach_training_item`:
 | `hb_worktime_seconds` | `int`                             | hangboard                   |
 | `both_hands`          | `bool`                            | hangboard                   |
 
-Array fields (`loads`, `left_loads`, `hand_positions`, `edge_sizes_mm`) are
-sized by the number of reps -- one entry per rep.
+Array fields (`loads`, `left_loads`, `hand_positions`, `edge_sizes_mm`) carry
+one entry per configuration slot. Their length tells the granularity apart:
+
+| Length          | Meaning                                                   |
+|-----------------|-----------------------------------------------------------|
+| `1`             | uniform, the same value for every rep of every set        |
+| `reps`          | one value per rep, repeated in every set                  |
+| `cycles * reps` | one value per set and rep, indexed `set * reps + rep`     |
+
+Split-hand loads keep their existing interleaving, so `loads` holds twice as
+many entries: left at `2 * i` and right at `2 * i + 1`.
+
+A client that only understands the per-rep layout can read the first `reps`
+entries and get the configuration of the first set.
 
 ### Merge example (Dart pseudocode)
 

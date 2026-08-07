@@ -175,7 +175,10 @@ CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
 
 -- Stores individual items within a training (repeaters, hangboard reps, free notes,
 -- exercises, circuits, groups). Items are stored flat; nesting is via parent_id.
--- Per-rep configurable fields are stored as JSONB arrays sized by the number of reps.
+-- Configurable fields are stored as JSONB arrays whose length tells the
+-- granularity apart: one entry is uniform, `reps` entries are per rep and
+-- repeat in every set, and `cycles * reps` entries are per set and rep,
+-- indexed `set * reps + rep`.
 -- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'group'
 CREATE TABLE "training_items" (
   "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -200,14 +203,15 @@ CREATE TABLE "training_items" (
   "free_text"            TEXT,
   -- Optional coach comment shown to the athlete (e.g. "first rep in pronation")
   "comment"              TEXT,
-  -- Per-rep configurable fields (JSONB arrays sized by reps)
-  -- loads: [{value: float, unit: string}] per rep; right-hand or both-hands loads
+  -- Configurable fields (JSONB arrays, see the layout note above the table)
+  -- loads: [{value: float, unit: string}]; right-hand or both-hands loads.
+  -- In split mode the two hands are interleaved: left at 2 * i, right at 2 * i + 1
   "loads"                JSONB,
-  -- left_loads: [{value: float, unit: string}] per rep; only set in split mode
+  -- left_loads: [{value: float, unit: string}]; only set in split mode
   "left_loads"           JSONB,
-  -- hand_positions: [string] per rep
+  -- hand_positions: [[string]], one inner array per hand; older payloads are flat
   "hand_positions"       JSONB,
-  -- edge_sizes_mm: [int] per rep
+  -- edge_sizes_mm: [int]
   "edge_sizes_mm"        JSONB,
   -- Whether load is maximum effort (as hard as possible) rather than a fixed value
   "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
