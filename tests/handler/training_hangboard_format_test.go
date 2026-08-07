@@ -407,3 +407,93 @@ func TestTrainingHandler_RejectsNonArrayConfigField(t *testing.T) {
 		t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
 	}
 }
+
+// An item that carries a configuration must say what layout it is written in.
+// Inferring it from an array length is exactly what this format removes.
+func TestTrainingHandler_RequiresGranularityOnConfiguredItem(t *testing.T) {
+	app, token := hangboardTestApp(t, "hbformat8@test.com")
+
+	resp := postTraining(t, app, token, []map[string]interface{}{
+		{
+			"type":  "repeater",
+			"reps":  3,
+			"loads": []map[string]interface{}{{"value": 10, "unit": "kg"}},
+		},
+	})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
+// An item with nothing configured has no layout to declare.
+func TestTrainingHandler_AcceptsBareItemWithoutGranularity(t *testing.T) {
+	app, token := hangboardTestApp(t, "hbformat9@test.com")
+
+	resp := postTraining(t, app, token, []map[string]interface{}{
+		{
+			"type":             "repeater",
+			"cycles":           2,
+			"reps":             3,
+			"worktime_seconds": 7,
+			"rest_seconds":     3,
+		},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+}
+
+// An empty array carries no values, the same as an absent one.
+func TestTrainingHandler_AcceptsEmptyConfigArray(t *testing.T) {
+	app, token := hangboardTestApp(t, "hbformat10@test.com")
+
+	resp := postTraining(t, app, token, []map[string]interface{}{
+		{
+			"type":        "repeater",
+			"cycles":      1,
+			"reps":        3,
+			"granularity": "rep",
+			"loads":       []map[string]interface{}{},
+		},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+}
+
+// Only the modes that hang the hands separately carry a second hand.
+func TestTrainingHandler_RejectsPerHandArraysOnSharedHandMode(t *testing.T) {
+	app, token := hangboardTestApp(t, "hbformat11@test.com")
+
+	cases := map[string]map[string]interface{}{
+		"left_loads on both": {
+			"type":        "repeater",
+			"cycles":      1,
+			"reps":        1,
+			"hand":        "both",
+			"granularity": "uniform",
+			"loads":       []map[string]interface{}{{"value": 10, "unit": "kg"}},
+			"left_loads":  []map[string]interface{}{{"value": 8, "unit": "kg"}},
+		},
+		"two grip arrays on right": {
+			"type":        "repeater",
+			"cycles":      1,
+			"reps":        1,
+			"hand":        "right",
+			"granularity": "uniform",
+			"hand_positions": []interface{}{
+				[]interface{}{"HC"},
+				[]interface{}{"OC"},
+			},
+		},
+	}
+
+	for name, item := range cases {
+		t.Run(name, func(t *testing.T) {
+			resp := postTraining(t, app, token, []map[string]interface{}{item})
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			}
+		})
+	}
+}
