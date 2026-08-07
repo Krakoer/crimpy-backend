@@ -25,7 +25,7 @@ INSERT INTO training_items (
   cycles, cycle_rest_seconds,
   reps, duration, rest_seconds,
   exercise_id,
-  worktime_seconds, hand,
+  worktime_seconds, hand, granularity,
   free_text, comment, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
   group_title
@@ -34,7 +34,7 @@ INSERT INTO training_items (
   @cycles, @cycle_rest_seconds,
   @reps, @duration, @rest_seconds,
   @exercise_id,
-  @worktime_seconds, @hand,
+  @worktime_seconds, @hand, @granularity,
   @free_text, @comment, @load_is_max,
   @loads, @left_loads, @hand_positions, @edge_sizes_mm,
   @group_title
