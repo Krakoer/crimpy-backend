@@ -198,90 +198,59 @@ These map directly to fields on a `coach_training_item`:
 | Override key          | Type                              | Applies to                  |
 |-----------------------|-----------------------------------|-----------------------------|
 | `loads`               | `[{value: float, unit: string}]`  | exercise, hangboard (right) |
-| `left_loads`          | `[{value: float, unit: string}]`  | hangboard split mode (left) |
-| `hand_positions`      | `[[string]]` per hand, see below | exercise / hangboard        |
+| `left_loads`          | `[{value: float, unit: string}]`  | hangboard, left hand        |
+| `hand_positions`      | `[[string]]` per hand             | exercise / hangboard        |
 | `edge_sizes_mm`       | `[int]`                           | hangboard                   |
 | `reps`                | `int`                             | exercise, hangboard         |
 | `cycles`              | `int`                             | circuit, hangboard          |
 | `cycle_rest_seconds`  | `int`                             | circuit, hangboard          |
 | `rest_seconds`        | `int`                             | exercise, hangboard         |
 | `hb_worktime_seconds` | `int`                             | hangboard                   |
-| `both_hands`          | `bool`                            | hangboard                   |
+| `hand`                | `string`                          | hangboard                   |
+| `granularity`         | `string`                          | hangboard                   |
+
+An override that changes `granularity`, `reps` or `cycles` changes the row count,
+so it must carry every array it wants to keep consistent with the new layout.
+
+### Hand modes
+
+`hand` says how the two hands are worked. Only `both` puts two hands on the board
+at the same time; every other mode hangs one hand at a time and can therefore be
+measured by the force sensor.
+
+| `hand`      | Meaning                                                        | Hangs per rep          |
+|-------------|----------------------------------------------------------------|------------------------|
+| `both`      | both hands on the board together, classical fixed hangboard     | 1                      |
+| `alternate` | one hand at a time, right then left within each rep             | 2                      |
+| `split`     | every rep of a set on one hand, then the same set on the other  | 1, set replayed / hand |
+| `left`      | left hand only                                                  | 1                      |
+| `right`     | right hand only                                                 | 1                      |
 
 ### Hangboard array granularity
 
-The arrays carry no granularity marker of their own. Derive the granularity from
-`edge_sizes_mm` alone, which is what the coach portal implements:
+`granularity` declares the layout of the configuration arrays. Never infer it
+from the length of any array.
 
-| `edge_sizes_mm` length         | Granularity | Rows          |
-|--------------------------------|-------------|---------------|
-| `0` or `1`                     | uniform     | `1`           |
-| `sets * reps`, and `sets > 1`  | per set     | `sets * reps` |
-| anything else                  | per rep     | `reps`        |
+| `granularity` | Rows          | Row for a given set and rep |
+|---------------|---------------|-----------------------------|
+| `uniform`     | `1`           | `0`                         |
+| `rep`         | `reps`        | `rep`                       |
+| `set`         | `sets * reps` | `set * reps + rep`          |
 
-where `sets` is `max(1, cycles)` and `reps` is `max(1, reps)`. The row for a
-given set and rep is at index `set * reps + rep`.
+where `sets` is `max(1, cycles)` and `reps` is `max(1, reps)`.
 
-Do not derive the granularity from `loads.length`: it is ambiguous. A legacy
-per-rep split item with `cycles = 2` and `reps = 3` carries 6 load entries
-(3 rows, both hands), exactly the count a per-set item with the same `cycles`
-and `reps` carries.
-
-Once the granularity is known, with `rows` taken from the table above:
+Every configuration array holds exactly one entry per row:
 
 - `edge_sizes_mm` holds `rows` entries.
-- `loads` holds `rows` entries, or `2 * rows` in the interleaved split shape
-  described below.
-- `left_loads` holds `rows` entries.
-- `hand_positions` is indexed by hand first, not by row. See below.
+- `loads` holds `rows` entries. It is the right hand of a two-handed mode, and
+  the only load for `both`, `left` and `right`.
+- `left_loads` holds `rows` entries, the left hand of `alternate` and `split`.
+  When it is absent, the left hand uses `loads`.
+- `hand_positions` holds one array of `rows` entries per hand, left hand first.
+  A single array applies to both hands.
 
-Caveat: items created by the Flutter app carry no `edge_sizes_mm` at all, so the
-rule above always reports uniform for them. Fall back to the length of the other
-arrays when `edge_sizes_mm` is absent or empty: a single entry is uniform,
-anything else is per rep. App-created items never use the per-set layout.
-
-### Split-hand loads: two incompatible shapes
-
-Split-hand items (`hand: "split"`, legacy `both_hands: false`) exist in two
-shapes depending on which client wrote them. Nothing in the payload flags which
-one it is, so a reader must check both fields.
-
-| Producer               | `loads`                                | `left_loads`         |
-|------------------------|----------------------------------------|----------------------|
-| Coach portal (current) | both hands interleaved, `2 * rows`     | never written, null  |
-| Flutter app (legacy)   | right hand only, `rows` entries        | left hand, `rows`    |
-
-Coach program items always come from the coach portal, so expect the interleaved
-shape there. The legacy shape only appears on trainings the app itself created.
-
-Rule for a reader: if `left_loads` is present and non-empty, `loads` is the right
-hand and `left_loads` is the left hand. Otherwise `loads` is interleaved, with
-the left hand at `2 * i` and the right hand at `2 * i + 1`.
-
-Reading the interleaved shape as if it were the legacy one renders every left
-hang at 0 kg, because `left_loads` is null.
-
-### `hand_positions` is indexed by hand, not by row
-
-`hand_positions` is `[hand][slot]`: the outer array has one entry per hand, so
-its length is 1 for `both`, `left` and `right`, and 2 in split mode. The inner
-array holds the slots. Its outer length therefore says nothing about the
-granularity: a per-set item with 6 rows on both hands still has an outer length
-of 1.
-
-Payloads written by the Flutter app are still the flat `[string]` form. Treat a
-flat array as the slot array of a single hand.
-
-### Reading only the first set
-
-A non-split client that only understands the per-rep layout can read the first
-`reps` entries of `loads` and `edge_sizes_mm` and get the configuration of the
-first set.
-
-This does not hold for split items in the interleaved shape: the first entries
-alternate hands. With `reps = 3` the first three are `left(set 0, rep 0)`,
-`right(set 0, rep 0)`, `left(set 0, rep 1)`, so indexing `loads` by rep alone
-puts a left load on the right hand. Split readers must resolve the shape first.
+The API rejects any array whose length disagrees with the declared granularity,
+so a reader can index by row without checking lengths first.
 
 ### Merge example (Dart pseudocode)
 
@@ -298,7 +267,8 @@ TrainingItem effectiveItem(TrainingItem base, Map<String, dynamic>? overrides) {
     cycleRestSeconds:   overrides['cycle_rest_seconds'] ?? base.cycleRestSeconds,
     restSeconds:        overrides['rest_seconds']       ?? base.restSeconds,
     hbWorktimeSeconds:  overrides['hb_worktime_seconds']?? base.hbWorktimeSeconds,
-    bothHands:          overrides['both_hands']         ?? base.bothHands,
+    hand:               overrides['hand']               ?? base.hand,
+    granularity:        overrides['granularity']        ?? base.granularity,
   );
 }
 ```
