@@ -175,10 +175,14 @@ CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
 
 -- Stores individual items within a training (repeaters, hangboard reps, free notes,
 -- exercises, circuits, groups). Items are stored flat; nesting is via parent_id.
--- Configurable fields are stored as JSONB arrays whose length tells the
--- granularity apart: one entry is uniform, `reps` entries are per rep and
--- repeat in every set, and `cycles * reps` entries are per set and rep,
--- indexed `set * reps + rep`.
+-- Hangboard configuration is stored as JSONB arrays that carry no granularity
+-- marker. Clients derive the granularity from edge_sizes_mm alone: 0 or 1 entry
+-- is uniform, cycles * reps entries with cycles > 1 are per set and rep indexed
+-- set * reps + rep, and anything else is one entry per rep repeated in every
+-- set. The resulting row count is 1, reps, or cycles * reps. Deriving it from
+-- the length of loads instead is ambiguous, because a per-rep split item
+-- carries 2 * reps load entries. Items created by the mobile app carry no
+-- edge_sizes_mm at all and never use the per-set layout.
 -- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'group'
 CREATE TABLE "training_items" (
   "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -203,15 +207,20 @@ CREATE TABLE "training_items" (
   "free_text"            TEXT,
   -- Optional coach comment shown to the athlete (e.g. "first rep in pronation")
   "comment"              TEXT,
-  -- Configurable fields (JSONB arrays, see the layout note above the table)
-  -- loads: [{value: float, unit: string}]; right-hand or both-hands loads.
-  -- In split mode the two hands are interleaved: left at 2 * i, right at 2 * i + 1
+  -- Configurable fields (JSONB arrays, see the layout note above the table).
+  -- loads: [{value: float, unit: string}], one entry per row for hand 'both',
+  -- 'left' and 'right'. Split items come in two shapes and nothing flags which:
+  -- the coach portal interleaves both hands here (left at 2 * i, right at
+  -- 2 * i + 1, 2 * rows entries) and leaves left_loads null, while the mobile
+  -- app writes the right hand here and the left hand in left_loads.
   "loads"                JSONB,
-  -- left_loads: [{value: float, unit: string}]; only set in split mode
+  -- left_loads: [{value: float, unit: string}], one entry per row. Left hand of
+  -- a split item, written by the mobile app only; null on coach portal items.
   "left_loads"           JSONB,
-  -- hand_positions: [[string]], one inner array per hand; older payloads are flat
+  -- hand_positions: [[string]] indexed [hand][slot]. The outer length is the
+  -- hand count (2 in split mode), not the row count. App payloads are flat [string].
   "hand_positions"       JSONB,
-  -- edge_sizes_mm: [int]
+  -- edge_sizes_mm: [int], one entry per row; absent on app-created items
   "edge_sizes_mm"        JSONB,
   -- Whether load is maximum effort (as hard as possible) rather than a fixed value
   "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
