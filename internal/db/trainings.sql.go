@@ -194,6 +194,42 @@ func (q *Queries) GetTraining(ctx context.Context, id pgtype.UUID) (Training, er
 	return i, err
 }
 
+const getTrainingItem = `-- name: GetTrainingItem :one
+SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, group_title, created_at, updated_at FROM training_items WHERE id = $1
+`
+
+func (q *Queries) GetTrainingItem(ctx context.Context, id pgtype.UUID) (TrainingItem, error) {
+	row := q.db.QueryRow(ctx, getTrainingItem, id)
+	var i TrainingItem
+	err := row.Scan(
+		&i.ID,
+		&i.TrainingID,
+		&i.ParentID,
+		&i.Type,
+		&i.Position,
+		&i.Cycles,
+		&i.CycleRestSeconds,
+		&i.Reps,
+		&i.Duration,
+		&i.RestSeconds,
+		&i.ExerciseID,
+		&i.WorktimeSeconds,
+		&i.Hand,
+		&i.Granularity,
+		&i.FreeText,
+		&i.Comment,
+		&i.Loads,
+		&i.LeftLoads,
+		&i.HandPositions,
+		&i.EdgeSizesMm,
+		&i.LoadIsMax,
+		&i.GroupTitle,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getTrainingItems = `-- name: GetTrainingItems :many
 SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.reps, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.group_title, training_items.created_at, training_items.updated_at, exercises.name AS exercise_name
 FROM training_items
