@@ -5191,6 +5191,9 @@ const docTemplate = `{
                 "free_text": {
                     "type": "string"
                 },
+                "granularity": {
+                    "type": "string"
+                },
                 "group_title": {
                     "type": "string"
                 },
@@ -5266,6 +5269,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "free_text": {
+                    "type": "string"
+                },
+                "granularity": {
                     "type": "string"
                 },
                 "group_title": {
