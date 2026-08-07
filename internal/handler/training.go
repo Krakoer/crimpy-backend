@@ -53,127 +53,6 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
-// maxItemArrayLen caps how many entries a configuration array may carry, so a
-// large declared set and rep count cannot bloat the stored row.
-const maxItemArrayLen = 1000
-
-var validHands = map[string]bool{
-	"both":      true,
-	"alternate": true,
-	"split":     true,
-	"left":      true,
-	"right":     true,
-}
-
-var validGranularities = map[string]bool{
-	"uniform": true,
-	"rep":     true,
-	"set":     true,
-}
-
-// hangboardRowCount is how many configuration rows an item carries: one for a
-// uniform item, one per rep, or one per set and rep. Every client derives the
-// same count from the same three fields.
-func hangboardRowCount(granularity string, cycles, reps *int32) int {
-	count := func(value *int32) int {
-		if value == nil || *value < 1 {
-			return 1
-		}
-		return int(*value)
-	}
-	switch granularity {
-	case "set":
-		return count(cycles) * count(reps)
-	case "rep":
-		return count(reps)
-	default:
-		return 1
-	}
-}
-
-// unmarshalItemArray rejects a configuration field that is not a JSON array and
-// returns its entries. An absent or null field yields no entries and no error:
-// every configuration array is optional.
-func unmarshalItemArray(field string, raw json.RawMessage) ([]json.RawMessage, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
-	}
-	var entries []json.RawMessage
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		return nil, fmt.Errorf("%s must be an array", field)
-	}
-	if len(entries) > maxItemArrayLen {
-		return nil, fmt.Errorf("%s holds more than %d entries", field, maxItemArrayLen)
-	}
-	return entries, nil
-}
-
-// validateRowArray checks a configuration array that holds one entry per row.
-func validateRowArray(field string, raw json.RawMessage, rows int) error {
-	entries, err := unmarshalItemArray(field, raw)
-	if err != nil {
-		return err
-	}
-	if entries != nil && len(entries) != rows {
-		return fmt.Errorf("%s holds %d entries but the granularity declares %d rows", field, len(entries), rows)
-	}
-	return nil
-}
-
-// validateHandPositions checks the grips, which carry one array of rows per
-// hand rather than one entry per row.
-func validateHandPositions(raw json.RawMessage, rows int) error {
-	hands, err := unmarshalItemArray("hand_positions", raw)
-	if err != nil {
-		return err
-	}
-	if hands == nil {
-		return nil
-	}
-	if len(hands) > 2 {
-		return fmt.Errorf("hand_positions holds %d hands, expected at most 2", len(hands))
-	}
-	for _, hand := range hands {
-		if err := validateRowArray("hand_positions", hand, rows); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// validateItemArrays checks that the hand and granularity are known and that
-// every configuration array matches the layout the granularity declares.
-func validateItemArrays(item TrainingItemRequest) error {
-	granularity := ""
-	if item.Granularity != nil {
-		granularity = *item.Granularity
-		if !validGranularities[granularity] {
-			return fmt.Errorf("invalid granularity %q", granularity)
-		}
-	}
-	if item.Hand != nil && !validHands[*item.Hand] {
-		return fmt.Errorf("invalid hand %q", *item.Hand)
-	}
-
-	rows := hangboardRowCount(granularity, item.Cycles, item.Reps)
-	if rows > maxItemArrayLen {
-		return fmt.Errorf("granularity declares more than %d rows", maxItemArrayLen)
-	}
-	for _, field := range []struct {
-		name string
-		raw  json.RawMessage
-	}{
-		{"loads", item.Loads},
-		{"left_loads", item.LeftLoads},
-		{"edge_sizes_mm", item.EdgeSizesMm},
-	} {
-		if err := validateRowArray(field.name, field.raw, rows); err != nil {
-			return err
-		}
-	}
-	return validateHandPositions(item.HandPositions, rows)
-}
-
 // validateTrainingItems rejects unknown item types, over-deep trees and
 // malformed configuration arrays before any row is written.
 func validateTrainingItems(items []TrainingItemRequest, depth int) error {
@@ -231,8 +110,8 @@ type TrainingItemRequest struct {
 	RestSeconds      *int32                `json:"rest_seconds"`
 	ExerciseID       *string               `json:"exercise_id"`
 	WorktimeSeconds  *int32                `json:"worktime_seconds"`
-	Hand             *string               `json:"hand"`
-	Granularity      *string               `json:"granularity"`
+	Hand             *string               `json:"hand"        enums:"both,alternate,split,left,right"`
+	Granularity      *string               `json:"granularity" enums:"uniform,rep,set"`
 	FreeText         *string               `json:"free_text"`
 	Comment          *string               `json:"comment"`
 	LoadIsMax        bool                  `json:"load_is_max"`
@@ -277,8 +156,8 @@ type TrainingItemResponse struct {
 	ExerciseID       *string                `json:"exercise_id,omitempty"`
 	ExerciseName     *string                `json:"exercise_name,omitempty"`
 	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
-	Hand             *string                `json:"hand,omitempty"`
-	Granularity      *string                `json:"granularity,omitempty"`
+	Hand             *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
+	Granularity      *string                `json:"granularity,omitempty" enums:"uniform,rep,set"`
 	FreeText         *string                `json:"free_text,omitempty"`
 	Comment          *string                `json:"comment,omitempty"`
 	LoadIsMax        bool                   `json:"load_is_max"`
