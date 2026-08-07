@@ -210,7 +210,10 @@ These map directly to fields on a `coach_training_item`:
 | `granularity`         | `string`                          | hangboard                   |
 
 An override that changes `granularity`, `reps` or `cycles` changes the row count,
-so it must carry every array it wants to keep consistent with the new layout.
+so it must carry every array it wants to keep consistent with the new layout. The
+API validates the merged item when a week is written and rejects an override that
+would leave an array disagreeing with the layout in force after the merge, so the
+same one-entry-per-row guarantee holds for an overridden item.
 
 ### Hand modes
 
@@ -250,7 +253,13 @@ Every configuration array holds exactly one entry per row:
   A single array applies to both hands.
 
 The API rejects any array whose length disagrees with the declared granularity,
-so a reader can index by row without checking lengths first.
+so a reader can index by row without checking lengths first. A hangboard item
+that carries any configuration array must declare its `granularity`; the field is
+not optional for those items and is never inferred from an array length.
+
+`left_loads` and a second `hand_positions` array only exist for `alternate` and
+`split`, the modes that hang the hands separately. The API rejects them on any
+other mode, so a reader never has to decide which hand a stray array belongs to.
 
 ### Merge example (Dart pseudocode)
 
