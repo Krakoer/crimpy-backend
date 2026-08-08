@@ -175,14 +175,14 @@ CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
 
 -- Stores individual items within a training (repeaters, hangboard reps, free notes,
 -- exercises, circuits, groups). Items are stored flat; nesting is via parent_id.
--- Hangboard configuration is stored as JSONB arrays that carry no granularity
--- marker. Clients derive the granularity from edge_sizes_mm alone: 0 or 1 entry
--- is uniform, cycles * reps entries with cycles > 1 are per set and rep indexed
--- set * reps + rep, and anything else is one entry per rep repeated in every
--- set. The resulting row count is 1, reps, or cycles * reps. Deriving it from
--- the length of loads instead is ambiguous, because a per-rep split item
--- carries 2 * reps load entries. Items created by the mobile app carry no
--- edge_sizes_mm at all and never use the per-set layout.
+--
+-- Hangboard configuration is stored as JSONB arrays whose layout is declared by
+-- the granularity column rather than inferred from any array length. Every
+-- client writes the same shape: one entry per configuration row, with the row
+-- count fixed by the granularity (1 uniform, reps per rep, cycles * reps per
+-- set indexed set * reps + rep). Per-hand fields carry one array per hand so a
+-- row index always means the same thing in every array.
+--
 -- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'group'
 CREATE TABLE "training_items" (
   "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
@@ -201,26 +201,34 @@ CREATE TABLE "training_items" (
   "exercise_id"          UUID        REFERENCES "exercises"("id") ON DELETE CASCADE,
   -- Repeater and hangboard_rep worktime (replaces hb_worktime_seconds)
   "worktime_seconds"     INTEGER,
-  -- Hand: 'both', 'split', 'left', 'right' (replaces both_hands bool)
+  -- How the two hands are worked, for repeater and hangboard_rep items:
+  --   'both'      both hands on the board at once, one hang per rep
+  --   'alternate' one hand at a time, right then left within each rep
+  --   'split'     one hand at a time, every rep of a set on one hand before the other
+  --   'left'      left hand only
+  --   'right'     right hand only
+  -- Only 'both' puts two hands on the board simultaneously; the other modes hang
+  -- a single hand at a time and can therefore be measured by the force sensor.
   "hand"                 TEXT,
+  -- Layout of the configuration arrays below: 'uniform' (1 row), 'rep' (reps
+  -- rows) or 'set' (cycles * reps rows, indexed set * reps + rep).
+  "granularity"          TEXT,
   -- Free item text content
   "free_text"            TEXT,
   -- Optional coach comment shown to the athlete (e.g. "first rep in pronation")
   "comment"              TEXT,
   -- Configurable fields (JSONB arrays, see the layout note above the table).
-  -- loads: [{value: float, unit: string}], one entry per row for hand 'both',
-  -- 'left' and 'right'. Split items come in two shapes and nothing flags which:
-  -- the coach portal interleaves both hands here (left at 2 * i, right at
-  -- 2 * i + 1, 2 * rows entries) and leaves left_loads null, while the mobile
-  -- app writes the right hand here and the left hand in left_loads.
+  -- Each holds exactly one entry per configuration row.
+  -- loads: [{value: float, unit: string}]. Right hand of a two-handed mode,
+  -- and the only load for 'both', 'left' and 'right'.
   "loads"                JSONB,
-  -- left_loads: [{value: float, unit: string}], one entry per row. Left hand of
-  -- a split item, written by the mobile app only; null on coach portal items.
+  -- left_loads: [{value: float, unit: string}]. Left hand of 'alternate' and
+  -- 'split' items; null otherwise.
   "left_loads"           JSONB,
-  -- hand_positions: [[string]] indexed [hand][slot]. The outer length is the
-  -- hand count (2 in split mode), not the row count. App payloads are flat [string].
+  -- hand_positions: [[string]] indexed [hand][row], left hand first. Carries
+  -- one array per hand, or a single array when both hands share the grip.
   "hand_positions"       JSONB,
-  -- edge_sizes_mm: [int], one entry per row; absent on app-created items
+  -- edge_sizes_mm: [int]
   "edge_sizes_mm"        JSONB,
   -- Whether load is maximum effort (as hard as possible) rather than a fixed value
   "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
@@ -228,7 +236,11 @@ CREATE TABLE "training_items" (
   "group_title"          TEXT,
   "created_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"           TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "training_items_hand_check"
+    CHECK (hand IS NULL OR hand IN ('both', 'alternate', 'split', 'left', 'right')),
+  CONSTRAINT "training_items_granularity_check"
+    CHECK (granularity IS NULL OR granularity IN ('uniform', 'rep', 'set'))
 );
 
 CREATE INDEX "training_items_training_id_idx" ON "training_items"("training_id");

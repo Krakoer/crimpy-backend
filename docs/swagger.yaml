@@ -411,9 +411,21 @@ definitions:
         type: string
       free_text:
         type: string
+      granularity:
+        enum:
+        - uniform
+        - rep
+        - set
+        type: string
       group_title:
         type: string
       hand:
+        enum:
+        - both
+        - alternate
+        - split
+        - left
+        - right
         type: string
       hand_positions:
         items:
@@ -462,9 +474,21 @@ definitions:
         type: string
       free_text:
         type: string
+      granularity:
+        enum:
+        - uniform
+        - rep
+        - set
+        type: string
       group_title:
         type: string
       hand:
+        enum:
+        - both
+        - alternate
+        - split
+        - left
+        - right
         type: string
       hand_positions:
         items:

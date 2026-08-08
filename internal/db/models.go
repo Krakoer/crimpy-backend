@@ -198,6 +198,7 @@ type TrainingItem struct {
 	ExerciseID       pgtype.UUID
 	WorktimeSeconds  pgtype.Int4
 	Hand             pgtype.Text
+	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
 	Loads            []byte

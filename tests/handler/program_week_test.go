@@ -21,7 +21,8 @@ func createTestCoachTrainingWithItems(t *testing.T, coachToken string, app *fibe
 				"reps":                6,
 				"hb_worktime_seconds": 7,
 				"rest_seconds":        60,
-				"both_hands":          true,
+				"hand":                "both",
+				"granularity":         "uniform",
 				"loads":               []map[string]interface{}{{"value": 0, "unit": "bw"}},
 			},
 		},
@@ -626,4 +627,141 @@ func TestWeekHandler_GetMyWeek_WrongUser(t *testing.T) {
 	if resp.StatusCode != fiber.StatusForbidden {
 		t.Errorf("Expected 403, got %d", resp.StatusCode)
 	}
+}
+
+// An override that changes the row count without resending the arrays it
+// invalidates would leave rows with no load, so it is rejected on write rather
+// than silently prescribing bodyweight to the athlete.
+func TestWeekHandler_RejectsOverrideResizingGridWithoutArrays(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk9coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wk9user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestPerRepCoachTraining(t, coachToken, app)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id":   itemID,
+						"overrides": map[string]interface{}{"reps": 8},
+					},
+				},
+			},
+		},
+	})
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
+// The same override is accepted when it carries the arrays for the new layout.
+func TestWeekHandler_AcceptsOverrideResizingGridWithArrays(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk10coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wk10user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestPerRepCoachTraining(t, coachToken, app)
+
+	loads := make([]map[string]interface{}, 0, 8)
+	for i := 0; i < 8; i++ {
+		loads = append(loads, map[string]interface{}{"value": 20 + i, "unit": "kg"})
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id": itemID,
+						"overrides": map[string]interface{}{
+							"reps":          8,
+							"loads":         loads,
+							"edge_sizes_mm": []interface{}{20, 20, 20, 20, 18, 18, 18, 18},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+}
+
+// A per-rep hangboard item, so an override changing reps changes the row count.
+func createTestPerRepCoachTraining(t *testing.T, coachToken string, app *fiber.App) (trainingID, itemID string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"title": "Per-rep Hangboard",
+		"items": []map[string]interface{}{
+			{
+				"type":             "repeater",
+				"cycles":           1,
+				"reps":             6,
+				"worktime_seconds": 7,
+				"rest_seconds":     3,
+				"hand":             "both",
+				"granularity":      "rep",
+				"edge_sizes_mm":    []interface{}{20, 20, 20, 18, 18, 18},
+				"loads": []map[string]interface{}{
+					{"value": 10, "unit": "kg"},
+					{"value": 11, "unit": "kg"},
+					{"value": 12, "unit": "kg"},
+					{"value": 13, "unit": "kg"},
+					{"value": 14, "unit": "kg"},
+					{"value": 15, "unit": "kg"},
+				},
+			},
+		},
+	})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create coach training: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating coach training, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	trainingID = result["id"].(string)
+	itemID = result["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
+	return trainingID, itemID
 }

@@ -5191,11 +5191,26 @@ const docTemplate = `{
                 "free_text": {
                     "type": "string"
                 },
+                "granularity": {
+                    "type": "string",
+                    "enum": [
+                        "uniform",
+                        "rep",
+                        "set"
+                    ]
+                },
                 "group_title": {
                     "type": "string"
                 },
                 "hand": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "both",
+                        "alternate",
+                        "split",
+                        "left",
+                        "right"
+                    ]
                 },
                 "hand_positions": {
                     "type": "array",
@@ -5268,11 +5283,26 @@ const docTemplate = `{
                 "free_text": {
                     "type": "string"
                 },
+                "granularity": {
+                    "type": "string",
+                    "enum": [
+                        "uniform",
+                        "rep",
+                        "set"
+                    ]
+                },
                 "group_title": {
                     "type": "string"
                 },
                 "hand": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "both",
+                        "alternate",
+                        "split",
+                        "left",
+                        "right"
+                    ]
                 },
                 "hand_positions": {
                     "type": "array",

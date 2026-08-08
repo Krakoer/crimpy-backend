@@ -1,0 +1,2 @@
+-- Modify "training_items" table
+ALTER TABLE "training_items" ADD CONSTRAINT "training_items_granularity_check" CHECK ((granularity IS NULL) OR (granularity = ANY (ARRAY['uniform'::text, 'rep'::text, 'set'::text]))), ADD CONSTRAINT "training_items_hand_check" CHECK ((hand IS NULL) OR (hand = ANY (ARRAY['both'::text, 'alternate'::text, 'split'::text, 'left'::text, 'right'::text]))), ADD COLUMN "granularity" text NULL;

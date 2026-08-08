@@ -53,50 +53,6 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
-// maxItemArrayLen caps how many entries a configuration array may carry. The
-// widest legitimate layout is one entry per set and rep, doubled for the
-// interleaved split-hand loads, which stays far below this bound.
-const maxItemArrayLen = 1000
-
-// validateItemArray rejects a configuration field that is not a JSON array, and
-// arrays long enough to bloat the stored row. An absent or null field passes:
-// every one of them is optional, and app-created items omit edge_sizes_mm.
-// Only the shape is checked, not the length against reps and cycles: the
-// legitimate lengths are 1, reps and cycles * reps, doubled for split loads,
-// and hand_positions is indexed by hand rather than by row.
-func validateItemArray(field string, raw json.RawMessage) error {
-	if len(raw) == 0 {
-		return nil
-	}
-	var entries []json.RawMessage
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		return fmt.Errorf("%s must be an array", field)
-	}
-	if len(entries) > maxItemArrayLen {
-		return fmt.Errorf("%s holds more than %d entries", field, maxItemArrayLen)
-	}
-	return nil
-}
-
-// validateItemArrays checks every opaque configuration array of a single item.
-func validateItemArrays(item TrainingItemRequest) error {
-	fields := []struct {
-		name string
-		raw  json.RawMessage
-	}{
-		{"loads", item.Loads},
-		{"left_loads", item.LeftLoads},
-		{"hand_positions", item.HandPositions},
-		{"edge_sizes_mm", item.EdgeSizesMm},
-	}
-	for _, field := range fields {
-		if err := validateItemArray(field.name, field.raw); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // validateTrainingItems rejects unknown item types, over-deep trees and
 // malformed configuration arrays before any row is written.
 func validateTrainingItems(items []TrainingItemRequest, depth int) error {
@@ -154,7 +110,8 @@ type TrainingItemRequest struct {
 	RestSeconds      *int32                `json:"rest_seconds"`
 	ExerciseID       *string               `json:"exercise_id"`
 	WorktimeSeconds  *int32                `json:"worktime_seconds"`
-	Hand             *string               `json:"hand"`
+	Hand             *string               `json:"hand"        enums:"both,alternate,split,left,right"`
+	Granularity      *string               `json:"granularity" enums:"uniform,rep,set"`
 	FreeText         *string               `json:"free_text"`
 	Comment          *string               `json:"comment"`
 	LoadIsMax        bool                  `json:"load_is_max"`
@@ -199,7 +156,8 @@ type TrainingItemResponse struct {
 	ExerciseID       *string                `json:"exercise_id,omitempty"`
 	ExerciseName     *string                `json:"exercise_name,omitempty"`
 	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
-	Hand             *string                `json:"hand,omitempty"`
+	Hand             *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
+	Granularity      *string                `json:"granularity,omitempty" enums:"uniform,rep,set"`
 	FreeText         *string                `json:"free_text,omitempty"`
 	Comment          *string                `json:"comment,omitempty"`
 	LoadIsMax        bool                   `json:"load_is_max"`
@@ -305,6 +263,9 @@ func insertTrainingItemsRecursive(
 		if req.Hand != nil {
 			params.Hand = pgtype.Text{String: *req.Hand, Valid: true}
 		}
+		if req.Granularity != nil {
+			params.Granularity = pgtype.Text{String: *req.Granularity, Valid: true}
+		}
 		if req.FreeText != nil {
 			params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
 		}
@@ -380,6 +341,9 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if r.Hand.Valid {
 		resp.Hand = &r.Hand.String
 	}
+	if r.Granularity.Valid {
+		resp.Granularity = &r.Granularity.String
+	}
 	if r.FreeText.Valid {
 		resp.FreeText = &r.FreeText.String
 	}
@@ -439,6 +403,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		ExerciseID:       r.ExerciseID,
 		WorktimeSeconds:  r.WorktimeSeconds,
 		Hand:             r.Hand,
+		Granularity:      r.Granularity,
 		FreeText:         r.FreeText,
 		Comment:          r.Comment,
 		Loads:            r.Loads,

@@ -73,6 +73,14 @@ type WeekListItem struct {
 	UpdatedAt  string  `json:"updated_at"`
 }
 
+// invalidRequest marks a failure caused by the payload rather than by the
+// server, so a caller unwinding a transaction can answer 400 instead of 500.
+type invalidRequest struct{ error }
+
+func invalidRequestf(format string, args ...any) error {
+	return invalidRequest{fmt.Errorf(format, args...)}
+}
+
 func validateWeekSession(s WeekSessionRequest) error {
 	modes := 0
 	if s.DayOfWeek != nil {
@@ -101,7 +109,7 @@ func (h *ProgramHandler) insertWeekSessions(ctx context.Context, qtx *db.Queries
 	for i, s := range sessions {
 		var trainingUUID pgtype.UUID
 		if err := trainingUUID.Scan(s.TrainingID); err != nil {
-			return nil, fmt.Errorf("invalid training_id at session %d", i)
+			return nil, invalidRequestf("invalid training_id at session %d", i)
 		}
 		params := db.CreateCoachProgramWeekSessionParams{
 			WeekID:     weekID,
@@ -127,7 +135,14 @@ func (h *ProgramHandler) insertWeekSessions(ctx context.Context, qtx *db.Queries
 		for _, o := range s.Overrides {
 			var itemUUID pgtype.UUID
 			if err := itemUUID.Scan(o.ItemID); err != nil {
-				return nil, fmt.Errorf("invalid item_id in session %d override", i)
+				return nil, invalidRequestf("invalid item_id in session %d override", i)
+			}
+			item, err := qtx.GetTrainingItem(ctx, itemUUID)
+			if err != nil {
+				return nil, invalidRequestf("unknown item_id in session %d override", i)
+			}
+			if err := validateItemOverride(itemToRequest(item), o.Overrides); err != nil {
+				return nil, invalidRequestf("session %d override on item %s: %s", i, o.ItemID, err)
 			}
 			override, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
 				SessionID: session.ID,
@@ -331,6 +346,10 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	}
 
 	if _, err := h.insertWeekSessions(c.Context(), qtx, week.ID, req.Sessions); err != nil {
+		var bad invalidRequest
+		if errors.As(err, &bad) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
+		}
 		slog.Error("failed to insert week sessions", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create week sessions"})
 	}
