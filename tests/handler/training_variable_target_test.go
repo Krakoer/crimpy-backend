@@ -143,6 +143,55 @@ func TestTrainingVariableTargets_RejectsPercentAssessmentLoadWithoutReference(t 
 	}
 }
 
+func TestTrainingVariableTargets_RejectsDurationDrivenByForceAssessment(t *testing.T) {
+	status, _ := createTrainingWithItems(t, "vartarget6@test.com", []map[string]interface{}{
+		{
+			"type":     "exercise",
+			"duration": 60,
+			"variable_targets": map[string]interface{}{
+				"duration": map[string]interface{}{
+					"assessment_type": 1, "percent": 75, "fallback": 60,
+				},
+			},
+		},
+	})
+
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected %d for a duration driven by a kilograms assessment, got %d", fiber.StatusBadRequest, status)
+	}
+}
+
+func TestTrainingVariableTargets_RejectsLoadDrivenByDurationAssessment(t *testing.T) {
+	status, _ := createTrainingWithItems(t, "vartarget7@test.com", []map[string]interface{}{
+		{
+			"type":  "hangboard_rep",
+			"loads": []map[string]interface{}{{"value": 80, "unit": "percent_assessment", "assessment_type": 2, "fallback": 30}},
+		},
+	})
+
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected %d for a load driven by a seconds assessment, got %d", fiber.StatusBadRequest, status)
+	}
+}
+
+func TestTrainingVariableTargets_RejectsRepsTarget(t *testing.T) {
+	status, _ := createTrainingWithItems(t, "vartarget8@test.com", []map[string]interface{}{
+		{
+			"type": "exercise",
+			"reps": 10,
+			"variable_targets": map[string]interface{}{
+				"reps": map[string]interface{}{
+					"assessment_type": 2, "percent": 50, "fallback": 10,
+				},
+			},
+		},
+	})
+
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected %d for a reps target, nothing being measured in repetitions, got %d", fiber.StatusBadRequest, status)
+	}
+}
+
 func TestTrainingVariableTargets_AcceptsSplitHandPerHandLoads(t *testing.T) {
 	status, result := createTrainingWithItems(t, "vartarget5@test.com", []map[string]interface{}{
 		{

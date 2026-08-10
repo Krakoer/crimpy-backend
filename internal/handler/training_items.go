@@ -10,11 +10,12 @@ import (
 // so an override can be checked against the item it targets.
 func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	req := TrainingItemRequest{
-		Type:          item.Type,
-		Loads:         json.RawMessage(item.Loads),
-		LeftLoads:     json.RawMessage(item.LeftLoads),
-		HandPositions: json.RawMessage(item.HandPositions),
-		EdgeSizesMm:   json.RawMessage(item.EdgeSizesMm),
+		Type:            item.Type,
+		Loads:           json.RawMessage(item.Loads),
+		LeftLoads:       json.RawMessage(item.LeftLoads),
+		HandPositions:   json.RawMessage(item.HandPositions),
+		EdgeSizesMm:     json.RawMessage(item.EdgeSizesMm),
+		VariableTargets: json.RawMessage(item.VariableTargets),
 	}
 	if item.Cycles.Valid {
 		req.Cycles = &item.Cycles.Int32
@@ -216,14 +217,15 @@ func validateItemArrays(item TrainingItemRequest) error {
 // hangboardOverride is the subset of a session override that changes the
 // hangboard layout. Every other key passes through untouched.
 type hangboardOverride struct {
-	Cycles        *int32          `json:"cycles"`
-	Reps          *int32          `json:"reps"`
-	Hand          *string         `json:"hand"`
-	Granularity   *string         `json:"granularity"`
-	Loads         json.RawMessage `json:"loads"`
-	LeftLoads     json.RawMessage `json:"left_loads"`
-	HandPositions json.RawMessage `json:"hand_positions"`
-	EdgeSizesMm   json.RawMessage `json:"edge_sizes_mm"`
+	Cycles          *int32          `json:"cycles"`
+	Reps            *int32          `json:"reps"`
+	Hand            *string         `json:"hand"`
+	Granularity     *string         `json:"granularity"`
+	Loads           json.RawMessage `json:"loads"`
+	LeftLoads       json.RawMessage `json:"left_loads"`
+	HandPositions   json.RawMessage `json:"hand_positions"`
+	EdgeSizesMm     json.RawMessage `json:"edge_sizes_mm"`
+	VariableTargets json.RawMessage `json:"variable_targets"`
 }
 
 // applyItemOverride merges an override onto the item it targets, field by
@@ -257,6 +259,7 @@ func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingI
 		{over.LeftLoads, &merged.LeftLoads},
 		{over.HandPositions, &merged.HandPositions},
 		{over.EdgeSizesMm, &merged.EdgeSizesMm},
+		{over.VariableTargets, &merged.VariableTargets},
 	} {
 		if len(field.override) > 0 && string(field.override) != "null" {
 			*field.target = field.override
@@ -274,5 +277,23 @@ func validateItemOverride(base TrainingItemRequest, raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	return validateItemArrays(merged)
+	return validateItemConfiguration(merged)
+}
+
+// validateItemConfiguration checks everything about a single item that has to
+// hold however the item was written, whether directly on the training or
+// through a session override merged onto it.
+func validateItemConfiguration(item TrainingItemRequest) error {
+	if err := validateItemArrays(item); err != nil {
+		return err
+	}
+	if err := validateVariableTargets(item.VariableTargets); err != nil {
+		return err
+	}
+	for _, loads := range []json.RawMessage{item.Loads, item.LeftLoads} {
+		if err := validateLoads(loads); err != nil {
+			return err
+		}
+	}
+	return nil
 }

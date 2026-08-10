@@ -33,16 +33,33 @@ var validItemTypes = map[string]bool{
 // defaultTrainingType applies when a client omits training_type.
 const defaultTrainingType = "workout"
 
-// variableTargetFields is the set of scalar item fields that may be expressed as
-// a percentage of an assessment result instead of a fixed number.
-var variableTargetFields = map[string]bool{
-	"duration": true,
-	"reps":     true,
-}
+// assessmentUnit is the quantity an assessment result is measured in. A target
+// may only reference an assessment measured in the unit of the field it drives,
+// otherwise a force result would end up prescribing a duration.
+type assessmentUnit string
 
-// assessmentTypeCount bounds the assessment type discriminator shared with the
-// app: 0 critical force, 1 max force, 2 sixty percent endurance.
-const assessmentTypeCount = 3
+const (
+	unitKilograms   assessmentUnit = "kilograms"
+	unitSeconds     assessmentUnit = "seconds"
+	unitRepetitions assessmentUnit = "repetitions"
+)
+
+// assessmentUnits maps the assessment type discriminator shared with the app to
+// the unit that assessment is measured in: 0 critical force, 1 max force,
+// 2 sixty percent endurance.
+var assessmentUnits = [...]assessmentUnit{unitKilograms, unitKilograms, unitSeconds}
+
+// assessmentTypeCount bounds the assessment type discriminator.
+const assessmentTypeCount = int32(len(assessmentUnits))
+
+// variableTargetFields maps each scalar item field that may be expressed as a
+// percentage of an assessment result to the unit its assessment must carry.
+// Nothing is measured in repetitions today, so a reps target has no assessment
+// it can validly reference.
+var variableTargetFields = map[string]assessmentUnit{
+	"duration": unitSeconds,
+	"reps":     unitRepetitions,
+}
 
 // percentAssessmentUnit marks a load expressed as a percentage of an assessment
 // result. The load value carries the percentage, as it does for percent_bw.
@@ -56,9 +73,21 @@ type variableTarget struct {
 	Fallback       *float64 `json:"fallback"`
 }
 
-func (t variableTarget) validate(field string) error {
+// checkAssessment validates the reference itself: a known assessment type,
+// measured in the unit the field it drives is expressed in.
+func (t variableTarget) checkAssessment(field string, want assessmentUnit) error {
 	if t.AssessmentType == nil || *t.AssessmentType < 0 || *t.AssessmentType >= assessmentTypeCount {
 		return fmt.Errorf("%s: invalid assessment_type", field)
+	}
+	if got := assessmentUnits[*t.AssessmentType]; got != want {
+		return fmt.Errorf("%s: assessment_type %d is measured in %s, not %s", field, *t.AssessmentType, got, want)
+	}
+	return nil
+}
+
+func (t variableTarget) validate(field string, want assessmentUnit) error {
+	if err := t.checkAssessment(field, want); err != nil {
+		return err
 	}
 	if t.Percent == nil || *t.Percent <= 0 {
 		return fmt.Errorf("%s: percent must be greater than 0", field)
@@ -80,10 +109,11 @@ func validateVariableTargets(raw json.RawMessage) error {
 		return fmt.Errorf("invalid variable_targets: %w", err)
 	}
 	for field, target := range targets {
-		if !variableTargetFields[field] {
+		want, ok := variableTargetFields[field]
+		if !ok {
 			return fmt.Errorf("invalid variable target field %q", field)
 		}
-		if err := target.validate(field); err != nil {
+		if err := target.validate(field, want); err != nil {
 			return err
 		}
 	}
@@ -115,8 +145,8 @@ func validateLoads(raw json.RawMessage) error {
 		if load.Unit != percentAssessmentUnit {
 			continue
 		}
-		if load.AssessmentType == nil || *load.AssessmentType < 0 || *load.AssessmentType >= assessmentTypeCount {
-			return fmt.Errorf("load: invalid assessment_type")
+		if err := load.checkAssessment("load", unitKilograms); err != nil {
+			return err
 		}
 		if load.Fallback == nil || *load.Fallback < 0 {
 			return fmt.Errorf("load: fallback must be zero or more")
@@ -161,16 +191,8 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 		if !validItemTypes[item.Type] {
 			return fmt.Errorf("invalid item type %q", item.Type)
 		}
-		if err := validateItemArrays(item); err != nil {
+		if err := validateItemConfiguration(item); err != nil {
 			return err
-		}
-		if err := validateVariableTargets(item.VariableTargets); err != nil {
-			return err
-		}
-		for _, loads := range []json.RawMessage{item.Loads, item.LeftLoads} {
-			if err := validateLoads(loads); err != nil {
-				return err
-			}
 		}
 		if err := validateTrainingItems(item.Items, depth+1); err != nil {
 			return err
