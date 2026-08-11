@@ -33,6 +33,134 @@ var validItemTypes = map[string]bool{
 // defaultTrainingType applies when a client omits training_type.
 const defaultTrainingType = "workout"
 
+// assessmentUnit is the quantity an assessment result is measured in. A target
+// may only reference an assessment measured in the unit of the field it drives,
+// otherwise a force result would end up prescribing a duration.
+type assessmentUnit string
+
+const (
+	unitKilograms   assessmentUnit = "kilograms"
+	unitSeconds     assessmentUnit = "seconds"
+	unitRepetitions assessmentUnit = "repetitions"
+)
+
+// assessmentUnits maps the assessment type discriminator shared with the app to
+// the unit that assessment is measured in: 0 critical force, 1 max force,
+// 2 sixty percent endurance.
+var assessmentUnits = [...]assessmentUnit{unitKilograms, unitKilograms, unitSeconds}
+
+// assessmentTypeCount bounds the assessment type discriminator.
+const assessmentTypeCount = int32(len(assessmentUnits))
+
+// variableTargetFields maps each scalar item field that may be expressed as a
+// percentage of an assessment result to the unit its assessment must carry.
+// Nothing is measured in repetitions today, so a reps target has no assessment
+// it can validly reference.
+var variableTargetFields = map[string]assessmentUnit{
+	"duration": unitSeconds,
+	"reps":     unitRepetitions,
+}
+
+// percentAssessmentUnit marks a load expressed as a percentage of an assessment
+// result. The load value carries the percentage, as it does for percent_bw.
+const percentAssessmentUnit = "percent_assessment"
+
+// variableTarget references the athlete last result for an assessment. Percent
+// applies to that result; fallback is used when the assessment was never done.
+type variableTarget struct {
+	AssessmentType *int32   `json:"assessment_type"`
+	Percent        *float64 `json:"percent"`
+	Fallback       *float64 `json:"fallback"`
+}
+
+// checkAssessment validates the reference itself: a known assessment type,
+// measured in the unit the field it drives is expressed in.
+func (t variableTarget) checkAssessment(field string, want assessmentUnit) error {
+	if t.AssessmentType == nil || *t.AssessmentType < 0 || *t.AssessmentType >= assessmentTypeCount {
+		return fmt.Errorf("%s: invalid assessment_type", field)
+	}
+	if got := assessmentUnits[*t.AssessmentType]; got != want {
+		return fmt.Errorf("%s: assessment_type %d is measured in %s, not %s", field, *t.AssessmentType, got, want)
+	}
+	return nil
+}
+
+func (t variableTarget) validate(field string, want assessmentUnit) error {
+	if err := t.checkAssessment(field, want); err != nil {
+		return err
+	}
+	if t.Percent == nil || *t.Percent <= 0 {
+		return fmt.Errorf("%s: percent must be greater than 0", field)
+	}
+	if t.Fallback == nil || *t.Fallback < 0 {
+		return fmt.Errorf("%s: fallback must be zero or more", field)
+	}
+	return nil
+}
+
+// validateVariableTargets rejects unknown fields and malformed references so a
+// client cannot store a target the app would silently drop when resolving it.
+func validateVariableTargets(raw json.RawMessage) error {
+	if !hasJSONValue(raw) {
+		return nil
+	}
+	var targets map[string]variableTarget
+	if err := json.Unmarshal(raw, &targets); err != nil {
+		return fmt.Errorf("invalid variable_targets: %w", err)
+	}
+	for field, target := range targets {
+		want, ok := variableTargetFields[field]
+		if !ok {
+			return fmt.Errorf("invalid variable target field %q", field)
+		}
+		if err := target.validate(field, want); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadWithTarget is the subset of a load entry needed to check assessment
+// references. Loads are otherwise stored as opaque JSON.
+type loadWithTarget struct {
+	Unit string `json:"unit"`
+	variableTarget
+}
+
+// validateLoads checks the assessment reference of every percent_assessment
+// load. Each hand carries its own flat array, one entry per row.
+func validateLoads(raw json.RawMessage) error {
+	if !hasJSONValue(raw) {
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return fmt.Errorf("invalid loads: %w", err)
+	}
+	for _, entry := range entries {
+		var load loadWithTarget
+		if err := json.Unmarshal(entry, &load); err != nil {
+			return fmt.Errorf("invalid loads: %w", err)
+		}
+		if load.Unit != percentAssessmentUnit {
+			continue
+		}
+		if err := load.checkAssessment("load", unitKilograms); err != nil {
+			return err
+		}
+		if load.Fallback == nil || *load.Fallback < 0 {
+			return fmt.Errorf("load: fallback must be zero or more")
+		}
+	}
+	return nil
+}
+
+// hasJSONValue reports whether raw holds something other than an absent or null
+// JSON value.
+func hasJSONValue(raw json.RawMessage) bool {
+	return len(raw) > 0 && string(raw) != "null"
+}
+
 // validTrainingTypes is the set of accepted training_type values. It mirrors the
 // trainings_training_type_check constraint in schema/schema.sql.
 var validTrainingTypes = map[string]bool{
@@ -63,7 +191,7 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 		if !validItemTypes[item.Type] {
 			return fmt.Errorf("invalid item type %q", item.Type)
 		}
-		if err := validateItemArrays(item); err != nil {
+		if err := validateItemConfiguration(item); err != nil {
 			return err
 		}
 		if err := validateTrainingItems(item.Items, depth+1); err != nil {
@@ -119,6 +247,7 @@ type TrainingItemRequest struct {
 	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
 	HandPositions    json.RawMessage       `json:"hand_positions"  swaggertype:"array,object"`
 	EdgeSizesMm      json.RawMessage       `json:"edge_sizes_mm"   swaggertype:"array,integer"`
+	VariableTargets  json.RawMessage       `json:"variable_targets" swaggertype:"object"`
 	GroupTitle       *string               `json:"group_title"`
 	Items            []TrainingItemRequest `json:"items"`
 }
@@ -165,6 +294,7 @@ type TrainingItemResponse struct {
 	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
 	HandPositions    json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
 	EdgeSizesMm      json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
+	VariableTargets  json.RawMessage        `json:"variable_targets,omitempty" swaggertype:"object"`
 	GroupTitle       *string                `json:"group_title,omitempty"`
 	Items            []TrainingItemResponse `json:"items,omitempty"`
 }
@@ -273,17 +403,20 @@ func insertTrainingItemsRecursive(
 			params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
 		}
 		params.LoadIsMax = req.LoadIsMax
-		if len(req.Loads) > 0 && string(req.Loads) != "null" {
+		if hasJSONValue(req.Loads) {
 			params.Loads = req.Loads
 		}
-		if len(req.LeftLoads) > 0 && string(req.LeftLoads) != "null" {
+		if hasJSONValue(req.LeftLoads) {
 			params.LeftLoads = req.LeftLoads
 		}
-		if len(req.HandPositions) > 0 && string(req.HandPositions) != "null" {
+		if hasJSONValue(req.HandPositions) {
 			params.HandPositions = req.HandPositions
 		}
-		if len(req.EdgeSizesMm) > 0 && string(req.EdgeSizesMm) != "null" {
+		if hasJSONValue(req.EdgeSizesMm) {
 			params.EdgeSizesMm = req.EdgeSizesMm
+		}
+		if hasJSONValue(req.VariableTargets) {
+			params.VariableTargets = req.VariableTargets
 		}
 		if req.GroupTitle != nil {
 			params.GroupTitle = pgtype.Text{String: *req.GroupTitle, Valid: true}
@@ -363,6 +496,9 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if len(r.EdgeSizesMm) > 0 {
 		resp.EdgeSizesMm = json.RawMessage(r.EdgeSizesMm)
 	}
+	if len(r.VariableTargets) > 0 {
+		resp.VariableTargets = json.RawMessage(r.VariableTargets)
+	}
 	if r.GroupTitle.Valid {
 		resp.GroupTitle = &r.GroupTitle.String
 	}
@@ -411,6 +547,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		HandPositions:    r.HandPositions,
 		EdgeSizesMm:      r.EdgeSizesMm,
 		LoadIsMax:        r.LoadIsMax,
+		VariableTargets:  r.VariableTargets,
 		GroupTitle:       r.GroupTitle,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,

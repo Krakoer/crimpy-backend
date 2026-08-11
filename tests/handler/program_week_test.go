@@ -725,6 +725,54 @@ func TestWeekHandler_AcceptsOverrideResizingGridWithArrays(t *testing.T) {
 	}
 }
 
+// An override carries loads through the same assessment checks as the item it
+// targets, so a session cannot store a reference the item itself would reject.
+func TestWeekHandler_RejectsOverrideWithUnreferencedAssessmentLoad(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk11coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wk11user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestPerRepCoachTraining(t, coachToken, app)
+
+	loads := []map[string]interface{}{{"value": 80, "unit": "percent_assessment"}}
+	for i := 0; i < 5; i++ {
+		loads = append(loads, map[string]interface{}{"value": 10, "unit": "kg"})
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id":   itemID,
+						"overrides": map[string]interface{}{"loads": loads},
+					},
+				},
+			},
+		},
+	})
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected %d for an override load missing its assessment reference, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
 // A per-rep hangboard item, so an override changing reps changes the row count.
 func createTestPerRepCoachTraining(t *testing.T, coachToken string, app *fiber.App) (trainingID, itemID string) {
 	t.Helper()

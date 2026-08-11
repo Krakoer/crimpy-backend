@@ -5248,6 +5248,9 @@ const docTemplate = `{
                 "type": {
                     "type": "string"
                 },
+                "variable_targets": {
+                    "type": "object"
+                },
                 "worktime_seconds": {
                     "type": "integer"
                 }
@@ -5345,6 +5348,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                },
+                "variable_targets": {
+                    "type": "object"
                 },
                 "worktime_seconds": {
                     "type": "integer"

@@ -1,4 +1,4 @@
-h1:U1fNspvmZZFkHMT3/YvW1naFdvWdSyzfc5iGA9r9cHg=
+h1:VpO39J8ztB6TS+rzslIO/8+BZIiCEIf5/aEJxwNwPoo=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -30,3 +30,4 @@ h1:U1fNspvmZZFkHMT3/YvW1naFdvWdSyzfc5iGA9r9cHg=
 20260724140048_constrain_training_type.sql h1:+++5JH7vYGLsGIIemjGE4xfpo0h9cv3XjRGMoRwpMl8=
 20260807184402_uniformize_hangboard_hand_modes.sql h1:AL5gOuLqhQw9HnXFVuY/CTvpmQkcQmWXkkQdv380cXs=
 20260807184500_normalize_hangboard_item_arrays.sql h1:bf6HH0zPUr94Fv28hYKKi2iDjTrXBGAEf19N2qG7teo=
+20260810090000_add_training_item_variable_targets.sql h1:laVV5Mid7nY2LIyP6TuSGE08AdgvG3ww0QAB6US2pfw=
