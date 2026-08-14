@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -17,7 +18,7 @@ func GenerateVerificationToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func SendVerificationEmail(email, firstname, verificationToken string, isCoach bool) error {
+func SendVerificationEmail(ctx context.Context, email, firstname, verificationToken string, isCoach bool) error {
 	verificationLink := fmt.Sprintf("%s/verify?token=%s", os.Getenv("BASE_URL"), verificationToken)
 
 	templateID := "email-verification-normal"
@@ -25,25 +26,25 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 		templateID = "email-verification-coach"
 	}
 
-	return sendTemplateEmail(email, templateID, map[string]interface{}{
+	return sendTemplateEmail(ctx, email, templateID, map[string]interface{}{
 		"firstname":         firstname,
 		"verification_link": verificationLink,
 	})
 }
 
-func SendCoachValidatedEmail(email string) error {
-	return sendTemplateEmail(email, "account-approved", map[string]interface{}{
+func SendCoachValidatedEmail(ctx context.Context, email string) error {
+	return sendTemplateEmail(ctx, email, "account-approved", map[string]interface{}{
 		"LOGIN_URL": os.Getenv("BASE_URL"),
 	})
 }
 
-func SendCoachRejectedEmail(email, firstname string) error {
-	return sendTemplateEmail(email, "coach-application-denied", map[string]interface{}{
+func SendCoachRejectedEmail(ctx context.Context, email, firstname string) error {
+	return sendTemplateEmail(ctx, email, "coach-application-denied", map[string]interface{}{
 		"first_name": firstname,
 	})
 }
 
-func sendTemplateEmail(email, templateID string, variables map[string]interface{}) error {
+func sendTemplateEmail(ctx context.Context, email, templateID string, variables map[string]interface{}) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")
 
@@ -65,7 +66,7 @@ func sendTemplateEmail(email, templateID string, variables map[string]interface{
 		},
 	}
 
-	_, err := client.Emails.Send(params)
+	_, err := client.Emails.SendWithContext(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to send email: %w", err)
 	}

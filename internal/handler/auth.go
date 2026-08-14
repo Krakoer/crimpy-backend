@@ -193,7 +193,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		})
 	}
 
-	if err := utils.SendVerificationEmail(user.Email, user.Firstname, verificationToken, req.IsCoach); err != nil {
+	if err := utils.SendVerificationEmail(c.Context(), user.Email, user.Firstname, verificationToken, req.IsCoach); err != nil {
 		slog.Error("failed to send verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 			"message": "User registered, but verification email failed to send. Please request a new verification email.",
@@ -752,7 +752,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 		})
 	}
 
-	if err := utils.SendVerificationEmail(user.Email, user.Firstname, verificationToken, user.IsCoach); err != nil {
+	if err := utils.SendVerificationEmail(c.Context(), user.Email, user.Firstname, verificationToken, user.IsCoach); err != nil {
 		slog.Error("failed to resend verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to send verification email",

@@ -83,9 +83,10 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Coach user ID"
-// @Success 200 {object} map[string]string "Coach validated successfully"
-// @Failure 400 {object} map[string]string "Invalid user ID or email not verified"
+// @Success 200 {object} map[string]interface{} "Coach validated successfully, with email_sent reporting whether the notification was delivered"
+// @Failure 400 {object} map[string]string "Invalid user ID, user is not a coach, coach already validated or email not verified"
 // @Failure 403 {object} map[string]string "Admin access required"
+// @Failure 404 {object} map[string]string "Coach not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/admin/coaches/{id}/validate [put]
 func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
@@ -106,9 +107,20 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 
 	coach, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
-		slog.Error("failed to retrieve coach", "coach_id", coachID, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve coach",
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Coach not found",
+		})
+	}
+
+	if !coach.IsCoach {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User is not a coach",
+		})
+	}
+
+	if coach.CoachValidated {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Coach is already validated",
 		})
 	}
 
@@ -126,15 +138,15 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		})
 	}
 
-	if err := utils.SendCoachValidatedEmail(coach.Email); err != nil {
+	emailSent := true
+	if err := utils.SendCoachValidatedEmail(c.Context(), coach.Email); err != nil {
 		slog.Error("failed to send coach validation email", "coach_id", coachID, "email", coach.Email, "error", err)
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"message": "Coach validated successfully, but the notification email failed to send",
-		})
+		emailSent = false
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Coach validated successfully",
+		"message":    "Coach validated successfully",
+		"email_sent": emailSent,
 	})
 }
 
@@ -146,9 +158,10 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Coach user ID"
-// @Success 200 {object} map[string]string "Coach rejected successfully"
-// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Success 200 {object} map[string]interface{} "Coach rejected successfully, with email_sent reporting whether the notification was delivered"
+// @Failure 400 {object} map[string]string "Invalid user ID or user is not a coach"
 // @Failure 403 {object} map[string]string "Admin access required"
+// @Failure 404 {object} map[string]string "Coach not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/admin/coaches/{id}/reject [put]
 func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
@@ -169,9 +182,14 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 
 	coach, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
-		slog.Error("failed to retrieve coach", "coach_id", coachID, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve coach",
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Coach not found",
+		})
+	}
+
+	if !coach.IsCoach {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User is not a coach",
 		})
 	}
 
@@ -183,15 +201,15 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 		})
 	}
 
-	if err := utils.SendCoachRejectedEmail(coach.Email, coach.Firstname); err != nil {
+	emailSent := true
+	if err := utils.SendCoachRejectedEmail(c.Context(), coach.Email, coach.Firstname); err != nil {
 		slog.Error("failed to send coach rejection email", "coach_id", coachID, "email", coach.Email, "error", err)
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"message": "Coach rejected successfully, but the notification email failed to send",
-		})
+		emailSent = false
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Coach rejected successfully",
+		"message":    "Coach rejected successfully",
+		"email_sent": emailSent,
 	})
 }
 
