@@ -18,9 +18,29 @@ func GenerateVerificationToken() (string, error) {
 }
 
 func SendVerificationEmail(email, firstname, verificationToken string, isCoach bool) error {
+	verificationLink := fmt.Sprintf("%s/verify?token=%s", os.Getenv("BASE_URL"), verificationToken)
+
+	templateID := "email-verification-normal"
+	if isCoach {
+		templateID = "email-verification-coach"
+	}
+
+	return sendTemplateEmail(email, templateID, map[string]interface{}{
+		"firstname":         firstname,
+		"verification_link": verificationLink,
+	})
+}
+
+func SendCoachValidatedEmail(email, firstname string) error {
+	return sendTemplateEmail(email, "coach-account-validated", map[string]interface{}{
+		"firstname":  firstname,
+		"login_link": os.Getenv("BASE_URL"),
+	})
+}
+
+func sendTemplateEmail(email, templateID string, variables map[string]interface{}) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")
-	baseUrl := os.Getenv("BASE_URL")
 
 	if resendAPIKey == "" || emailFrom == "" {
 		if IsTestEnv() {
@@ -29,24 +49,14 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 		return fmt.Errorf("RESEND_API_KEY or RESEND_EMAIL_FROM not set")
 	}
 
-	verificationLink := fmt.Sprintf("%s/verify?token=%s", baseUrl, verificationToken)
-
-	templateID := "email-verification-normal"
-	if isCoach {
-		templateID = "email-verification-coach"
-	}
-
 	client := resend.NewClient(resendAPIKey)
 
 	params := &resend.SendEmailRequest{
 		From: emailFrom,
 		To:   []string{email},
 		Template: &resend.EmailTemplate{
-			Id: templateID,
-			Variables: map[string]interface{}{
-				"firstname":         firstname,
-				"verification_link": verificationLink,
-			},
+			Id:        templateID,
+			Variables: variables,
 		},
 	}
 
