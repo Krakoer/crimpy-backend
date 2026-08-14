@@ -37,6 +37,12 @@ func SendCoachValidatedEmail(email string) error {
 	})
 }
 
+func SendCoachRejectedEmail(email, firstname string) error {
+	return sendTemplateEmail(email, "coach-application-denied", map[string]interface{}{
+		"first_name": firstname,
+	})
+}
+
 func sendTemplateEmail(email, templateID string, variables map[string]interface{}) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")

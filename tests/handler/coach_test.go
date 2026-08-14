@@ -389,6 +389,11 @@ func TestAdminHandler_RejectCoach_Success(t *testing.T) {
 	if response["message"] != "Coach rejected successfully" {
 		t.Errorf("Expected success message, got %v", response["message"])
 	}
+
+	pending := readCoachListBody(t, app, "/api/admin/coaches/pending", adminToken)
+	if strings.Contains(pending, "rejectcoach@test.com") {
+		t.Errorf("Expected rejected coach to leave the pending list, got %s", pending)
+	}
 }
 
 func TestAdminHandler_RejectCoach_NonAdminForbidden(t *testing.T) {

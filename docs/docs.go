@@ -79,7 +79,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Reject a pending coach account and revert to normal user (admin only)",
+                "description": "Reject a pending coach account, revert it to a normal user and notify the coach by email (admin only)",
                 "consumes": [
                     "application/json"
                 ],
@@ -146,7 +146,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Approve a pending coach account (admin only)",
+                "description": "Approve a pending coach account and notify the coach by email (admin only)",
                 "consumes": [
                     "application/json"
                 ],

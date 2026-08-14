@@ -793,8 +793,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Reject a pending coach account and revert to normal user (admin
-        only)
+      description: Reject a pending coach account, revert it to a normal user and
+        notify the coach by email (admin only)
       parameters:
       - description: Coach user ID
         in: path
@@ -837,7 +837,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Approve a pending coach account (admin only)
+      description: Approve a pending coach account and notify the coach by email (admin
+        only)
       parameters:
       - description: Coach user ID
         in: path
