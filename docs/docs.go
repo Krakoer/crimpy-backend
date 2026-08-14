@@ -101,16 +101,14 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Coach rejected successfully",
+                        "description": "Coach rejected successfully, with email_sent reporting whether the notification was delivered",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "Invalid user ID",
+                        "description": "Invalid user ID or user is not a coach",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -120,6 +118,15 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Admin access required",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Coach not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -168,16 +175,14 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Coach validated successfully",
+                        "description": "Coach validated successfully, with email_sent reporting whether the notification was delivered",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "Invalid user ID or email not verified",
+                        "description": "Invalid user ID, user is not a coach, coach already validated or email not verified",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -187,6 +192,15 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Admin access required",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Coach not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
