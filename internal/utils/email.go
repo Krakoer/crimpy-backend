@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -17,10 +18,35 @@ func GenerateVerificationToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func SendVerificationEmail(email, firstname, verificationToken string, isCoach bool) error {
+func SendVerificationEmail(ctx context.Context, email, firstname, verificationToken string, isCoach bool) error {
+	verificationLink := fmt.Sprintf("%s/verify?token=%s", os.Getenv("BASE_URL"), verificationToken)
+
+	templateID := "email-verification-normal"
+	if isCoach {
+		templateID = "email-verification-coach"
+	}
+
+	return sendTemplateEmail(ctx, email, templateID, map[string]interface{}{
+		"firstname":         firstname,
+		"verification_link": verificationLink,
+	})
+}
+
+func SendCoachValidatedEmail(ctx context.Context, email string) error {
+	return sendTemplateEmail(ctx, email, "account-approved", map[string]interface{}{
+		"LOGIN_URL": os.Getenv("BASE_URL"),
+	})
+}
+
+func SendCoachRejectedEmail(ctx context.Context, email, firstname string) error {
+	return sendTemplateEmail(ctx, email, "coach-application-denied", map[string]interface{}{
+		"first_name": firstname,
+	})
+}
+
+func sendTemplateEmail(ctx context.Context, email, templateID string, variables map[string]interface{}) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")
-	baseUrl := os.Getenv("BASE_URL")
 
 	if resendAPIKey == "" || emailFrom == "" {
 		if IsTestEnv() {
@@ -29,28 +55,18 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 		return fmt.Errorf("RESEND_API_KEY or RESEND_EMAIL_FROM not set")
 	}
 
-	verificationLink := fmt.Sprintf("%s/verify?token=%s", baseUrl, verificationToken)
-
-	templateID := "email-verification-normal"
-	if isCoach {
-		templateID = "email-verification-coach"
-	}
-
 	client := resend.NewClient(resendAPIKey)
 
 	params := &resend.SendEmailRequest{
 		From: emailFrom,
 		To:   []string{email},
 		Template: &resend.EmailTemplate{
-			Id: templateID,
-			Variables: map[string]interface{}{
-				"firstname":         firstname,
-				"verification_link": verificationLink,
-			},
+			Id:        templateID,
+			Variables: variables,
 		},
 	}
 
-	_, err := client.Emails.Send(params)
+	_, err := client.Emails.SendWithContext(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to send email: %w", err)
 	}

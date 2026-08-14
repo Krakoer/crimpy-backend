@@ -3,6 +3,7 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"crimpy/backend/internal/utils"
 	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
@@ -76,15 +77,16 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 
 // ValidateCoach godoc
 // @Summary Validate a coach account
-// @Description Approve a pending coach account (admin only)
+// @Description Approve a pending coach account and notify the coach by email (admin only)
 // @Tags Admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Coach user ID"
-// @Success 200 {object} map[string]string "Coach validated successfully"
-// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Success 200 {object} map[string]interface{} "Coach validated successfully, with email_sent reporting whether the notification was delivered"
+// @Failure 400 {object} map[string]string "Invalid user ID, user is not a coach, coach already validated or email not verified"
 // @Failure 403 {object} map[string]string "Admin access required"
+// @Failure 404 {object} map[string]string "Coach not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/admin/coaches/{id}/validate [put]
 func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
@@ -105,9 +107,20 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 
 	coach, err := h.queries.GetUserByID(c.Context(), userUUID)
 	if err != nil {
-		slog.Error("failed to retrieve coach", "coach_id", coachID, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve coach",
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Coach not found",
+		})
+	}
+
+	if !coach.IsCoach {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User is not a coach",
+		})
+	}
+
+	if coach.CoachValidated {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Coach is already validated",
 		})
 	}
 
@@ -125,22 +138,30 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		})
 	}
 
+	emailSent := true
+	if err := utils.SendCoachValidatedEmail(c.Context(), coach.Email); err != nil {
+		slog.Error("failed to send coach validation email", "coach_id", coachID, "email", coach.Email, "error", err)
+		emailSent = false
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Coach validated successfully",
+		"message":    "Coach validated successfully",
+		"email_sent": emailSent,
 	})
 }
 
 // RejectCoach godoc
 // @Summary Reject a coach account
-// @Description Reject a pending coach account and revert to normal user (admin only)
+// @Description Reject a pending coach account, revert it to a normal user and notify the coach by email (admin only)
 // @Tags Admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Coach user ID"
-// @Success 200 {object} map[string]string "Coach rejected successfully"
-// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Success 200 {object} map[string]interface{} "Coach rejected successfully, with email_sent reporting whether the notification was delivered"
+// @Failure 400 {object} map[string]string "Invalid user ID or user is not a coach"
 // @Failure 403 {object} map[string]string "Admin access required"
+// @Failure 404 {object} map[string]string "Coach not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/admin/coaches/{id}/reject [put]
 func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
@@ -159,7 +180,20 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 		})
 	}
 
-	err := h.queries.RejectCoach(c.Context(), userUUID)
+	coach, err := h.queries.GetUserByID(c.Context(), userUUID)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Coach not found",
+		})
+	}
+
+	if !coach.IsCoach {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User is not a coach",
+		})
+	}
+
+	err = h.queries.RejectCoach(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to reject coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -167,8 +201,15 @@ func (h *AdminHandler) RejectCoach(c fiber.Ctx) error {
 		})
 	}
 
+	emailSent := true
+	if err := utils.SendCoachRejectedEmail(c.Context(), coach.Email, coach.Firstname); err != nil {
+		slog.Error("failed to send coach rejection email", "coach_id", coachID, "email", coach.Email, "error", err)
+		emailSent = false
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Coach rejected successfully",
+		"message":    "Coach rejected successfully",
+		"email_sent": emailSent,
 	})
 }
 
