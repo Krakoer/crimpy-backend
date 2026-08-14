@@ -303,7 +303,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const rejectCoach = `-- name: RejectCoach :exec
-UPDATE users SET is_coach = false, coach_validated = false WHERE id = $1
+UPDATE users SET is_coach = false, coach_validated = false WHERE id = $1 AND is_coach = true
 `
 
 func (q *Queries) RejectCoach(ctx context.Context, id pgtype.UUID) error {

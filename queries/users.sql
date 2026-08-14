@@ -24,7 +24,7 @@ SELECT * FROM users WHERE is_coach = true AND coach_validated = false AND email_
 UPDATE users SET coach_validated = true WHERE id = $1 AND is_coach = true;
 
 -- name: RejectCoach :exec
-UPDATE users SET is_coach = false, coach_validated = false WHERE id = $1;
+UPDATE users SET is_coach = false, coach_validated = false WHERE id = $1 AND is_coach = true;
 
 -- name: SetVerificationToken :exec
 UPDATE users SET verification_token = $2, verification_token_expires_at = $3, verification_email_sent_at = NOW() WHERE id = $1;
