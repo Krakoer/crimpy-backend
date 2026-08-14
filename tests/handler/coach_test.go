@@ -286,6 +286,11 @@ func TestAdminHandler_ValidateCoach_Success(t *testing.T) {
 	if response["message"] != "Coach validated successfully" {
 		t.Errorf("Expected success message, got %v", response["message"])
 	}
+
+	pending := readCoachListBody(t, app, "/api/admin/coaches/pending", adminToken)
+	if strings.Contains(pending, "pendingcoach@test.com") {
+		t.Errorf("Expected validated coach to leave the pending list, got %s", pending)
+	}
 }
 
 func TestAdminHandler_ValidateCoach_NonAdminForbidden(t *testing.T) {

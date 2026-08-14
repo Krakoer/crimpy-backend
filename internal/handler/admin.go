@@ -3,6 +3,7 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"crimpy/backend/internal/utils"
 	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
@@ -83,7 +84,7 @@ func (h *AdminHandler) GetPendingCoaches(c fiber.Ctx) error {
 // @Security BearerAuth
 // @Param id path string true "Coach user ID"
 // @Success 200 {object} map[string]string "Coach validated successfully"
-// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Failure 400 {object} map[string]string "Invalid user ID or email not verified"
 // @Failure 403 {object} map[string]string "Admin access required"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/admin/coaches/{id}/validate [put]
@@ -122,6 +123,13 @@ func (h *AdminHandler) ValidateCoach(c fiber.Ctx) error {
 		slog.Error("failed to validate coach", "coach_id", coachID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to validate coach",
+		})
+	}
+
+	if err := utils.SendCoachValidatedEmail(coach.Email); err != nil {
+		slog.Error("failed to send coach validation email", "coach_id", coachID, "email", coach.Email, "error", err)
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message": "Coach validated successfully, but the notification email failed to send",
 		})
 	}
 

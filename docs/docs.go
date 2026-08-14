@@ -177,7 +177,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid user ID",
+                        "description": "Invalid user ID or email not verified",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {

@@ -31,10 +31,9 @@ func SendVerificationEmail(email, firstname, verificationToken string, isCoach b
 	})
 }
 
-func SendCoachValidatedEmail(email, firstname string) error {
-	return sendTemplateEmail(email, "coach-account-validated", map[string]interface{}{
-		"firstname":  firstname,
-		"login_link": os.Getenv("BASE_URL"),
+func SendCoachValidatedEmail(email string) error {
+	return sendTemplateEmail(email, "account-approved", map[string]interface{}{
+		"LOGIN_URL": os.Getenv("BASE_URL"),
 	})
 }
 
