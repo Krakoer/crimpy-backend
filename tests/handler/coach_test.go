@@ -287,9 +287,104 @@ func TestAdminHandler_ValidateCoach_Success(t *testing.T) {
 		t.Errorf("Expected success message, got %v", response["message"])
 	}
 
+	if response["email_sent"] != true {
+		t.Errorf("Expected email_sent true, got %v", response["email_sent"])
+	}
+
 	pending := readCoachListBody(t, app, "/api/admin/coaches/pending", adminToken)
 	if strings.Contains(pending, "pendingcoach@test.com") {
 		t.Errorf("Expected validated coach to leave the pending list, got %s", pending)
+	}
+}
+
+func TestAdminHandler_ValidateCoach_NotFound(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	adminHandler := handler.NewAdminHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AdminHandler: adminHandler,
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "admin@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/admin/coaches/00000000-0000-0000-0000-000000000000/validate", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", fiber.StatusNotFound, resp.StatusCode)
+	}
+}
+
+func TestAdminHandler_ValidateCoach_NotACoach(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	adminHandler := handler.NewAdminHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AdminHandler: adminHandler,
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "admin@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "notacoach@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/admin/coaches/"+userID+"/validate", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "User is not a coach" {
+		t.Errorf("Expected not a coach error, got %v", response["error"])
+	}
+}
+
+func TestAdminHandler_ValidateCoach_AlreadyValidated(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	adminHandler := handler.NewAdminHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AdminHandler: adminHandler,
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "admin@test.com")
+	coachID, _ := testutil.CreateTestValidatedCoachUser(t, pool, queries, "alreadyvalid@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/admin/coaches/"+coachID+"/validate", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "Coach is already validated" {
+		t.Errorf("Expected already validated error, got %v", response["error"])
 	}
 }
 
@@ -390,9 +485,71 @@ func TestAdminHandler_RejectCoach_Success(t *testing.T) {
 		t.Errorf("Expected success message, got %v", response["message"])
 	}
 
+	if response["email_sent"] != true {
+		t.Errorf("Expected email_sent true, got %v", response["email_sent"])
+	}
+
 	pending := readCoachListBody(t, app, "/api/admin/coaches/pending", adminToken)
 	if strings.Contains(pending, "rejectcoach@test.com") {
 		t.Errorf("Expected rejected coach to leave the pending list, got %s", pending)
+	}
+}
+
+func TestAdminHandler_RejectCoach_NotFound(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	adminHandler := handler.NewAdminHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AdminHandler: adminHandler,
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "admin@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/admin/coaches/00000000-0000-0000-0000-000000000000/reject", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", fiber.StatusNotFound, resp.StatusCode)
+	}
+}
+
+func TestAdminHandler_RejectCoach_NotACoach(t *testing.T) {
+	t.Setenv("JWT_SECRET", "devsecret")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	adminHandler := handler.NewAdminHandler(queries)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AdminHandler: adminHandler,
+	})
+
+	_, adminToken := testutil.CreateTestAdminUser(t, queries, "admin@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "notacoach@test.com")
+
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/admin/coaches/"+userID+"/reject", nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(adminToken))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	if response["error"] != "User is not a coach" {
+		t.Errorf("Expected not a coach error, got %v", response["error"])
 	}
 }
 
