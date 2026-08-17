@@ -124,18 +124,47 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 }
 
 const getUserSessions = `-- name: GetUserSessions :many
-SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at FROM sessions WHERE user_id = $1 ORDER BY date DESC
+SELECT sessions.id, sessions.user_id, sessions.name, sessions.notes, sessions.date, sessions.is_assessment, sessions.activity, sessions.origin, sessions.training_id, sessions.program_session_id, sessions.duration, sessions.repeater_sets, sessions.repeater_reps, sessions.repeater_work_time, sessions.repeater_rest_time, sessions.repeater_set_rest, sessions.repeater_split_hand, sessions.updated_at, COUNT(rep_datas.id) AS rep_count
+FROM sessions
+LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
+WHERE sessions.user_id = $1
+GROUP BY sessions.id
+ORDER BY sessions.date DESC
 `
 
-func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Session, error) {
+type GetUserSessionsRow struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	Name              string
+	Notes             string
+	Date              pgtype.Timestamptz
+	IsAssessment      bool
+	Activity          int32
+	Origin            string
+	TrainingID        pgtype.UUID
+	ProgramSessionID  pgtype.UUID
+	Duration          int32
+	RepeaterSets      pgtype.Int4
+	RepeaterReps      pgtype.Int4
+	RepeaterWorkTime  pgtype.Int4
+	RepeaterRestTime  pgtype.Int4
+	RepeaterSetRest   pgtype.Int4
+	RepeaterSplitHand pgtype.Bool
+	UpdatedAt         pgtype.Timestamptz
+	RepCount          int64
+}
+
+// Carries the rep count so the history list can say how many reps a session
+// holds without fetching every rep of every session.
+func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]GetUserSessionsRow, error) {
 	rows, err := q.db.Query(ctx, getUserSessions, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Session
+	var items []GetUserSessionsRow
 	for rows.Next() {
-		var i Session
+		var i GetUserSessionsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -155,6 +184,7 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Se
 			&i.RepeaterSetRest,
 			&i.RepeaterSplitHand,
 			&i.UpdatedAt,
+			&i.RepCount,
 		); err != nil {
 			return nil, err
 		}

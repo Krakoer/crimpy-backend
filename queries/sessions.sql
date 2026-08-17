@@ -12,7 +12,14 @@ INSERT INTO sessions (
 SELECT * FROM sessions WHERE id = $1;
 
 -- name: GetUserSessions :many
-SELECT * FROM sessions WHERE user_id = $1 ORDER BY date DESC;
+-- Carries the rep count so the history list can say how many reps a session
+-- holds without fetching every rep of every session.
+SELECT sessions.*, COUNT(rep_datas.id) AS rep_count
+FROM sessions
+LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
+WHERE sessions.user_id = $1
+GROUP BY sessions.id
+ORDER BY sessions.date DESC;
 
 -- name: UpdateSession :one
 UPDATE sessions

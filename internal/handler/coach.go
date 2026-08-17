@@ -466,7 +466,7 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 	}
 
 	if sessions == nil {
-		sessions = []db.Session{}
+		sessions = []db.GetUserSessionsRow{}
 	}
 	return c.Status(fiber.StatusOK).JSON(sessions)
 }
