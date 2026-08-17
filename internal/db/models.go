@@ -151,7 +151,10 @@ type Session struct {
 	Notes             string
 	Date              pgtype.Timestamptz
 	IsAssessment      bool
-	SessionType       int32
+	Activity          int32
+	Origin            string
+	TrainingID        pgtype.UUID
+	ProgramSessionID  pgtype.UUID
 	Duration          int32
 	RepeaterSets      pgtype.Int4
 	RepeaterReps      pgtype.Int4

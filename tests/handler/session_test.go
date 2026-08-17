@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -28,7 +29,7 @@ func TestSessionHandler_CreateSession_Success(t *testing.T) {
 		"name":          "Test Session",
 		"notes":         "Some notes",
 		"is_assessment": false,
-		"session_type":  1,
+		"activity":      1,
 		"duration":      3600,
 	}
 	body, _ := json.Marshal(reqBody)
@@ -71,8 +72,8 @@ func TestSessionHandler_CreateSession_MissingName(t *testing.T) {
 	})
 
 	reqBody := map[string]interface{}{
-		"session_type": 1,
-		"duration":     3600,
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 
@@ -99,9 +100,9 @@ func TestSessionHandler_CreateSession_Unauthorized(t *testing.T) {
 	})
 
 	reqBody := map[string]interface{}{
-		"name":         "Test Session",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "Test Session",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 
@@ -133,9 +134,9 @@ func TestSessionHandler_GetSessions_Success(t *testing.T) {
 
 	// Create a session first
 	reqBody := map[string]interface{}{
-		"name":         "Test Session",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "Test Session",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -181,10 +182,10 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 
 	// Create a session
 	reqBody := map[string]interface{}{
-		"name":         "Test Session",
-		"notes":        "Test notes",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "Test Session",
+		"notes":    "Test notes",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -241,9 +242,9 @@ func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
 
 	// User 1 creates a session
 	reqBody := map[string]interface{}{
-		"name":         "User 1 Session",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "User 1 Session",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -287,10 +288,10 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 
 	// Create a session
 	reqBody := map[string]interface{}{
-		"name":         "Original Session",
-		"notes":        "Original notes",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "Original Session",
+		"notes":    "Original notes",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -352,9 +353,9 @@ func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
 
 	// User 1 creates a session
 	reqBody := map[string]interface{}{
-		"name":         "User 1 Session",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "User 1 Session",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -404,9 +405,9 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 
 	// Create a session
 	reqBody := map[string]interface{}{
-		"name":         "To Delete",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "To Delete",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -460,9 +461,9 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 
 	// User 1 creates a session
 	reqBody := map[string]interface{}{
-		"name":         "User 1 Session",
-		"session_type": 1,
-		"duration":     3600,
+		"name":     "User 1 Session",
+		"activity": 1,
+		"duration": 3600,
 	}
 	body, _ := json.Marshal(reqBody)
 	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
@@ -514,10 +515,10 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 	})
 
 	reqBody := map[string]interface{}{
-		"name":         "Edge Session",
-		"notes":        "",
-		"session_type": 0,
-		"duration":     60,
+		"name":     "Edge Session",
+		"notes":    "",
+		"activity": 0,
+		"duration": 60,
 		"rep_datas": []map[string]interface{}{
 			{
 				"average_weight": 30.0,
@@ -579,4 +580,257 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 	if rest["EdgeSizeMm"] != nil {
 		t.Errorf("Expected no edge size on the rest rep, got %v", rest["EdgeSizeMm"])
 	}
+}
+
+// assertSessionDate compares instants rather than text: the API renders the
+// stored timestamptz in the server zone, so the same moment comes back with a
+// different offset than the UTC string that was sent.
+func assertSessionDate(t *testing.T, session map[string]interface{}, wantRFC3339 string) {
+	t.Helper()
+
+	want, err := time.Parse(time.RFC3339, wantRFC3339)
+	if err != nil {
+		t.Fatalf("Bad expected date %q: %v", wantRFC3339, err)
+	}
+
+	raw, _ := session["Date"].(string)
+	got, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t.Fatalf("Could not parse returned date %q: %v", raw, err)
+	}
+
+	if !got.Equal(want) {
+		t.Errorf("Expected date %s, got %s", want.UTC(), got.UTC())
+	}
+}
+
+func TestSessionHandler_CreateSession_DefaultsToLoggedOrigin(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-origin-default@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Evening run",
+		"notes":    "",
+		"activity": 4,
+		"duration": 1800,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	if session["Origin"] != "logged" {
+		t.Errorf("Expected origin 'logged', got %v", session["Origin"])
+	}
+	if session["Activity"] != float64(4) {
+		t.Errorf("Expected activity 4, got %v", session["Activity"])
+	}
+}
+
+func TestSessionHandler_CreateSession_PlayedOriginIsStored(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-origin-played@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Coach hangboard block",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"duration": 600,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	if session["Origin"] != "played" {
+		t.Errorf("Expected origin 'played', got %v", session["Origin"])
+	}
+}
+
+func TestSessionHandler_CreateSession_RejectsUnknownOrigin(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-origin-bad@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Bogus",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "imported",
+		"duration": 60,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
+func TestSessionHandler_UpdateSession_ChangesDate(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-update-date@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Logged climbing",
+		"notes":    "",
+		"activity": 1,
+		"date":     "2026-08-01T10:00:00Z",
+		"duration": 5400,
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+	sessionID := created["ID"].(string)
+
+	updateBody := map[string]interface{}{
+		"name":     "Logged climbing",
+		"notes":    "Moved to the right evening",
+		"duration": 5400,
+		"date":     "2026-08-03T18:30:00Z",
+	}
+	body, _ = json.Marshal(updateBody)
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/sessions/%s", sessionID), body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to update session: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var updated map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&updated)
+
+	assertSessionDate(t, updated, "2026-08-03T18:30:00Z")
+}
+
+func TestSessionHandler_UpdateSession_KeepsDateWhenOmitted(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-keep-date@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Played hangboard",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"date":     "2026-08-01T10:00:00Z",
+		"duration": 600,
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+	sessionID := created["ID"].(string)
+
+	updateBody := map[string]interface{}{
+		"name":     "Played hangboard",
+		"notes":    "Felt strong",
+		"duration": 600,
+	}
+	body, _ = json.Marshal(updateBody)
+	req = testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/sessions/%s", sessionID), body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to update session: %v", err)
+	}
+
+	var updated map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&updated)
+
+	assertSessionDate(t, updated, "2026-08-01T10:00:00Z")
 }

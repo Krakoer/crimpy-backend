@@ -100,6 +100,8 @@ definitions:
     type: object
   handler.CreateSessionRequest:
     properties:
+      activity:
+        type: integer
       assessments:
         items:
           $ref: '#/definitions/handler.AssessmentRequest'
@@ -113,6 +115,10 @@ definitions:
       name:
         type: string
       notes:
+        type: string
+      origin:
+        type: string
+      program_session_id:
         type: string
       rep_datas:
         items:
@@ -130,8 +136,8 @@ definitions:
         type: boolean
       repeater_work_time:
         type: integer
-      session_type:
-        type: integer
+      training_id:
+        type: string
     type: object
   handler.CreateTagRequest:
     properties:
@@ -346,6 +352,8 @@ definitions:
     type: object
   handler.SessionResponse:
     properties:
+      activity:
+        type: integer
       date:
         type: string
       duration:
@@ -357,6 +365,10 @@ definitions:
       name:
         type: string
       notes:
+        type: string
+      origin:
+        type: string
+      program_session_id:
         type: string
       repeater_reps:
         type: integer
@@ -370,8 +382,8 @@ definitions:
         type: boolean
       repeater_work_time:
         type: integer
-      session_type:
-        type: integer
+      training_id:
+        type: string
       user_id:
         type: string
     type: object
@@ -619,6 +631,11 @@ definitions:
     type: object
   handler.UpdateSessionRequest:
     properties:
+      date:
+        description: |-
+          Only logged sessions send a date. Omitted, the stored one is kept, which is
+          what played sessions rely on since their date is fixed by the run.
+        type: string
       duration:
         type: integer
       name:

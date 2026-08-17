@@ -11,9 +11,39 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// How a session came to exist. Set by the client from the code path that
+// produced it, never picked by a user, and mirrored by the sessions_origin_check
+// constraint.
+const (
+	originPlayed = "played"
+	originLogged = "logged"
+)
+
 type SessionHandler struct {
 	queries *db.Queries
 	pool    *pgxpool.Pool
+}
+
+// parseSessionDate accepts both precisions the app sends, and always returns UTC.
+func parseSessionDate(raw string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, raw)
+	}
+	return t.UTC(), err
+}
+
+// optionalUUID converts an omitted or empty id into a null UUID, so a session
+// with no template links stores nulls rather than failing to parse.
+func optionalUUID(raw *string) (pgtype.UUID, error) {
+	var id pgtype.UUID
+	if raw == nil || *raw == "" {
+		return id, nil
+	}
+	if err := id.Scan(*raw); err != nil {
+		return id, err
+	}
+	return id, nil
 }
 
 func NewSessionHandler(queries *db.Queries, pool *pgxpool.Pool) *SessionHandler {
@@ -37,7 +67,10 @@ type CreateSessionRequest struct {
 	Notes             string              `json:"notes"`
 	Date              string              `json:"date,omitempty"`
 	IsAssessment      bool                `json:"is_assessment"`
-	SessionType       int32               `json:"session_type"`
+	Activity          int32               `json:"activity"`
+	Origin            string              `json:"origin,omitempty"`
+	TrainingID        *string             `json:"training_id,omitempty"`
+	ProgramSessionID  *string             `json:"program_session_id,omitempty"`
 	Duration          int32               `json:"duration"`
 	RepeaterSets      *int32              `json:"repeater_sets,omitempty"`
 	RepeaterReps      *int32              `json:"repeater_reps,omitempty"`
@@ -71,23 +104,29 @@ type UpdateSessionRequest struct {
 	Name     string `json:"name"`
 	Notes    string `json:"notes"`
 	Duration int32  `json:"duration"`
+	// Only logged sessions send a date. Omitted, the stored one is kept, which is
+	// what played sessions rely on since their date is fixed by the run.
+	Date string `json:"date,omitempty"`
 }
 
 type SessionResponse struct {
-	ID                int32  `json:"id"`
-	UserID            string `json:"user_id"`
-	Name              string `json:"name"`
-	Notes             string `json:"notes"`
-	Date              string `json:"date"`
-	IsAssessment      bool   `json:"is_assessment"`
-	SessionType       int32  `json:"session_type"`
-	Duration          int32  `json:"duration"`
-	RepeaterSets      *int32 `json:"repeater_sets,omitempty"`
-	RepeaterReps      *int32 `json:"repeater_reps,omitempty"`
-	RepeaterWorkTime  *int32 `json:"repeater_work_time,omitempty"`
-	RepeaterRestTime  *int32 `json:"repeater_rest_time,omitempty"`
-	RepeaterSetRest   *int32 `json:"repeater_set_rest,omitempty"`
-	RepeaterSplitHand *bool  `json:"repeater_split_hand,omitempty"`
+	ID                int32   `json:"id"`
+	UserID            string  `json:"user_id"`
+	Name              string  `json:"name"`
+	Notes             string  `json:"notes"`
+	Date              string  `json:"date"`
+	IsAssessment      bool    `json:"is_assessment"`
+	Activity          int32   `json:"activity"`
+	Origin            string  `json:"origin"`
+	TrainingID        *string `json:"training_id,omitempty"`
+	ProgramSessionID  *string `json:"program_session_id,omitempty"`
+	Duration          int32   `json:"duration"`
+	RepeaterSets      *int32  `json:"repeater_sets,omitempty"`
+	RepeaterReps      *int32  `json:"repeater_reps,omitempty"`
+	RepeaterWorkTime  *int32  `json:"repeater_work_time,omitempty"`
+	RepeaterRestTime  *int32  `json:"repeater_rest_time,omitempty"`
+	RepeaterSetRest   *int32  `json:"repeater_set_rest,omitempty"`
+	RepeaterSplitHand *bool   `json:"repeater_split_hand,omitempty"`
 }
 
 // CreateSession godoc
@@ -118,23 +157,35 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
 	}
 
+	origin := req.Origin
+	if origin == "" {
+		origin = originLogged
+	}
+	if origin != originPlayed && origin != originLogged {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Origin must be played or logged"})
+	}
+
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(userID); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	var sessionDate pgtype.Timestamptz
+	trainingID, err := optionalUUID(req.TrainingID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training ID"})
+	}
+	programSessionID, err := optionalUUID(req.ProgramSessionID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program session ID"})
+	}
+
+	sessionDate := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
 	if req.Date != "" {
-		t, err := time.Parse(time.RFC3339Nano, req.Date)
-		if err != nil {
-			t, err = time.Parse(time.RFC3339, req.Date)
-		}
+		t, err := parseSessionDate(req.Date)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
 		}
-		sessionDate = pgtype.Timestamptz{Time: t.UTC(), Valid: true}
-	} else {
-		sessionDate = pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+		sessionDate = pgtype.Timestamptz{Time: t, Valid: true}
 	}
 
 	var repeaterSets, repeaterReps, repeaterWorkTime, repeaterRestTime, repeaterSetRest pgtype.Int4
@@ -180,7 +231,10 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		Notes:             req.Notes,
 		Date:              sessionDate,
 		IsAssessment:      req.IsAssessment,
-		SessionType:       req.SessionType,
+		Activity:          req.Activity,
+		Origin:            origin,
+		TrainingID:        trainingID,
+		ProgramSessionID:  programSessionID,
 		Duration:          req.Duration,
 		RepeaterSets:      repeaterSets,
 		RepeaterReps:      repeaterReps,
@@ -347,11 +401,21 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
+	var date pgtype.Timestamptz
+	if req.Date != "" {
+		t, err := parseSessionDate(req.Date)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
+		}
+		date = pgtype.Timestamptz{Time: t, Valid: true}
+	}
+
 	updated, err := h.queries.UpdateSession(c.Context(), db.UpdateSessionParams{
 		ID:       sessionUUID,
 		Name:     req.Name,
 		Notes:    req.Notes,
 		Duration: req.Duration,
+		Date:     date,
 	})
 	if err != nil {
 		slog.Error("failed to update session", "session_id", sessionUUID.String(), "error", err)
