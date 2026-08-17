@@ -57,6 +57,7 @@ type RepDataRequest struct {
 	TargetWeight  float32 `json:"target_weight"`
 	Index         int32   `json:"index"`
 	GripPosition  int32   `json:"grip_position"`
+	EdgeSizeMm    *int32  `json:"edge_size_mm,omitempty"`
 }
 
 type AssessmentRequest struct {
@@ -194,6 +195,12 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	}
 
 	for _, rd := range req.RepDatas {
+		var edgeSizeMm pgtype.Int4
+		if rd.EdgeSizeMm != nil {
+			edgeSizeMm.Int32 = *rd.EdgeSizeMm
+			edgeSizeMm.Valid = true
+		}
+
 		_, err := qtx.CreateRepData(c.Context(), db.CreateRepDataParams{
 			UserID:        userUUID,
 			AverageWeight: rd.AverageWeight,
@@ -204,6 +211,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			TargetWeight:  rd.TargetWeight,
 			Index:         rd.Index,
 			GripPosition:  rd.GripPosition,
+			EdgeSizeMm:    edgeSizeMm,
 		})
 		if err != nil {
 			slog.Error("failed to create rep data", "user_id", userID, "session_id", session.ID, "error", err)

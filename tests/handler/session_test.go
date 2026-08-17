@@ -499,3 +499,84 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 		t.Error("Session should still exist for original owner")
 	}
 }
+
+func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session9@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":         "Edge Session",
+		"notes":        "",
+		"session_type": 0,
+		"duration":     60,
+		"rep_datas": []map[string]interface{}{
+			{
+				"average_weight": 30.0,
+				"is_rest":        false,
+				"right_hand":     true,
+				"duration":       7,
+				"target_weight":  35.0,
+				"index":          0,
+				"grip_position":  0,
+				"edge_size_mm":   20,
+			},
+			{
+				"average_weight": 0.0,
+				"is_rest":        true,
+				"right_hand":     true,
+				"duration":       3,
+				"target_weight":  0.0,
+				"index":          1,
+				"grip_position":  0,
+			},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+
+	var createdSession map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&createdSession)
+	sessionID := createdSession["ID"].(string)
+
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	repDatas, ok := response["rep_datas"].([]interface{})
+	if !ok || len(repDatas) != 2 {
+		t.Fatalf("Expected 2 rep datas, got %v", response["rep_datas"])
+	}
+
+	work := repDatas[0].(map[string]interface{})
+	if work["EdgeSizeMm"] != float64(20) {
+		t.Errorf("Expected edge size 20 on the work rep, got %v", work["EdgeSizeMm"])
+	}
+
+	rest := repDatas[1].(map[string]interface{})
+	if rest["EdgeSizeMm"] != nil {
+		t.Errorf("Expected no edge size on the rest rep, got %v", rest["EdgeSizeMm"])
+	}
+}

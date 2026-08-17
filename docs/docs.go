@@ -5050,6 +5050,9 @@ const docTemplate = `{
                 "duration": {
                     "type": "integer"
                 },
+                "edge_size_mm": {
+                    "type": "integer"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
