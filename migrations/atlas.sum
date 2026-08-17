@@ -1,4 +1,4 @@
-h1:6YS4xSkmUJYreRspSl0wnrrSc9krHEFcGSyWIWtzYbk=
+h1:AXMVdrtLsEdjzI26k81QaQ5mnzrEeJFi/iDmAjGAAf4=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -33,3 +33,4 @@ h1:6YS4xSkmUJYreRspSl0wnrrSc9krHEFcGSyWIWtzYbk=
 20260810090000_add_training_item_variable_targets.sql h1:laVV5Mid7nY2LIyP6TuSGE08AdgvG3ww0QAB6US2pfw=
 20260817180000_add_rep_data_edge_size.sql h1:WUPgBwBSeBiwehN5CDTefQy5ddZhgMNdeFX/E5EFb7c=
 20260817190000_split_session_type_into_origin_and_activity.sql h1:wRN6jqnDhAObgTCLaytX051wlBWMNqZxl2Uy8TO0rQw=
+20260817191000_rename_crimpy_training_type_to_hangboard.sql h1:/6Y3WOhAqATev3XbGz5WSe/JM/pjj+Msa25b5mWwMm0=

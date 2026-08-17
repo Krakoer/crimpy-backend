@@ -188,7 +188,7 @@ CREATE TABLE "trainings" (
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "trainings_training_type_check"
-    CHECK (training_type IN ('crimpy', 'climbing', 'stretching', 'workout'))
+    CHECK (training_type IN ('hangboard', 'climbing', 'stretching', 'workout', 'other'))
 );
 
 CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
