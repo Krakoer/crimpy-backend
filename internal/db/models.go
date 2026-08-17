@@ -130,6 +130,7 @@ type RepData struct {
 	TargetWeight  float32
 	Index         int32
 	GripPosition  int32
+	EdgeSizeMm    pgtype.Int4
 	UpdatedAt     pgtype.Timestamptz
 }
 

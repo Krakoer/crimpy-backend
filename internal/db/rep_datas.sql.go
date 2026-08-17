@@ -13,9 +13,9 @@ import (
 
 const createRepData = `-- name: CreateRepData :one
 INSERT INTO rep_datas (
-  user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at
+  user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, updated_at
 `
 
 type CreateRepDataParams struct {
@@ -28,6 +28,7 @@ type CreateRepDataParams struct {
 	TargetWeight  float32
 	Index         int32
 	GripPosition  int32
+	EdgeSizeMm    pgtype.Int4
 }
 
 func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (RepData, error) {
@@ -41,6 +42,7 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		arg.TargetWeight,
 		arg.Index,
 		arg.GripPosition,
+		arg.EdgeSizeMm,
 	)
 	var i RepData
 	err := row.Scan(
@@ -54,13 +56,14 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		&i.TargetWeight,
 		&i.Index,
 		&i.GripPosition,
+		&i.EdgeSizeMm,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
-SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
+SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
 `
 
 func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) ([]RepData, error) {
@@ -83,6 +86,7 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 			&i.TargetWeight,
 			&i.Index,
 			&i.GripPosition,
+			&i.EdgeSizeMm,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err

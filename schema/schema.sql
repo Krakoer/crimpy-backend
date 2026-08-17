@@ -81,6 +81,9 @@ CREATE TABLE "rep_datas" (
   "target_weight"  REAL        NOT NULL,
   "index"          INTEGER     NOT NULL,
   "grip_position"  INTEGER     NOT NULL DEFAULT 0,
+  -- Depth in millimeters of the edge the rep was pulled on, null when the step
+  -- prescribes no edge (rests, exercises done off the hangboard).
+  "edge_size_mm"   INTEGER,
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
