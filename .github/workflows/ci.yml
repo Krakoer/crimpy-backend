@@ -43,8 +43,11 @@ jobs:
           sqlc version
 
       - name: Install Atlas
+        env:
+          ATLAS_VERSION: v1.3.0
         run: |
           curl -sSf https://atlasgo.sh | sh
+          atlas version
 
       - name: Generate sqlc code
         run: sqlc generate
@@ -54,6 +57,15 @@ jobs:
           DATABASE_URL: postgres://user:pass@localhost:5432/crimpy?sslmode=disable
         run: |
           atlas migrate apply --url "$DATABASE_URL" --dir "file://migrations"
+
+      - name: Check migrations are in sync with schema
+        run: |
+          atlas migrate diff ci_drift_check --env dev
+          if [ -n "$(git status --porcelain migrations)" ]; then
+            echo "migrations/ has drifted from schema/schema.sql, run 'just make_migration <name>' and commit the result:"
+            git status --porcelain migrations
+            exit 1
+          fi
 
       - name: Check code formatting
         run: |
