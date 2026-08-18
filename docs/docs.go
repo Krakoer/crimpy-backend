@@ -366,8 +366,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.AssessmentListItem"
                             }
                         }
                     },
@@ -928,8 +927,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.AssessmentListItem"
                             }
                         }
                     },
@@ -1587,8 +1585,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.SessionListItem"
                             }
                         }
                     },
@@ -4583,6 +4580,38 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.AssessmentListItem": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.AssessmentRequest": {
             "type": "object",
             "properties": {
@@ -5099,61 +5128,61 @@ const docTemplate = `{
         "handler.SessionListItem": {
             "type": "object",
             "properties": {
-                "Activity": {
+                "activity": {
                     "type": "integer"
                 },
-                "Date": {
+                "date": {
                     "type": "string"
                 },
-                "Duration": {
+                "duration": {
                     "type": "integer"
                 },
-                "ID": {
+                "id": {
                     "type": "string"
                 },
-                "IsAssessment": {
+                "is_assessment": {
                     "type": "boolean"
                 },
-                "Name": {
+                "name": {
                     "type": "string"
                 },
-                "Notes": {
+                "notes": {
                     "type": "string"
                 },
-                "Origin": {
+                "origin": {
                     "type": "string"
                 },
-                "ProgramSessionID": {
+                "program_session_id": {
                     "type": "string"
                 },
-                "RepCount": {
+                "rep_count": {
                     "type": "integer"
                 },
-                "RepeaterReps": {
+                "repeater_reps": {
                     "type": "integer"
                 },
-                "RepeaterRestTime": {
+                "repeater_rest_time": {
                     "type": "integer"
                 },
-                "RepeaterSetRest": {
+                "repeater_set_rest": {
                     "type": "integer"
                 },
-                "RepeaterSets": {
+                "repeater_sets": {
                     "type": "integer"
                 },
-                "RepeaterSplitHand": {
+                "repeater_split_hand": {
                     "type": "boolean"
                 },
-                "RepeaterWorkTime": {
+                "repeater_work_time": {
                     "type": "integer"
                 },
-                "TrainingID": {
+                "training_id": {
                     "type": "string"
                 },
-                "UpdatedAt": {
+                "updated_at": {
                     "type": "string"
                 },
-                "UserID": {
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -5186,58 +5215,58 @@ const docTemplate = `{
         "handler.SessionResponse": {
             "type": "object",
             "properties": {
-                "Activity": {
+                "activity": {
                     "type": "integer"
                 },
-                "Date": {
+                "date": {
                     "type": "string"
                 },
-                "Duration": {
+                "duration": {
                     "type": "integer"
                 },
-                "ID": {
+                "id": {
                     "type": "string"
                 },
-                "IsAssessment": {
+                "is_assessment": {
                     "type": "boolean"
                 },
-                "Name": {
+                "name": {
                     "type": "string"
                 },
-                "Notes": {
+                "notes": {
                     "type": "string"
                 },
-                "Origin": {
+                "origin": {
                     "type": "string"
                 },
-                "ProgramSessionID": {
+                "program_session_id": {
                     "type": "string"
                 },
-                "RepeaterReps": {
+                "repeater_reps": {
                     "type": "integer"
                 },
-                "RepeaterRestTime": {
+                "repeater_rest_time": {
                     "type": "integer"
                 },
-                "RepeaterSetRest": {
+                "repeater_set_rest": {
                     "type": "integer"
                 },
-                "RepeaterSets": {
+                "repeater_sets": {
                     "type": "integer"
                 },
-                "RepeaterSplitHand": {
+                "repeater_split_hand": {
                     "type": "boolean"
                 },
-                "RepeaterWorkTime": {
+                "repeater_work_time": {
                     "type": "integer"
                 },
-                "TrainingID": {
+                "training_id": {
                     "type": "string"
                 },
-                "UpdatedAt": {
+                "updated_at": {
                     "type": "string"
                 },
-                "UserID": {
+                "user_id": {
                     "type": "string"
                 }
             }

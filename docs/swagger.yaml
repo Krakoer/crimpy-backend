@@ -1,5 +1,26 @@
 basePath: /
 definitions:
+  handler.AssessmentListItem:
+    properties:
+      grip_position:
+        type: integer
+      id:
+        type: string
+      left_value:
+        type: number
+      right_value:
+        type: number
+      session_date:
+        type: string
+      session_id:
+        type: string
+      type:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.AssessmentRequest:
     properties:
       grip_position:
@@ -336,43 +357,43 @@ definitions:
     type: object
   handler.SessionListItem:
     properties:
-      Activity:
+      activity:
         type: integer
-      Date:
+      date:
         type: string
-      Duration:
+      duration:
         type: integer
-      ID:
+      id:
         type: string
-      IsAssessment:
+      is_assessment:
         type: boolean
-      Name:
+      name:
         type: string
-      Notes:
+      notes:
         type: string
-      Origin:
+      origin:
         type: string
-      ProgramSessionID:
+      program_session_id:
         type: string
-      RepCount:
+      rep_count:
         type: integer
-      RepeaterReps:
+      repeater_reps:
         type: integer
-      RepeaterRestTime:
+      repeater_rest_time:
         type: integer
-      RepeaterSetRest:
+      repeater_set_rest:
         type: integer
-      RepeaterSets:
+      repeater_sets:
         type: integer
-      RepeaterSplitHand:
+      repeater_split_hand:
         type: boolean
-      RepeaterWorkTime:
+      repeater_work_time:
         type: integer
-      TrainingID:
+      training_id:
         type: string
-      UpdatedAt:
+      updated_at:
         type: string
-      UserID:
+      user_id:
         type: string
     type: object
   handler.SessionOverrideRequest:
@@ -393,41 +414,41 @@ definitions:
     type: object
   handler.SessionResponse:
     properties:
-      Activity:
+      activity:
         type: integer
-      Date:
+      date:
         type: string
-      Duration:
+      duration:
         type: integer
-      ID:
+      id:
         type: string
-      IsAssessment:
+      is_assessment:
         type: boolean
-      Name:
+      name:
         type: string
-      Notes:
+      notes:
         type: string
-      Origin:
+      origin:
         type: string
-      ProgramSessionID:
+      program_session_id:
         type: string
-      RepeaterReps:
+      repeater_reps:
         type: integer
-      RepeaterRestTime:
+      repeater_rest_time:
         type: integer
-      RepeaterSetRest:
+      repeater_set_rest:
         type: integer
-      RepeaterSets:
+      repeater_sets:
         type: integer
-      RepeaterSplitHand:
+      repeater_split_hand:
         type: boolean
-      RepeaterWorkTime:
+      repeater_work_time:
         type: integer
-      TrainingID:
+      training_id:
         type: string
-      UpdatedAt:
+      updated_at:
         type: string
-      UserID:
+      user_id:
         type: string
     type: object
   handler.SetExerciseFavoriteRequest:
@@ -1074,8 +1095,7 @@ paths:
           description: List of assessments
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.AssessmentListItem'
             type: array
         "401":
           description: Unauthorized
@@ -1440,8 +1460,7 @@ paths:
           description: List of assessments
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.AssessmentListItem'
             type: array
         "403":
           description: Not a coach or user not enrolled
@@ -1872,8 +1891,7 @@ paths:
           description: List of sessions
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.SessionListItem'
             type: array
         "403":
           description: Not a coach or user not enrolled

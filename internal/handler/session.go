@@ -163,35 +163,242 @@ type UpdateSessionRequest struct {
 	Date string `json:"date,omitempty"`
 }
 
-// SessionResponse documents the JSON the session endpoints return. They hand
-// the generated row back as it is, so every key is the Go field name rather than
-// the snake_case the request bodies use.
+// SessionResponse is the JSON a session is returned as. It is a mapped shape
+// rather than the generated row, so reads speak the same snake_case the request
+// bodies do.
 type SessionResponse struct {
-	ID                string  `json:"ID"`
-	UserID            string  `json:"UserID"`
-	Name              string  `json:"Name"`
-	Notes             string  `json:"Notes"`
-	Date              string  `json:"Date"`
-	IsAssessment      bool    `json:"IsAssessment"`
-	Activity          int32   `json:"Activity"`
-	Origin            string  `json:"Origin"`
-	TrainingID        *string `json:"TrainingID"`
-	ProgramSessionID  *string `json:"ProgramSessionID"`
-	Duration          int32   `json:"Duration"`
-	RepeaterSets      *int32  `json:"RepeaterSets"`
-	RepeaterReps      *int32  `json:"RepeaterReps"`
-	RepeaterWorkTime  *int32  `json:"RepeaterWorkTime"`
-	RepeaterRestTime  *int32  `json:"RepeaterRestTime"`
-	RepeaterSetRest   *int32  `json:"RepeaterSetRest"`
-	RepeaterSplitHand *bool   `json:"RepeaterSplitHand"`
-	UpdatedAt         string  `json:"UpdatedAt"`
+	ID                string  `json:"id"`
+	UserID            string  `json:"user_id"`
+	Name              string  `json:"name"`
+	Notes             string  `json:"notes"`
+	Date              string  `json:"date"`
+	IsAssessment      bool    `json:"is_assessment"`
+	Activity          int32   `json:"activity"`
+	Origin            string  `json:"origin"`
+	TrainingID        *string `json:"training_id,omitempty"`
+	ProgramSessionID  *string `json:"program_session_id,omitempty"`
+	Duration          int32   `json:"duration"`
+	RepeaterSets      *int32  `json:"repeater_sets,omitempty"`
+	RepeaterReps      *int32  `json:"repeater_reps,omitempty"`
+	RepeaterWorkTime  *int32  `json:"repeater_work_time,omitempty"`
+	RepeaterRestTime  *int32  `json:"repeater_rest_time,omitempty"`
+	RepeaterSetRest   *int32  `json:"repeater_set_rest,omitempty"`
+	RepeaterSplitHand *bool   `json:"repeater_split_hand,omitempty"`
+	UpdatedAt         string  `json:"updated_at"`
 }
 
-// SessionListItem is a session as the list endpoint returns it, with the rep
+// SessionListItem is a session as the list endpoints return it, with the rep
 // count the list query carries alongside the row.
 type SessionListItem struct {
 	SessionResponse
-	RepCount int64 `json:"RepCount"`
+	RepCount int64 `json:"rep_count"`
+}
+
+// sessionFields maps the columns every session shape shares. The list row and
+// the plain row are separate generated types holding the same columns, so the
+// two mappers below feed this rather than duplicating it.
+type sessionFields struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	Name              string
+	Notes             string
+	Date              pgtype.Timestamptz
+	IsAssessment      bool
+	Activity          int32
+	Origin            string
+	TrainingID        pgtype.UUID
+	ProgramSessionID  pgtype.UUID
+	Duration          int32
+	RepeaterSets      pgtype.Int4
+	RepeaterReps      pgtype.Int4
+	RepeaterWorkTime  pgtype.Int4
+	RepeaterRestTime  pgtype.Int4
+	RepeaterSetRest   pgtype.Int4
+	RepeaterSplitHand pgtype.Bool
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func optionalUUIDString(id pgtype.UUID) *string {
+	if !id.Valid {
+		return nil
+	}
+	s := id.String()
+	return &s
+}
+
+func optionalInt32(v pgtype.Int4) *int32 {
+	if !v.Valid {
+		return nil
+	}
+	return &v.Int32
+}
+
+func (f sessionFields) toResponse() SessionResponse {
+	resp := SessionResponse{
+		ID:               f.ID.String(),
+		UserID:           f.UserID.String(),
+		Name:             f.Name,
+		Notes:            f.Notes,
+		Date:             f.Date.Time.UTC().Format(time.RFC3339),
+		IsAssessment:     f.IsAssessment,
+		Activity:         f.Activity,
+		Origin:           f.Origin,
+		TrainingID:       optionalUUIDString(f.TrainingID),
+		ProgramSessionID: optionalUUIDString(f.ProgramSessionID),
+		Duration:         f.Duration,
+		RepeaterSets:     optionalInt32(f.RepeaterSets),
+		RepeaterReps:     optionalInt32(f.RepeaterReps),
+		RepeaterWorkTime: optionalInt32(f.RepeaterWorkTime),
+		RepeaterRestTime: optionalInt32(f.RepeaterRestTime),
+		RepeaterSetRest:  optionalInt32(f.RepeaterSetRest),
+		UpdatedAt:        f.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if f.RepeaterSplitHand.Valid {
+		resp.RepeaterSplitHand = &f.RepeaterSplitHand.Bool
+	}
+	return resp
+}
+
+func sessionToResponse(s db.Session) SessionResponse {
+	return sessionFields(s).toResponse()
+}
+
+func sessionRowToListItem(r db.GetUserSessionsRow) SessionListItem {
+	return SessionListItem{
+		SessionResponse: sessionFields{
+			ID:                r.ID,
+			UserID:            r.UserID,
+			Name:              r.Name,
+			Notes:             r.Notes,
+			Date:              r.Date,
+			IsAssessment:      r.IsAssessment,
+			Activity:          r.Activity,
+			Origin:            r.Origin,
+			TrainingID:        r.TrainingID,
+			ProgramSessionID:  r.ProgramSessionID,
+			Duration:          r.Duration,
+			RepeaterSets:      r.RepeaterSets,
+			RepeaterReps:      r.RepeaterReps,
+			RepeaterWorkTime:  r.RepeaterWorkTime,
+			RepeaterRestTime:  r.RepeaterRestTime,
+			RepeaterSetRest:   r.RepeaterSetRest,
+			RepeaterSplitHand: r.RepeaterSplitHand,
+			UpdatedAt:         r.UpdatedAt,
+		}.toResponse(),
+		RepCount: r.RepCount,
+	}
+}
+
+// RepDataResponse is a repetition as the session endpoints return it.
+type RepDataResponse struct {
+	ID            string  `json:"id"`
+	SessionID     string  `json:"session_id"`
+	AverageWeight float32 `json:"average_weight"`
+	TargetWeight  float32 `json:"target_weight"`
+	Duration      int32   `json:"duration"`
+	Index         int32   `json:"index"`
+	IsRest        bool    `json:"is_rest"`
+	RightHand     bool    `json:"right_hand"`
+	GripPosition  int32   `json:"grip_position"`
+	EdgeSizeMm    *int32  `json:"edge_size_mm,omitempty"`
+	UpdatedAt     string  `json:"updated_at"`
+}
+
+func repDataToResponse(r db.RepData) RepDataResponse {
+	return RepDataResponse{
+		ID:            r.ID.String(),
+		SessionID:     r.SessionID.String(),
+		AverageWeight: r.AverageWeight,
+		TargetWeight:  r.TargetWeight,
+		Duration:      r.Duration,
+		Index:         r.Index,
+		IsRest:        r.IsRest,
+		RightHand:     r.RightHand,
+		GripPosition:  r.GripPosition,
+		EdgeSizeMm:    optionalInt32(r.EdgeSizeMm),
+		UpdatedAt:     r.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+}
+
+func repDatasToResponses(rows []db.RepData) []RepDataResponse {
+	items := make([]RepDataResponse, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, repDataToResponse(r))
+	}
+	return items
+}
+
+// AssessmentResponse is an assessment result as the endpoints return it.
+type AssessmentResponse struct {
+	ID           string   `json:"id"`
+	UserID       string   `json:"user_id"`
+	SessionID    string   `json:"session_id"`
+	Type         int32    `json:"type"`
+	RightValue   *float32 `json:"right_value,omitempty"`
+	LeftValue    *float32 `json:"left_value,omitempty"`
+	GripPosition *int32   `json:"grip_position,omitempty"`
+	UpdatedAt    string   `json:"updated_at"`
+}
+
+func assessmentToResponse(a db.Assessment) AssessmentResponse {
+	resp := AssessmentResponse{
+		ID:           a.ID.String(),
+		UserID:       a.UserID.String(),
+		SessionID:    a.SessionID.String(),
+		Type:         a.Type,
+		GripPosition: optionalInt32(a.GripPosition),
+		UpdatedAt:    a.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if a.RightValue.Valid {
+		resp.RightValue = &a.RightValue.Float32
+	}
+	if a.LeftValue.Valid {
+		resp.LeftValue = &a.LeftValue.Float32
+	}
+	return resp
+}
+
+// AssessmentListItem is an assessment as the list endpoints return it, with the
+// date of the session it was measured in.
+type AssessmentListItem struct {
+	AssessmentResponse
+	SessionDate string `json:"session_date"`
+}
+
+func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentListItem {
+	items := make([]AssessmentListItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, AssessmentListItem{
+			AssessmentResponse: assessmentToResponse(db.Assessment{
+				ID:           r.ID,
+				UserID:       r.UserID,
+				Type:         r.Type,
+				RightValue:   r.RightValue,
+				LeftValue:    r.LeftValue,
+				SessionID:    r.SessionID,
+				GripPosition: r.GripPosition,
+				UpdatedAt:    r.UpdatedAt,
+			}),
+			SessionDate: r.SessionDate.Time.UTC().Format(time.RFC3339),
+		})
+	}
+	return items
+}
+
+func assessmentsToResponses(rows []db.Assessment) []AssessmentResponse {
+	items := make([]AssessmentResponse, 0, len(rows))
+	for _, a := range rows {
+		items = append(items, assessmentToResponse(a))
+	}
+	return items
+}
+
+func sessionRowsToListItems(rows []db.GetUserSessionsRow) []SessionListItem {
+	items := make([]SessionListItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, sessionRowToListItem(r))
+	}
+	return items
 }
 
 // CreateSession godoc
@@ -383,7 +590,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize session"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(session)
+	return c.Status(fiber.StatusCreated).JSON(sessionToResponse(session))
 }
 
 // GetSessions godoc
@@ -414,10 +621,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
 	}
 
-	if sessions == nil {
-		sessions = []db.GetUserSessionsRow{}
-	}
-	return c.JSON(sessions)
+	return c.JSON(sessionRowsToListItems(sessions))
 }
 
 // GetSession godoc
@@ -443,9 +647,9 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
 
 	return c.JSON(fiber.Map{
-		"session":     session,
-		"rep_datas":   repDatas,
-		"assessments": assessments,
+		"session":     sessionToResponse(session),
+		"rep_datas":   repDatasToResponses(repDatas),
+		"assessments": assessmentsToResponses(assessments),
 	})
 }
 
@@ -496,7 +700,7 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update session"})
 	}
 
-	return c.JSON(updated)
+	return c.JSON(sessionToResponse(updated))
 }
 
 // DeleteSession godoc

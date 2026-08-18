@@ -49,12 +49,12 @@ func TestSessionHandler_CreateSession_Success(t *testing.T) {
 	var session map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&session)
 
-	if session["Name"] != "Test Session" {
-		t.Errorf("Expected name 'Test Session', got %v", session["Name"])
+	if session["name"] != "Test Session" {
+		t.Errorf("Expected name 'Test Session', got %v", session["name"])
 	}
 
-	if session["UserID"] != userID {
-		t.Errorf("Expected user_id '%s', got %v", userID, session["UserID"])
+	if session["user_id"] != userID {
+		t.Errorf("Expected user_id '%s', got %v", userID, session["user_id"])
 	}
 }
 
@@ -163,7 +163,16 @@ func TestSessionHandler_GetSessions_Success(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&sessions)
 
 	if len(sessions) == 0 {
-		t.Error("Expected at least one session")
+		t.Fatal("Expected at least one session")
+	}
+
+	// The app reads the rep count from the list rather than fetching every
+	// session's reps, so the key has to be there even when nothing was recorded.
+	if _, ok := sessions[0]["rep_count"]; !ok {
+		t.Errorf("Expected a rep_count on the listed session, got %v", sessions[0])
+	}
+	if sessions[0]["origin"] == nil {
+		t.Errorf("Expected an origin on the listed session, got %v", sessions[0])
 	}
 }
 
@@ -197,7 +206,7 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	// Get the session
 	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
@@ -220,8 +229,8 @@ func TestSessionHandler_GetSession_Success(t *testing.T) {
 		t.Fatal("Expected session object in response")
 	}
 
-	if session["Name"] != "Test Session" {
-		t.Errorf("Expected name 'Test Session', got %v", session["Name"])
+	if session["name"] != "Test Session" {
+		t.Errorf("Expected name 'Test Session', got %v", session["name"])
 	}
 }
 
@@ -256,7 +265,7 @@ func TestSessionHandler_GetSession_UserIsolation(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	// User 2 tries to access User 1's session
 	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
@@ -303,7 +312,7 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	// Update the session
 	updateBody := map[string]interface{}{
@@ -327,12 +336,12 @@ func TestSessionHandler_UpdateSession_Success(t *testing.T) {
 	var updatedSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&updatedSession)
 
-	if updatedSession["Name"] != "Updated Session" {
-		t.Errorf("Expected name 'Updated Session', got %v", updatedSession["Name"])
+	if updatedSession["name"] != "Updated Session" {
+		t.Errorf("Expected name 'Updated Session', got %v", updatedSession["name"])
 	}
 
-	if updatedSession["Notes"] != "Updated notes" {
-		t.Errorf("Expected notes 'Updated notes', got %v", updatedSession["Notes"])
+	if updatedSession["notes"] != "Updated notes" {
+		t.Errorf("Expected notes 'Updated notes', got %v", updatedSession["notes"])
 	}
 }
 
@@ -367,7 +376,7 @@ func TestSessionHandler_UpdateSession_UserIsolation(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	// User 2 tries to update User 1's session
 	updateBody := map[string]interface{}{
@@ -419,7 +428,7 @@ func TestSessionHandler_DeleteSession_Success(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	// Delete the session
 	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
@@ -475,7 +484,7 @@ func TestSessionHandler_DeleteSession_UserIsolation(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	// User 2 tries to delete User 1's session
 	req = testutil.NewRequest(http.MethodDelete, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
@@ -554,7 +563,7 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 
 	var createdSession map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&createdSession)
-	sessionID := createdSession["ID"].(string)
+	sessionID := createdSession["id"].(string)
 
 	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
 	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
@@ -572,13 +581,13 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 	}
 
 	work := repDatas[0].(map[string]interface{})
-	if work["EdgeSizeMm"] != float64(20) {
-		t.Errorf("Expected edge size 20 on the work rep, got %v", work["EdgeSizeMm"])
+	if work["edge_size_mm"] != float64(20) {
+		t.Errorf("Expected edge size 20 on the work rep, got %v", work["edge_size_mm"])
 	}
 
 	rest := repDatas[1].(map[string]interface{})
-	if rest["EdgeSizeMm"] != nil {
-		t.Errorf("Expected no edge size on the rest rep, got %v", rest["EdgeSizeMm"])
+	if rest["edge_size_mm"] != nil {
+		t.Errorf("Expected no edge size on the rest rep, got %v", rest["edge_size_mm"])
 	}
 }
 
@@ -593,7 +602,7 @@ func assertSessionDate(t *testing.T, session map[string]interface{}, wantRFC3339
 		t.Fatalf("Bad expected date %q: %v", wantRFC3339, err)
 	}
 
-	raw, _ := session["Date"].(string)
+	raw, _ := session["date"].(string)
 	got, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
 		t.Fatalf("Could not parse returned date %q: %v", raw, err)
@@ -640,11 +649,11 @@ func TestSessionHandler_CreateSession_DefaultsToLoggedOrigin(t *testing.T) {
 	var session map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&session)
 
-	if session["Origin"] != "logged" {
-		t.Errorf("Expected origin 'logged', got %v", session["Origin"])
+	if session["origin"] != "logged" {
+		t.Errorf("Expected origin 'logged', got %v", session["origin"])
 	}
-	if session["Activity"] != float64(4) {
-		t.Errorf("Expected activity 4, got %v", session["Activity"])
+	if session["activity"] != float64(4) {
+		t.Errorf("Expected activity 4, got %v", session["activity"])
 	}
 }
 
@@ -685,8 +694,8 @@ func TestSessionHandler_CreateSession_PlayedOriginIsStored(t *testing.T) {
 	var session map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&session)
 
-	if session["Origin"] != "played" {
-		t.Errorf("Expected origin 'played', got %v", session["Origin"])
+	if session["origin"] != "played" {
+		t.Errorf("Expected origin 'played', got %v", session["origin"])
 	}
 }
 
@@ -932,7 +941,7 @@ func TestSessionHandler_UpdateSession_ChangesDate(t *testing.T) {
 
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
-	sessionID := created["ID"].(string)
+	sessionID := created["id"].(string)
 
 	updateBody := map[string]interface{}{
 		"name":     "Logged climbing",
@@ -990,7 +999,7 @@ func TestSessionHandler_UpdateSession_KeepsDateWhenOmitted(t *testing.T) {
 
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
-	sessionID := created["ID"].(string)
+	sessionID := created["id"].(string)
 
 	updateBody := map[string]interface{}{
 		"name":     "Played hangboard",
