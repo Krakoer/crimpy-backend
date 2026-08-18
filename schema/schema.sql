@@ -69,6 +69,7 @@ CREATE TABLE "sessions" (
   "repeater_split_hand" BOOLEAN,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
+  CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
   CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged'))
 );
 
