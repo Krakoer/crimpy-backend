@@ -36,6 +36,13 @@ CREATE UNIQUE INDEX "refresh_tokens_token_hash_key" ON "refresh_tokens" ("token_
 CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
 
 -- Stores the training sessions the user has done.
+--
+-- Two independent columns describe a session. "activity" is what was done and is
+-- a label only: it drives colors, filters and the week histogram, never what the
+-- app permits. "origin" is how the session came to exist and is set by the code
+-- path that wrote it, never chosen by a coach or an athlete. Any activity can
+-- have either origin, so a hangboard session played in the app and a run logged
+-- by hand are both first class.
 CREATE TABLE "sessions" (
   "id"                  UUID        NOT NULL DEFAULT gen_random_uuid(),
   "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
@@ -43,7 +50,16 @@ CREATE TABLE "sessions" (
   "notes"               TEXT        NOT NULL,
   "date"                TIMESTAMPTZ NOT NULL DEFAULT now(),
   "is_assessment"       BOOLEAN     NOT NULL DEFAULT false,
-  "session_type"        INTEGER     NOT NULL DEFAULT 0,
+  -- 0 hangboard, 1 climbing, 2 stretching, 3 workout, 4 other.
+  "activity"            INTEGER     NOT NULL DEFAULT 0,
+  -- 'played': run step by step in the app, so it owns its reps and timings and
+  -- only its notes may be edited. 'logged': entered by hand afterwards, so every
+  -- field stays editable.
+  "origin"              TEXT        NOT NULL DEFAULT 'logged',
+  -- What the session was played from, so it can be shown against what was
+  -- prescribed. Both null for logged sessions, and for templates deleted since.
+  "training_id"         UUID,
+  "program_session_id"  UUID,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
   "repeater_sets"       INTEGER,
   "repeater_reps"       INTEGER,
@@ -52,7 +68,9 @@ CREATE TABLE "sessions" (
   "repeater_set_rest"   INTEGER,
   "repeater_split_hand" BOOLEAN,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
+  CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged'))
 );
 
 -- Stores the assessments the user has done, with the results.
@@ -171,7 +189,7 @@ CREATE TABLE "trainings" (
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "trainings_training_type_check"
-    CHECK (training_type IN ('crimpy', 'climbing', 'stretching', 'workout'))
+    CHECK (training_type IN ('hangboard', 'climbing', 'stretching', 'workout', 'other'))
 );
 
 CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
@@ -354,8 +372,20 @@ CREATE TABLE "coach_program_session_overrides" (
 
 CREATE INDEX "coach_program_session_overrides_session_id_idx" ON "coach_program_session_overrides"("session_id");
 
+-- Declared here rather than inline on "sessions" because both targets are
+-- created further down this file.
+ALTER TABLE "sessions"
+  ADD CONSTRAINT "sessions_training_id_fkey"
+  FOREIGN KEY ("training_id") REFERENCES "trainings"("id") ON DELETE SET NULL;
+
+ALTER TABLE "sessions"
+  ADD CONSTRAINT "sessions_program_session_id_fkey"
+  FOREIGN KEY ("program_session_id") REFERENCES "coach_program_week_sessions"("id") ON DELETE SET NULL;
+
 -- Indexes for foreign keys to improve query performance
 CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
+CREATE INDEX "sessions_training_id_idx" ON "sessions"("training_id");
+CREATE INDEX "sessions_program_session_id_idx" ON "sessions"("program_session_id");
 CREATE INDEX "assessments_session_id_idx" ON "assessments"("session_id");
 CREATE INDEX "assessments_user_id_idx" ON "assessments"("user_id");
 CREATE INDEX "rep_datas_session_id_idx" ON "rep_datas"("session_id");

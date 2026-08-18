@@ -1,5 +1,26 @@
 basePath: /
 definitions:
+  handler.AssessmentListItem:
+    properties:
+      grip_position:
+        type: integer
+      id:
+        type: string
+      left_value:
+        type: number
+      right_value:
+        type: number
+      session_date:
+        type: string
+      session_id:
+        type: string
+      type:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.AssessmentRequest:
     properties:
       grip_position:
@@ -100,6 +121,8 @@ definitions:
     type: object
   handler.CreateSessionRequest:
     properties:
+      activity:
+        type: integer
       assessments:
         items:
           $ref: '#/definitions/handler.AssessmentRequest'
@@ -113,6 +136,10 @@ definitions:
       name:
         type: string
       notes:
+        type: string
+      origin:
+        type: string
+      program_session_id:
         type: string
       rep_datas:
         items:
@@ -130,8 +157,8 @@ definitions:
         type: boolean
       repeater_work_time:
         type: integer
-      session_type:
-        type: integer
+      training_id:
+        type: string
     type: object
   handler.CreateTagRequest:
     properties:
@@ -328,6 +355,47 @@ definitions:
       email:
         type: string
     type: object
+  handler.SessionListItem:
+    properties:
+      activity:
+        type: integer
+      date:
+        type: string
+      duration:
+        type: integer
+      id:
+        type: string
+      is_assessment:
+        type: boolean
+      name:
+        type: string
+      notes:
+        type: string
+      origin:
+        type: string
+      program_session_id:
+        type: string
+      rep_count:
+        type: integer
+      repeater_reps:
+        type: integer
+      repeater_rest_time:
+        type: integer
+      repeater_set_rest:
+        type: integer
+      repeater_sets:
+        type: integer
+      repeater_split_hand:
+        type: boolean
+      repeater_work_time:
+        type: integer
+      training_id:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.SessionOverrideRequest:
     properties:
       item_id:
@@ -346,17 +414,23 @@ definitions:
     type: object
   handler.SessionResponse:
     properties:
+      activity:
+        type: integer
       date:
         type: string
       duration:
         type: integer
       id:
-        type: integer
+        type: string
       is_assessment:
         type: boolean
       name:
         type: string
       notes:
+        type: string
+      origin:
+        type: string
+      program_session_id:
         type: string
       repeater_reps:
         type: integer
@@ -370,8 +444,10 @@ definitions:
         type: boolean
       repeater_work_time:
         type: integer
-      session_type:
-        type: integer
+      training_id:
+        type: string
+      updated_at:
+        type: string
       user_id:
         type: string
     type: object
@@ -619,6 +695,11 @@ definitions:
     type: object
   handler.UpdateSessionRequest:
     properties:
+      date:
+        description: |-
+          Only logged sessions send a date. Omitted, the stored one is kept, which is
+          what played sessions rely on since their date is fixed by the run.
+        type: string
       duration:
         type: integer
       name:
@@ -1014,8 +1095,7 @@ paths:
           description: List of assessments
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.AssessmentListItem'
             type: array
         "401":
           description: Unauthorized
@@ -1380,8 +1460,7 @@ paths:
           description: List of assessments
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.AssessmentListItem'
             type: array
         "403":
           description: Not a coach or user not enrolled
@@ -1812,8 +1891,7 @@ paths:
           description: List of sessions
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.SessionListItem'
             type: array
         "403":
           description: Not a coach or user not enrolled
@@ -2868,7 +2946,8 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve all training sessions for the authenticated user
+      description: Retrieve all training sessions for the authenticated user, each
+        with its rep count
       produces:
       - application/json
       responses:
@@ -2876,7 +2955,7 @@ paths:
           description: List of sessions
           schema:
             items:
-              $ref: '#/definitions/handler.SessionResponse'
+              $ref: '#/definitions/handler.SessionListItem'
             type: array
         "401":
           description: Unauthorized
@@ -2922,6 +3001,12 @@ paths:
             type: object
         "401":
           description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Training or program session not available to the user
           schema:
             additionalProperties:
               type: string

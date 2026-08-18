@@ -115,7 +115,7 @@ go fmt ./...          # Format all Go files (required after editing)
 
 **Testing:** Tests are external (`package handler_test`) and isolated from production code. The `testutil` package provides database setup/cleanup and test user creation. All tests run against the dev PostgreSQL instance with automatic cleanup of test data (emails matching `%test%`).
 
-**JSON Field Names:** Database models return Go struct fields with capitalized names (e.g., `ID`, `UserID`, `Name`). When asserting JSON responses in tests, use capitalized field names.
+**JSON Field Names:** The API speaks snake_case in both directions. Never serialize a `db.*` row straight to JSON, since that leaks Go field names: map it to a response struct with explicit `json:"snake_case"` tags, the way `sessionToResponse` and `programToResponse` do. Assert snake_case keys in tests.
 
 ### Authentication Flow
 

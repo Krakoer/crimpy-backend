@@ -164,10 +164,11 @@ func hasJSONValue(raw json.RawMessage) bool {
 // validTrainingTypes is the set of accepted training_type values. It mirrors the
 // trainings_training_type_check constraint in schema/schema.sql.
 var validTrainingTypes = map[string]bool{
-	"crimpy":     true,
+	"hangboard":  true,
 	"climbing":   true,
 	"stretching": true,
 	"workout":    true,
+	"other":      true,
 }
 
 // normalizeTrainingType defaults an omitted type and rejects unknown ones.

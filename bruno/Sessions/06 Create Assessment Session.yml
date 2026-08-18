@@ -17,7 +17,7 @@ http:
         "notes": "Monthly strength test",
         "date": "2026-05-28T10:00:00Z",
         "is_assessment": true,
-        "session_type": 0,
+        "activity": 0,
         "duration": 1800,
         "rep_datas": [
           { "average_weight": 24.3, "is_rest": false, "right_hand": true,  "duration": 7000, "target_weight": 25.0, "index": 0, "grip_position": 0 },

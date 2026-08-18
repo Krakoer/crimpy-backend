@@ -366,8 +366,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.AssessmentListItem"
                             }
                         }
                     },
@@ -928,8 +927,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.AssessmentListItem"
                             }
                         }
                     },
@@ -1587,8 +1585,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.SessionListItem"
                             }
                         }
                     },
@@ -3204,7 +3201,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all training sessions for the authenticated user",
+                "description": "Retrieve all training sessions for the authenticated user, each with its rep count",
                 "consumes": [
                     "application/json"
                 ],
@@ -3221,7 +3218,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handler.SessionResponse"
+                                "$ref": "#/definitions/handler.SessionListItem"
                             }
                         }
                     },
@@ -3291,6 +3288,15 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Training or program session not available to the user",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4574,6 +4580,38 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.AssessmentListItem": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.AssessmentRequest": {
             "type": "object",
             "properties": {
@@ -4728,6 +4766,9 @@ const docTemplate = `{
         "handler.CreateSessionRequest": {
             "type": "object",
             "properties": {
+                "activity": {
+                    "type": "integer"
+                },
                 "assessments": {
                     "type": "array",
                     "items": {
@@ -4747,6 +4788,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "notes": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "program_session_id": {
                     "type": "string"
                 },
                 "rep_datas": {
@@ -4773,8 +4820,8 @@ const docTemplate = `{
                 "repeater_work_time": {
                     "type": "integer"
                 },
-                "session_type": {
-                    "type": "integer"
+                "training_id": {
+                    "type": "string"
                 }
             }
         },
@@ -5078,6 +5125,68 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.SessionListItem": {
+            "type": "object",
+            "properties": {
+                "activity": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_assessment": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "program_session_id": {
+                    "type": "string"
+                },
+                "rep_count": {
+                    "type": "integer"
+                },
+                "repeater_reps": {
+                    "type": "integer"
+                },
+                "repeater_rest_time": {
+                    "type": "integer"
+                },
+                "repeater_set_rest": {
+                    "type": "integer"
+                },
+                "repeater_sets": {
+                    "type": "integer"
+                },
+                "repeater_split_hand": {
+                    "type": "boolean"
+                },
+                "repeater_work_time": {
+                    "type": "integer"
+                },
+                "training_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.SessionOverrideRequest": {
             "type": "object",
             "properties": {
@@ -5106,6 +5215,9 @@ const docTemplate = `{
         "handler.SessionResponse": {
             "type": "object",
             "properties": {
+                "activity": {
+                    "type": "integer"
+                },
                 "date": {
                     "type": "string"
                 },
@@ -5113,7 +5225,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "id": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "is_assessment": {
                     "type": "boolean"
@@ -5122,6 +5234,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "notes": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "program_session_id": {
                     "type": "string"
                 },
                 "repeater_reps": {
@@ -5142,8 +5260,11 @@ const docTemplate = `{
                 "repeater_work_time": {
                     "type": "integer"
                 },
-                "session_type": {
-                    "type": "integer"
+                "training_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 },
                 "user_id": {
                     "type": "string"
@@ -5515,6 +5636,10 @@ const docTemplate = `{
         "handler.UpdateSessionRequest": {
             "type": "object",
             "properties": {
+                "date": {
+                    "description": "Only logged sessions send a date. Omitted, the stored one is kept, which is\nwhat played sessions rely on since their date is fixed by the run.",
+                    "type": "string"
+                },
                 "duration": {
                     "type": "integer"
                 },

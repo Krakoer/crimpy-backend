@@ -121,7 +121,7 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 // @Tags Assessment
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {array} map[string]interface{} "List of assessments"
+// @Success 200 {array} AssessmentListItem "List of assessments"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/assessments [get]
@@ -145,7 +145,7 @@ func (h *AssessmentHandler) GetAssessments(c fiber.Ctx) error {
 	if assessments == nil {
 		assessments = []db.GetUserAssessmentsRow{}
 	}
-	return c.JSON(assessments)
+	return c.JSON(assessmentRowsToListItems(assessments))
 }
 
 // DeleteAssessment godoc

@@ -16,7 +16,7 @@ http:
         "name": "Repeater 3x10 7s/3s both hands",
         "notes": "3 sets of 10 reps, 7s on 3s off, 3min set rest",
         "is_assessment": false,
-        "session_type": 0,
+        "activity": 0,
         "duration": 900,
         "repeater_sets": 3,
         "repeater_reps": 10,
