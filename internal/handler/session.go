@@ -19,6 +19,15 @@ const (
 	originLogged = "logged"
 )
 
+// activityCount bounds the activity label shared with the app: 0 hangboard,
+// 1 climbing, 2 stretching, 3 workout, 4 other. It mirrors the
+// sessions_activity_check constraint in schema/schema.sql.
+const activityCount = int32(5)
+
+func isValidActivity(activity int32) bool {
+	return activity >= 0 && activity < activityCount
+}
+
 type SessionHandler struct {
 	queries *db.Queries
 	pool    *pgxpool.Pool
@@ -44,6 +53,51 @@ func optionalUUID(raw *string) (pgtype.UUID, error) {
 		return id, err
 	}
 	return id, nil
+}
+
+// authorizeSessionLinks checks the template links a session claims to have been
+// played from. A training is usable when the caller owns it or when a program
+// assigned to them prescribes it, and a program session when it sits in such a
+// program. An unknown id is refused exactly like a foreign one, so the endpoint
+// cannot be used to probe which ids exist.
+func (h *SessionHandler) authorizeSessionLinks(c fiber.Ctx, userUUID, trainingID, programSessionID pgtype.UUID) bool {
+	userID := userUUID.String()
+
+	if trainingID.Valid {
+		count, err := h.queries.CountAccessibleTraining(c.Context(), db.CountAccessibleTrainingParams{
+			TrainingID: trainingID,
+			UserID:     userUUID,
+		})
+		if err != nil {
+			slog.Error("failed to authorize session training", "user_id", userID, "training_id", trainingID.String(), "error", err)
+			c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+			return false
+		}
+		if count == 0 {
+			slog.Warn("access denied", "resource", "Training", "user_id", userID, "id", trainingID.String())
+			c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+			return false
+		}
+	}
+
+	if programSessionID.Valid {
+		count, err := h.queries.CountAccessibleProgramSession(c.Context(), db.CountAccessibleProgramSessionParams{
+			ProgramSessionID: programSessionID,
+			UserID:           userUUID,
+		})
+		if err != nil {
+			slog.Error("failed to authorize program session", "user_id", userID, "program_session_id", programSessionID.String(), "error", err)
+			c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+			return false
+		}
+		if count == 0 {
+			slog.Warn("access denied", "resource", "Program session", "user_id", userID, "id", programSessionID.String())
+			c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied"})
+			return false
+		}
+	}
+
+	return true
 }
 
 func NewSessionHandler(queries *db.Queries, pool *pgxpool.Pool) *SessionHandler {
@@ -109,24 +163,35 @@ type UpdateSessionRequest struct {
 	Date string `json:"date,omitempty"`
 }
 
+// SessionResponse documents the JSON the session endpoints return. They hand
+// the generated row back as it is, so every key is the Go field name rather than
+// the snake_case the request bodies use.
 type SessionResponse struct {
-	ID                int32   `json:"id"`
-	UserID            string  `json:"user_id"`
-	Name              string  `json:"name"`
-	Notes             string  `json:"notes"`
-	Date              string  `json:"date"`
-	IsAssessment      bool    `json:"is_assessment"`
-	Activity          int32   `json:"activity"`
-	Origin            string  `json:"origin"`
-	TrainingID        *string `json:"training_id,omitempty"`
-	ProgramSessionID  *string `json:"program_session_id,omitempty"`
-	Duration          int32   `json:"duration"`
-	RepeaterSets      *int32  `json:"repeater_sets,omitempty"`
-	RepeaterReps      *int32  `json:"repeater_reps,omitempty"`
-	RepeaterWorkTime  *int32  `json:"repeater_work_time,omitempty"`
-	RepeaterRestTime  *int32  `json:"repeater_rest_time,omitempty"`
-	RepeaterSetRest   *int32  `json:"repeater_set_rest,omitempty"`
-	RepeaterSplitHand *bool   `json:"repeater_split_hand,omitempty"`
+	ID                string  `json:"ID"`
+	UserID            string  `json:"UserID"`
+	Name              string  `json:"Name"`
+	Notes             string  `json:"Notes"`
+	Date              string  `json:"Date"`
+	IsAssessment      bool    `json:"IsAssessment"`
+	Activity          int32   `json:"Activity"`
+	Origin            string  `json:"Origin"`
+	TrainingID        *string `json:"TrainingID"`
+	ProgramSessionID  *string `json:"ProgramSessionID"`
+	Duration          int32   `json:"Duration"`
+	RepeaterSets      *int32  `json:"RepeaterSets"`
+	RepeaterReps      *int32  `json:"RepeaterReps"`
+	RepeaterWorkTime  *int32  `json:"RepeaterWorkTime"`
+	RepeaterRestTime  *int32  `json:"RepeaterRestTime"`
+	RepeaterSetRest   *int32  `json:"RepeaterSetRest"`
+	RepeaterSplitHand *bool   `json:"RepeaterSplitHand"`
+	UpdatedAt         string  `json:"UpdatedAt"`
+}
+
+// SessionListItem is a session as the list endpoint returns it, with the rep
+// count the list query carries alongside the row.
+type SessionListItem struct {
+	SessionResponse
+	RepCount int64 `json:"RepCount"`
 }
 
 // CreateSession godoc
@@ -140,6 +205,7 @@ type SessionResponse struct {
 // @Success 201 {object} SessionResponse "Session created successfully"
 // @Failure 400 {object} map[string]string "Invalid request or validation error"
 // @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Training or program session not available to the user"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions [post]
 func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
@@ -155,6 +221,10 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
+	}
+
+	if !isValidActivity(req.Activity) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid activity"})
 	}
 
 	origin := req.Origin
@@ -177,6 +247,10 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	programSessionID, err := optionalUUID(req.ProgramSessionID)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program session ID"})
+	}
+
+	if !h.authorizeSessionLinks(c, userUUID, trainingID, programSessionID) {
+		return nil
 	}
 
 	sessionDate := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
@@ -314,12 +388,12 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 // GetSessions godoc
 // @Summary Get all sessions
-// @Description Retrieve all training sessions for the authenticated user
+// @Description Retrieve all training sessions for the authenticated user, each with its rep count
 // @Tags Session
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {array} SessionResponse "List of sessions"
+// @Success 200 {array} SessionListItem "List of sessions"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions [get]

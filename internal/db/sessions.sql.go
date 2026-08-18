@@ -11,6 +11,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAccessibleProgramSession = `-- name: CountAccessibleProgramSession :one
+SELECT COUNT(*) FROM coach_program_week_sessions
+JOIN coach_program_weeks ON coach_program_weeks.id = coach_program_week_sessions.week_id
+JOIN coach_programs ON coach_programs.id = coach_program_weeks.program_id
+WHERE coach_program_week_sessions.id = $1
+  AND coach_programs.user_id = $2
+`
+
+type CountAccessibleProgramSessionParams struct {
+	ProgramSessionID pgtype.UUID
+	UserID           pgtype.UUID
+}
+
+// A prescribed session is the caller's when it sits in a program assigned to them.
+func (q *Queries) CountAccessibleProgramSession(ctx context.Context, arg CountAccessibleProgramSessionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAccessibleProgramSession, arg.ProgramSessionID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAccessibleTraining = `-- name: CountAccessibleTraining :one
+SELECT COUNT(*) FROM trainings
+WHERE trainings.id = $1
+  AND (
+    trainings.user_id = $2
+    OR EXISTS (
+      SELECT 1 FROM coach_program_week_sessions
+      JOIN coach_program_weeks ON coach_program_weeks.id = coach_program_week_sessions.week_id
+      JOIN coach_programs ON coach_programs.id = coach_program_weeks.program_id
+      WHERE coach_program_week_sessions.training_id = trainings.id
+        AND coach_programs.user_id = $2
+    )
+  )
+`
+
+type CountAccessibleTrainingParams struct {
+	TrainingID pgtype.UUID
+	UserID     pgtype.UUID
+}
+
+// A training a session may claim to have been played from: the caller's own, or
+// one prescribed to them by a program. Counting rather than selecting keeps an
+// unknown id and a foreign one indistinguishable to the caller.
+func (q *Queries) CountAccessibleTraining(ctx context.Context, arg CountAccessibleTrainingParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAccessibleTraining, arg.TrainingID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
@@ -198,7 +249,8 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Ge
 
 const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
-SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date)
+SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date),
+    updated_at = now()
 WHERE id = $1
 RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at
 `

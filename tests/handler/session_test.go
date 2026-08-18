@@ -725,6 +725,183 @@ func TestSessionHandler_CreateSession_RejectsUnknownOrigin(t *testing.T) {
 	}
 }
 
+func TestSessionHandler_CreateSession_RejectsUnknownActivity(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-activity-bad@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	for _, activity := range []int{-1, 5} {
+		reqBody := map[string]interface{}{
+			"name":     "Bogus",
+			"notes":    "",
+			"activity": activity,
+			"duration": 60,
+		}
+		body, _ := json.Marshal(reqBody)
+
+		req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+		req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("Failed to execute request: %v", err)
+		}
+
+		if resp.StatusCode != fiber.StatusBadRequest {
+			t.Errorf("Expected status %d for activity %d, got %d", fiber.StatusBadRequest, activity, resp.StatusCode)
+		}
+	}
+}
+
+// postSessionWithLinks creates a session carrying the optional template links
+// and returns the status the API answered with.
+func postSessionWithLinks(t *testing.T, app *fiber.App, token string, links map[string]interface{}) int {
+	t.Helper()
+
+	reqBody := map[string]interface{}{
+		"name":     "Prescribed hangboard",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"duration": 600,
+	}
+	for key, value := range links {
+		reqBody[key] = value
+	}
+	body, _ := json.Marshal(reqBody)
+
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+	return resp.StatusCode
+}
+
+func TestSessionHandler_CreateSession_AcceptsOwnTraining(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-link-own@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+	})
+
+	trainingID := createTestCoachTraining(t, token, app)
+
+	status := postSessionWithLinks(t, app, token, map[string]interface{}{"training_id": trainingID})
+	if status != fiber.StatusCreated {
+		t.Errorf("Expected status %d for an own training, got %d", fiber.StatusCreated, status)
+	}
+}
+
+func TestSessionHandler_CreateSession_AcceptsProgramTraining(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "session-link-coach@test.com")
+	userID, userToken := testutil.CreateTestUser(t, queries, "session-link-athlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	weekBody, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), weekBody, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to upsert week: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 upserting week, got %d", resp.StatusCode)
+	}
+
+	var week map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&week)
+	weekSessions := week["sessions"].([]interface{})
+	programSessionID := weekSessions[0].(map[string]interface{})["id"].(string)
+
+	status := postSessionWithLinks(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+	if status != fiber.StatusCreated {
+		t.Errorf("Expected status %d for a prescribed training, got %d", fiber.StatusCreated, status)
+	}
+}
+
+func TestSessionHandler_CreateSession_RejectsForeignAndUnknownLinks(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "session-foreign-coach@test.com")
+	strangerID, _ := testutil.CreateTestUser(t, queries, "session-foreign-stranger@test.com")
+	_, token := testutil.CreateTestUser(t, queries, "session-foreign-athlete@test.com")
+	enrollUserDirect(t, pool, coachID, strangerID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, strangerID, app)
+	foreignTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	weekBody, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": foreignTrainingID, "day_of_week": 0}},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(strangerID, programID, 1), weekBody, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to upsert week: %v", err)
+	}
+	var week map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&week)
+	weekSessions := week["sessions"].([]interface{})
+	foreignProgramSessionID := weekSessions[0].(map[string]interface{})["id"].(string)
+
+	unknownID := "11111111-1111-1111-1111-111111111111"
+
+	cases := []struct {
+		name  string
+		links map[string]interface{}
+	}{
+		{"foreign training", map[string]interface{}{"training_id": foreignTrainingID}},
+		{"unknown training", map[string]interface{}{"training_id": unknownID}},
+		{"foreign program session", map[string]interface{}{"program_session_id": foreignProgramSessionID}},
+		{"unknown program session", map[string]interface{}{"program_session_id": unknownID}},
+	}
+
+	for _, tc := range cases {
+		status := postSessionWithLinks(t, app, token, tc.links)
+		if status != fiber.StatusForbidden {
+			t.Errorf("Expected status %d for a %s, got %d", fiber.StatusForbidden, tc.name, status)
+		}
+	}
+}
+
 func TestSessionHandler_UpdateSession_ChangesDate(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 

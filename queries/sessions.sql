@@ -23,9 +23,35 @@ ORDER BY sessions.date DESC;
 
 -- name: UpdateSession :one
 UPDATE sessions
-SET name = $2, notes = $3, duration = $4, date = COALESCE(sqlc.narg('date'), date)
+SET name = $2, notes = $3, duration = $4, date = COALESCE(sqlc.narg('date'), date),
+    updated_at = now()
 WHERE id = $1
 RETURNING *;
 
 -- name: DeleteSession :exec
 DELETE FROM sessions WHERE id = $1;
+
+-- name: CountAccessibleTraining :one
+-- A training a session may claim to have been played from: the caller's own, or
+-- one prescribed to them by a program. Counting rather than selecting keeps an
+-- unknown id and a foreign one indistinguishable to the caller.
+SELECT COUNT(*) FROM trainings
+WHERE trainings.id = sqlc.arg('training_id')
+  AND (
+    trainings.user_id = sqlc.arg('user_id')
+    OR EXISTS (
+      SELECT 1 FROM coach_program_week_sessions
+      JOIN coach_program_weeks ON coach_program_weeks.id = coach_program_week_sessions.week_id
+      JOIN coach_programs ON coach_programs.id = coach_program_weeks.program_id
+      WHERE coach_program_week_sessions.training_id = trainings.id
+        AND coach_programs.user_id = sqlc.arg('user_id')
+    )
+  );
+
+-- name: CountAccessibleProgramSession :one
+-- A prescribed session is the caller's when it sits in a program assigned to them.
+SELECT COUNT(*) FROM coach_program_week_sessions
+JOIN coach_program_weeks ON coach_program_weeks.id = coach_program_week_sessions.week_id
+JOIN coach_programs ON coach_programs.id = coach_program_weeks.program_id
+WHERE coach_program_week_sessions.id = sqlc.arg('program_session_id')
+  AND coach_programs.user_id = sqlc.arg('user_id');
