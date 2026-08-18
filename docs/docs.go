@@ -3204,7 +3204,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all training sessions for the authenticated user",
+                "description": "Retrieve all training sessions for the authenticated user, each with its rep count",
                 "consumes": [
                     "application/json"
                 ],
@@ -3221,7 +3221,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handler.SessionResponse"
+                                "$ref": "#/definitions/handler.SessionListItem"
                             }
                         }
                     },
@@ -3291,6 +3291,15 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Training or program session not available to the user",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5087,6 +5096,68 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.SessionListItem": {
+            "type": "object",
+            "properties": {
+                "Activity": {
+                    "type": "integer"
+                },
+                "Date": {
+                    "type": "string"
+                },
+                "Duration": {
+                    "type": "integer"
+                },
+                "ID": {
+                    "type": "string"
+                },
+                "IsAssessment": {
+                    "type": "boolean"
+                },
+                "Name": {
+                    "type": "string"
+                },
+                "Notes": {
+                    "type": "string"
+                },
+                "Origin": {
+                    "type": "string"
+                },
+                "ProgramSessionID": {
+                    "type": "string"
+                },
+                "RepCount": {
+                    "type": "integer"
+                },
+                "RepeaterReps": {
+                    "type": "integer"
+                },
+                "RepeaterRestTime": {
+                    "type": "integer"
+                },
+                "RepeaterSetRest": {
+                    "type": "integer"
+                },
+                "RepeaterSets": {
+                    "type": "integer"
+                },
+                "RepeaterSplitHand": {
+                    "type": "boolean"
+                },
+                "RepeaterWorkTime": {
+                    "type": "integer"
+                },
+                "TrainingID": {
+                    "type": "string"
+                },
+                "UpdatedAt": {
+                    "type": "string"
+                },
+                "UserID": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.SessionOverrideRequest": {
             "type": "object",
             "properties": {
@@ -5115,55 +5186,58 @@ const docTemplate = `{
         "handler.SessionResponse": {
             "type": "object",
             "properties": {
-                "activity": {
+                "Activity": {
                     "type": "integer"
                 },
-                "date": {
+                "Date": {
                     "type": "string"
                 },
-                "duration": {
+                "Duration": {
                     "type": "integer"
                 },
-                "id": {
-                    "type": "integer"
+                "ID": {
+                    "type": "string"
                 },
-                "is_assessment": {
+                "IsAssessment": {
                     "type": "boolean"
                 },
-                "name": {
+                "Name": {
                     "type": "string"
                 },
-                "notes": {
+                "Notes": {
                     "type": "string"
                 },
-                "origin": {
+                "Origin": {
                     "type": "string"
                 },
-                "program_session_id": {
+                "ProgramSessionID": {
                     "type": "string"
                 },
-                "repeater_reps": {
+                "RepeaterReps": {
                     "type": "integer"
                 },
-                "repeater_rest_time": {
+                "RepeaterRestTime": {
                     "type": "integer"
                 },
-                "repeater_set_rest": {
+                "RepeaterSetRest": {
                     "type": "integer"
                 },
-                "repeater_sets": {
+                "RepeaterSets": {
                     "type": "integer"
                 },
-                "repeater_split_hand": {
+                "RepeaterSplitHand": {
                     "type": "boolean"
                 },
-                "repeater_work_time": {
+                "RepeaterWorkTime": {
                     "type": "integer"
                 },
-                "training_id": {
+                "TrainingID": {
                     "type": "string"
                 },
-                "user_id": {
+                "UpdatedAt": {
+                    "type": "string"
+                },
+                "UserID": {
                     "type": "string"
                 }
             }

@@ -17,7 +17,8 @@ http:
         "notes": "Felt strong today",
         "date": "2026-05-28T07:30:00Z",
         "is_assessment": false,
-        "session_type": 0,
+        "activity": 0,
+        "origin": "played",
         "duration": 3600,
         "rep_datas": [
           {

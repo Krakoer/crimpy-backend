@@ -15,10 +15,9 @@ http:
       {
         "name": "Morning hang session (updated)",
         "notes": "Felt strong, PR on left hand",
-        "is_assessment": false,
-        "session_type": 0,
+        "date": "2026-05-29T08:15:00Z",
         "duration": 3700
       }
   auth:
     type: bearer
-    token: "{{authToken}}"
+    token: "{{authTokenUser}}"
