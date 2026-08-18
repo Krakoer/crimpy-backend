@@ -6,8 +6,8 @@ Climbing training backend built with Go, PostgreSQL, and Fiber. Connects to a Fl
 
 - Go 1.26+ with Fiber v3
 - PostgreSQL 16 (pgx driver)
-- sqlc for type-safe SQL code generation
-- Atlas for database migrations
+- sqlc 1.27.0 for type-safe SQL code generation
+- Atlas 1.3.0 for database migrations
 - Docker Compose for development and production
 - Air for hot reloading in development
 
@@ -38,9 +38,11 @@ echo 'export PATH=$PATH:$HOME/bin' >> ~/.bashrc
 source ~/.bashrc
 
 # Install development tools
-go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0
 go install github.com/swaggo/swag/cmd/swag@latest
-curl -sSf https://atlasgo.sh | sh
+# Atlas must be a pinned stable release, never a canary build: canary v1.2.1
+# cannot run `migrate diff` against the dollar-quoted function bodies in migrations/
+curl -sSf https://atlasgo.sh | ATLAS_VERSION=v1.3.0 sh
 
 # Verify installations
 docker --version
