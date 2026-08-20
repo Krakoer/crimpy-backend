@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -167,24 +169,29 @@ type UpdateSessionRequest struct {
 // rather than the generated row, so reads speak the same snake_case the request
 // bodies do.
 type SessionResponse struct {
-	ID                string  `json:"id"`
-	UserID            string  `json:"user_id"`
-	Name              string  `json:"name"`
-	Notes             string  `json:"notes"`
-	Date              string  `json:"date"`
-	IsAssessment      bool    `json:"is_assessment"`
-	Activity          int32   `json:"activity"`
-	Origin            string  `json:"origin"`
-	TrainingID        *string `json:"training_id,omitempty"`
-	ProgramSessionID  *string `json:"program_session_id,omitempty"`
-	Duration          int32   `json:"duration"`
-	RepeaterSets      *int32  `json:"repeater_sets,omitempty"`
-	RepeaterReps      *int32  `json:"repeater_reps,omitempty"`
-	RepeaterWorkTime  *int32  `json:"repeater_work_time,omitempty"`
-	RepeaterRestTime  *int32  `json:"repeater_rest_time,omitempty"`
-	RepeaterSetRest   *int32  `json:"repeater_set_rest,omitempty"`
-	RepeaterSplitHand *bool   `json:"repeater_split_hand,omitempty"`
-	UpdatedAt         string  `json:"updated_at"`
+	ID               string  `json:"id"`
+	UserID           string  `json:"user_id"`
+	Name             string  `json:"name"`
+	Notes            string  `json:"notes"`
+	Date             string  `json:"date"`
+	IsAssessment     bool    `json:"is_assessment"`
+	Activity         int32   `json:"activity"`
+	Origin           string  `json:"origin"`
+	TrainingID       *string `json:"training_id,omitempty"`
+	ProgramSessionID *string `json:"program_session_id,omitempty"`
+	// Prescription is what the athlete was asked to do, frozen when the session
+	// was created. Absent on a session run from nothing. The list endpoints
+	// leave it out, since it is a whole training per row and only the detail
+	// screen reads it.
+	Prescription      json.RawMessage `json:"prescription,omitempty" swaggertype:"object"`
+	Duration          int32           `json:"duration"`
+	RepeaterSets      *int32          `json:"repeater_sets,omitempty"`
+	RepeaterReps      *int32          `json:"repeater_reps,omitempty"`
+	RepeaterWorkTime  *int32          `json:"repeater_work_time,omitempty"`
+	RepeaterRestTime  *int32          `json:"repeater_rest_time,omitempty"`
+	RepeaterSetRest   *int32          `json:"repeater_set_rest,omitempty"`
+	RepeaterSplitHand *bool           `json:"repeater_split_hand,omitempty"`
+	UpdatedAt         string          `json:"updated_at"`
 }
 
 // SessionListItem is a session as the list endpoints return it, with the rep
@@ -208,6 +215,7 @@ type sessionFields struct {
 	Origin            string
 	TrainingID        pgtype.UUID
 	ProgramSessionID  pgtype.UUID
+	Prescription      []byte
 	Duration          int32
 	RepeaterSets      pgtype.Int4
 	RepeaterReps      pgtype.Int4
@@ -252,6 +260,9 @@ func (f sessionFields) toResponse() SessionResponse {
 		RepeaterRestTime: optionalInt32(f.RepeaterRestTime),
 		RepeaterSetRest:  optionalInt32(f.RepeaterSetRest),
 		UpdatedAt:        f.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if len(f.Prescription) > 0 {
+		resp.Prescription = json.RawMessage(f.Prescription)
 	}
 	if f.RepeaterSplitHand.Valid {
 		resp.RepeaterSplitHand = &f.RepeaterSplitHand.Bool
@@ -401,9 +412,145 @@ func sessionRowsToListItems(rows []db.GetUserSessionsRow) []SessionListItem {
 	return items
 }
 
+// PrescriptionSnapshot is what the athlete was asked to do, resolved once when
+// the session is created. The training and the coach's overrides stay editable
+// afterwards, so nothing but this copy still describes the prescription the
+// session was actually run from. The training keeps its own key names here, id
+// included, so a client can read a snapshot with the training parser it has.
+type PrescriptionSnapshot struct {
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	Description  *string `json:"description,omitempty"`
+	TrainingType string  `json:"training_type"`
+	Goal         *string `json:"goal,omitempty"`
+	Comment      *string `json:"comment,omitempty"`
+	// ProgramSessionID and CoachNotes are set only when the session was played
+	// from a coach's program week.
+	ProgramSessionID *string                `json:"program_session_id,omitempty"`
+	CoachNotes       *string                `json:"coach_notes,omitempty"`
+	Items            []TrainingItemResponse `json:"items"`
+	ResolvedAgainst  PrescriptionInputs     `json:"resolved_against"`
+}
+
+// PrescriptionInputs are the athlete's own numbers the prescription is read
+// against, frozen with it. A load or a target the coach set as a percentage of
+// an assessment is stored as the percentage, so reading it against the results
+// the athlete has now would restate the prescription every time they reassess.
+//
+// The bodyweight a percent_bw load needs is not here: the app keeps it on the
+// device and never sends it, so the server has nothing to freeze.
+type PrescriptionInputs struct {
+	// Empty when the athlete had done no assessment, which is the case where
+	// the clients fall back to the value the coach set.
+	Assessments []AssessmentResultSnapshot `json:"assessments"`
+}
+
+// AssessmentResultSnapshot is the last value the athlete had measured for one
+// assessment, per hand. A hand that has never been measured is absent rather
+// than zero, since the clients take the coach fallback for it.
+type AssessmentResultSnapshot struct {
+	Type       int32    `json:"type"`
+	RightValue *float32 `json:"right_value,omitempty"`
+	LeftValue  *float32 `json:"left_value,omitempty"`
+}
+
+func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []AssessmentResultSnapshot {
+	results := make([]AssessmentResultSnapshot, 0, len(rows))
+	for _, r := range rows {
+		result := AssessmentResultSnapshot{Type: r.Type}
+		if r.RightValue.Valid {
+			result.RightValue = &r.RightValue.Float32
+		}
+		if r.LeftValue.Valid {
+			result.LeftValue = &r.LeftValue.Float32
+		}
+		results = append(results, result)
+	}
+	return results
+}
+
+// buildPrescriptionSnapshot resolves the training the session was run from, with
+// the program session's per-item overrides already merged in, so a later edit of
+// either cannot rewrite what was prescribed. programSession is nil for a session
+// played straight from a training, outside any program.
+func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) ([]byte, error) {
+	training, err := qtx.GetTraining(ctx, trainingID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := qtx.GetTrainingItems(ctx, trainingID)
+	if err != nil {
+		return nil, err
+	}
+
+	var zeroParent pgtype.UUID
+	snapshot := PrescriptionSnapshot{
+		ID:           training.ID.String(),
+		Title:        training.Title,
+		TrainingType: training.TrainingType,
+		Items:        buildTrainingItemTree(rows, zeroParent),
+	}
+	if training.Description.Valid {
+		snapshot.Description = &training.Description.String
+	}
+	if training.Goal.Valid {
+		snapshot.Goal = &training.Goal.String
+	}
+	if training.Comment.Valid {
+		snapshot.Comment = &training.Comment.String
+	}
+
+	// Read before the session is inserted, so an assessment this very run
+	// records does not become what its own prescription was read against.
+	assessments, err := qtx.GetUserLatestAssessmentValues(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
+
+	if programSession != nil {
+		id := programSession.ID.String()
+		snapshot.ProgramSessionID = &id
+		if programSession.Notes.Valid {
+			snapshot.CoachNotes = &programSession.Notes.String
+		}
+
+		overrides, err := qtx.GetCoachProgramSessionOverrides(ctx, programSession.ID)
+		if err != nil {
+			return nil, err
+		}
+		byItem := make(map[string]json.RawMessage, len(overrides))
+		for _, o := range overrides {
+			byItem[o.ItemID.String()] = json.RawMessage(o.Overrides)
+		}
+		if err := mergeItemOverrides(snapshot.Items, byItem); err != nil {
+			return nil, err
+		}
+	}
+
+	return json.Marshal(snapshot)
+}
+
+// mergeItemOverrides walks the item tree and applies the override each item
+// carries, if any.
+func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.RawMessage) error {
+	for i := range items {
+		if raw, ok := byItem[items[i].ID]; ok {
+			if err := mergeItemOverride(items[i].overridable(), raw); err != nil {
+				return err
+			}
+		}
+		if err := mergeItemOverrides(items[i].Items, byItem); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -514,6 +661,37 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
+	// The program week row is what prescribed this session, so it decides the
+	// training rather than the request. That closes two holes the independent
+	// link checks leave open: a request pairing a program session with some
+	// other training the caller may also reach, and one sending no training at
+	// all, which would lock the coach's week against a session carrying no
+	// record of what it asked for.
+	var programSession *db.CoachProgramWeekSession
+	if programSessionID.Valid {
+		ps, err := qtx.GetCoachProgramWeekSession(c.Context(), programSessionID)
+		if err != nil {
+			slog.Error("failed to read session program session", "user_id", userID, "program_session_id", programSessionID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+		}
+		if trainingID.Valid && trainingID != ps.TrainingID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Training does not match the one the program session prescribes",
+			})
+		}
+		trainingID = ps.TrainingID
+		programSession = &ps
+	}
+
+	var prescription []byte
+	if trainingID.Valid {
+		prescription, err = buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
+		if err != nil {
+			slog.Error("failed to snapshot session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+		}
+	}
+
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
 		UserID:            userUUID,
 		Name:              req.Name,
@@ -524,6 +702,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		Origin:            origin,
 		TrainingID:        trainingID,
 		ProgramSessionID:  programSessionID,
+		Prescription:      prescription,
 		Duration:          req.Duration,
 		RepeaterSets:      repeaterSets,
 		RepeaterReps:      repeaterReps,

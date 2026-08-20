@@ -62,6 +62,12 @@ CREATE TABLE "sessions" (
   -- below.
   "training_id"         UUID,
   "program_session_id"  UUID,
+  -- The prescription resolved at create time: the training as it read then,
+  -- with the program session overrides already merged into its items. The
+  -- template it was resolved from stays editable, so only this snapshot still
+  -- describes what the athlete was actually asked to do. Null exactly when the
+  -- session was not run from a training, see the check below.
+  "prescription"        JSONB,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
   "repeater_sets"       INTEGER,
   "repeater_reps"       INTEGER,
@@ -77,7 +83,13 @@ CREATE TABLE "sessions" (
   -- on a prescription keys off this link, so letting a hand entered session hold
   -- one would let an athlete lock their coach out of their own week.
   CONSTRAINT "sessions_logged_has_no_program_session_check"
-    CHECK (origin = 'played' OR program_session_id IS NULL)
+    CHECK (origin = 'played' OR program_session_id IS NULL),
+  -- A session run from a training carries the snapshot of it. Holding the link
+  -- without the snapshot would say the session was prescribed something while
+  -- keeping no record of what, which no write path produces. Not the converse:
+  -- deleting the training nulls the link and the snapshot rightly outlives it.
+  CONSTRAINT "sessions_training_has_prescription_check"
+    CHECK (training_id IS NULL OR prescription IS NOT NULL)
 );
 
 -- Stores the assessments the user has done, with the results.

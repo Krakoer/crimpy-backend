@@ -65,12 +65,12 @@ func (q *Queries) CountAccessibleTraining(ctx context.Context, arg CountAccessib
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, duration, date,
+  program_session_id, prescription, duration, date,
   repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
   repeater_set_rest, repeater_split_hand
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
-) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at
 `
 
 type CreateSessionParams struct {
@@ -82,6 +82,7 @@ type CreateSessionParams struct {
 	Origin            string
 	TrainingID        pgtype.UUID
 	ProgramSessionID  pgtype.UUID
+	Prescription      []byte
 	Duration          int32
 	Date              pgtype.Timestamptz
 	RepeaterSets      pgtype.Int4
@@ -102,6 +103,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		arg.Origin,
 		arg.TrainingID,
 		arg.ProgramSessionID,
+		arg.Prescription,
 		arg.Duration,
 		arg.Date,
 		arg.RepeaterSets,
@@ -123,6 +125,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Origin,
 		&i.TrainingID,
 		&i.ProgramSessionID,
+		&i.Prescription,
 		&i.Duration,
 		&i.RepeaterSets,
 		&i.RepeaterReps,
@@ -145,7 +148,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at FROM sessions WHERE id = $1
+SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -162,6 +165,7 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 		&i.Origin,
 		&i.TrainingID,
 		&i.ProgramSessionID,
+		&i.Prescription,
 		&i.Duration,
 		&i.RepeaterSets,
 		&i.RepeaterReps,
@@ -175,7 +179,26 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 }
 
 const getUserSessions = `-- name: GetUserSessions :many
-SELECT sessions.id, sessions.user_id, sessions.name, sessions.notes, sessions.date, sessions.is_assessment, sessions.activity, sessions.origin, sessions.training_id, sessions.program_session_id, sessions.duration, sessions.repeater_sets, sessions.repeater_reps, sessions.repeater_work_time, sessions.repeater_rest_time, sessions.repeater_set_rest, sessions.repeater_split_hand, sessions.updated_at, COUNT(rep_datas.id) AS rep_count
+SELECT
+  sessions.id,
+  sessions.user_id,
+  sessions.name,
+  sessions.notes,
+  sessions.date,
+  sessions.is_assessment,
+  sessions.activity,
+  sessions.origin,
+  sessions.training_id,
+  sessions.program_session_id,
+  sessions.duration,
+  sessions.repeater_sets,
+  sessions.repeater_reps,
+  sessions.repeater_work_time,
+  sessions.repeater_rest_time,
+  sessions.repeater_set_rest,
+  sessions.repeater_split_hand,
+  sessions.updated_at,
+  COUNT(rep_datas.id) AS rep_count
 FROM sessions
 LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
 WHERE sessions.user_id = $1
@@ -206,7 +229,10 @@ type GetUserSessionsRow struct {
 }
 
 // Carries the rep count so the history list can say how many reps a session
-// holds without fetching every rep of every session.
+// holds without fetching every rep of every session. The columns are listed out
+// rather than starred so the prescription snapshot stays off the list: it is a
+// whole training per row, it is only read by the detail screen, and a history of
+// a few hundred played sessions would otherwise ship megabytes to render a list.
 func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]GetUserSessionsRow, error) {
 	rows, err := q.db.Query(ctx, getUserSessions, userID)
 	if err != nil {
@@ -252,7 +278,7 @@ UPDATE sessions
 SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date),
     updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, duration, repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time, repeater_set_rest, repeater_split_hand, updated_at
 `
 
 type UpdateSessionParams struct {
@@ -283,6 +309,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		&i.Origin,
 		&i.TrainingID,
 		&i.ProgramSessionID,
+		&i.Prescription,
 		&i.Duration,
 		&i.RepeaterSets,
 		&i.RepeaterReps,

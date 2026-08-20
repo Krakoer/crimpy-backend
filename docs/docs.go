@@ -3257,7 +3257,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5161,6 +5161,10 @@ const docTemplate = `{
                 "origin": {
                     "type": "string"
                 },
+                "prescription": {
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
+                    "type": "object"
+                },
                 "program_session_id": {
                     "type": "string"
                 },
@@ -5247,6 +5251,10 @@ const docTemplate = `{
                 },
                 "origin": {
                     "type": "string"
+                },
+                "prescription": {
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
+                    "type": "object"
                 },
                 "program_session_id": {
                     "type": "string"

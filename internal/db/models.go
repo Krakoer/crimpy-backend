@@ -155,6 +155,7 @@ type Session struct {
 	Origin            string
 	TrainingID        pgtype.UUID
 	ProgramSessionID  pgtype.UUID
+	Prescription      []byte
 	Duration          int32
 	RepeaterSets      pgtype.Int4
 	RepeaterReps      pgtype.Int4
