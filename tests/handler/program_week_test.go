@@ -840,6 +840,20 @@ func upsertWeekStatus(t *testing.T, app *fiber.App, coachToken, userID, programI
 	return resp.StatusCode
 }
 
+func getWeek(t *testing.T, app *fiber.App, coachToken, userID, programID string, weekNum int) map[string]interface{} {
+	t.Helper()
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, weekURL(userID, programID, weekNum), nil, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to get week: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 getting week, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result
+}
+
 func weekSessionIDs(week map[string]interface{}) []string {
 	sessions := week["sessions"].([]interface{})
 	ids := make([]string, 0, len(sessions))
@@ -1233,5 +1247,421 @@ func TestWeekHandler_UpsertWeek_RejectsMalformedAndDuplicateSessionIDs(t *testin
 				t.Errorf("Expected 400, got %d", status)
 			}
 		})
+	}
+}
+
+func playProgramSession(t *testing.T, app *fiber.App, userToken, trainingID, programSessionID string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":               "Prescribed hangboard",
+		"notes":              "",
+		"activity":           0,
+		"origin":             "played",
+		"duration":           600,
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to play session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing session, got %d", resp.StatusCode)
+	}
+}
+
+func weekSessionLocks(week map[string]interface{}) []bool {
+	sessions := week["sessions"].([]interface{})
+	locks := make([]bool, 0, len(sessions))
+	for _, s := range sessions {
+		locks = append(locks, s.(map[string]interface{})["is_locked"].(bool))
+	}
+	return locks
+}
+
+func setupFrozenSessionApp(t *testing.T, prefix string) (app *fiber.App, coachToken, userToken, userID, programID string) {
+	t.Helper()
+	pool, queries := testutil.SetupTestDB(t)
+	t.Cleanup(func() { testutil.CleanupTestDB(t, pool) })
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, prefix+"coach@test.com")
+	userID, userToken = testutil.CreateTestUser(t, queries, prefix+"user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app = testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+	programID = createTestProgram(t, coachToken, userID, app)
+	return app, coachToken, userToken, userID, programID
+}
+
+func TestWeekHandler_GetWeek_ReportsPlayedSessionAsLocked(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wklock")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+			{"training_id": trainingID, "day_of_week": 2},
+		},
+	})
+	if locks := weekSessionLocks(created); locks[0] || locks[1] {
+		t.Fatalf("Expected no session locked before any is played, got %v", locks)
+	}
+	sessionIDs := weekSessionIDs(created)
+
+	playProgramSession(t, app, userToken, trainingID, sessionIDs[0])
+
+	week := getWeek(t, app, coachToken, userID, programID, 1)
+
+	locks := weekSessionLocks(week)
+	if !locks[0] {
+		t.Errorf("Expected the played session to be locked")
+	}
+	if locks[1] {
+		t.Errorf("Expected the unplayed session to stay unlocked")
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RefusesTrainingSwapOnPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkfrozenswap")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+	otherTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	sessionID := weekSessionIDs(created)[0]
+	playProgramSession(t, app, userToken, trainingID, sessionID)
+
+	status := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionID, "training_id": otherTrainingID, "day_of_week": 0},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 swapping the training of a played session, got %d", status)
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RefusesRemovingPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkfrozendrop")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+			{"training_id": trainingID, "day_of_week": 2},
+		},
+	})
+	sessionIDs := weekSessionIDs(created)
+	playProgramSession(t, app, userToken, trainingID, sessionIDs[0])
+
+	status := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionIDs[1], "training_id": trainingID, "day_of_week": 2},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 dropping a played session from the week, got %d", status)
+	}
+
+	week := getWeek(t, app, coachToken, userID, programID, 1)
+	if len(weekSessionIDs(week)) != 2 {
+		t.Errorf("Expected the refused save to leave both sessions in place, got %v", week["sessions"])
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RefusesOverrideEditOnPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkfrozenov")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+	sessionID := weekSessionIDs(created)[0]
+	playProgramSession(t, app, userToken, trainingID, sessionID)
+
+	cases := []struct {
+		name      string
+		overrides []map[string]interface{}
+	}{
+		{"changed value", []map[string]interface{}{
+			{"item_id": itemID, "overrides": map[string]interface{}{"reps": 8}},
+		}},
+		{"dropped override", []map[string]interface{}{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+				"sessions": []map[string]interface{}{
+					{"id": sessionID, "training_id": trainingID, "day_of_week": 0, "overrides": tc.overrides},
+				},
+			})
+			if status != fiber.StatusBadRequest {
+				t.Errorf("Expected 400, got %d", status)
+			}
+		})
+	}
+}
+
+// Nothing about the schedule or the notes changes what was prescribed, so a
+// played session may still be moved around the week.
+func TestWeekHandler_UpsertWeek_AllowsReschedulingPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkfrozenmove")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+	sessionID := weekSessionIDs(created)[0]
+	playProgramSession(t, app, userToken, trainingID, sessionID)
+
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"id":          sessionID,
+				"training_id": trainingID,
+				"day_of_week": 3,
+				"notes":       "Moved to Thursday",
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+
+	session := updated["sessions"].([]interface{})[0].(map[string]interface{})
+	if session["day_of_week"] != float64(3) {
+		t.Errorf("Expected day_of_week 3, got %v", session["day_of_week"])
+	}
+	if session["notes"] != "Moved to Thursday" {
+		t.Errorf("Expected the notes to be editable, got %v", session["notes"])
+	}
+	if session["is_locked"] != true {
+		t.Errorf("Expected the session to stay locked, got %v", session["is_locked"])
+	}
+}
+
+// The mode columns and the ordering say when the session happens, not what was
+// prescribed, so all of them stay editable once it has been played.
+func TestWeekHandler_UpsertWeek_AllowsModeAndPositionChangeOnPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkfrozenmode")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+	otherTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+			{"training_id": otherTrainingID, "day_of_week": 1},
+		},
+	})
+	ids := weekSessionIDs(created)
+	playProgramSession(t, app, userToken, trainingID, ids[0])
+
+	// Swap the order and move the played one off a fixed day onto a frequency.
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": ids[1], "training_id": otherTrainingID, "day_of_week": 1},
+			{"id": ids[0], "training_id": trainingID, "times_per_week": 3},
+		},
+	})
+
+	sessions := updated["sessions"].([]interface{})
+	played := sessions[1].(map[string]interface{})
+	if played["id"] != ids[0] {
+		t.Fatalf("Expected the played session to be reordered last, got %v", weekSessionIDs(updated))
+	}
+	if played["times_per_week"] != float64(3) {
+		t.Errorf("Expected times_per_week 3, got %v", played["times_per_week"])
+	}
+	if _, hasDay := played["day_of_week"]; hasDay {
+		t.Errorf("Expected day_of_week cleared, got %v", played["day_of_week"])
+	}
+	if played["position"] != float64(1) {
+		t.Errorf("Expected position 1, got %v", played["position"])
+	}
+	if played["is_locked"] != true {
+		t.Errorf("Expected the session to stay locked, got %v", played["is_locked"])
+	}
+}
+
+// The freeze is per row. A played session in the week must not stop the coach
+// editing the sessions next to it.
+func TestWeekHandler_UpsertWeek_FreezesOnlyThePlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkfrozenrow")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+	otherTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+			{
+				"training_id": trainingID,
+				"day_of_week": 2,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+	ids := weekSessionIDs(created)
+	playProgramSession(t, app, userToken, trainingID, ids[0])
+
+	// Swap the training and the overrides of the unplayed one, and drop it from
+	// the week afterwards. Neither is refused.
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"id":          ids[0],
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+			{"id": ids[1], "training_id": otherTrainingID, "day_of_week": 2},
+		},
+	})
+	if got := updated["sessions"].([]interface{})[1].(map[string]interface{})["training_id"]; got != otherTrainingID {
+		t.Errorf("Expected the unplayed session to accept a training swap, got %v", got)
+	}
+
+	removed := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"id":          ids[0],
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+	if got := weekSessionIDs(removed); len(got) != 1 || got[0] != ids[0] {
+		t.Errorf("Expected the unplayed session to be removable, got %v", got)
+	}
+}
+
+// A logged session is entered by hand and was never run from a prescription.
+// Accepting the link would let an athlete freeze a week they never played.
+func TestSessionHandler_CreateSession_RefusesProgramSessionOnLoggedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkloggedlink")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	sessionID := weekSessionIDs(created)[0]
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":               "Hand entered",
+		"notes":              "",
+		"activity":           0,
+		"origin":             "logged",
+		"duration":           600,
+		"training_id":        trainingID,
+		"program_session_id": sessionID,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to post session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for a logged session carrying a program session, got %d", resp.StatusCode)
+	}
+
+	if locks := weekSessionLocks(getWeek(t, app, coachToken, userID, programID, 1)); locks[0] {
+		t.Errorf("Expected the session to stay unlocked")
+	}
+}
+
+// Deleting the week cascades to its sessions and the sessions FK nulls on
+// delete, so it is the removal the week PUT refuses by another route.
+func TestWeekHandler_DeleteWeek_RefusesWeekHoldingPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkdelfrozen")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	sessionID := weekSessionIDs(created)[0]
+	playProgramSession(t, app, userToken, trainingID, sessionID)
+
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodDelete, weekURL(userID, programID, 1), nil, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to delete week: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 deleting a week with a played session, got %d", resp.StatusCode)
+	}
+
+	if got := weekSessionIDs(getWeek(t, app, coachToken, userID, programID, 1)); len(got) != 1 || got[0] != sessionID {
+		t.Errorf("Expected the refused delete to leave the session in place, got %v", got)
+	}
+
+	respProgram, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodDelete, "/api/coach/clients/"+userID+"/programs/"+programID, nil, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to delete program: %v", err)
+	}
+	if respProgram.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 deleting a program holding a played session, got %d", respProgram.StatusCode)
+	}
+}
+
+func TestWeekHandler_DeleteWeek_AllowsWeekWithoutPlayedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkdelfree")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 2, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	// A played session in week 2 must not hold week 1 hostage.
+	playProgramSession(t, app, userToken, trainingID, weekSessionIDs(created)[0])
+
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodDelete, weekURL(userID, programID, 1), nil, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to delete week: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 deleting a week with no played session, got %d", resp.StatusCode)
 	}
 }

@@ -11,6 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countPlayedSessionsInProgram = `-- name: CountPlayedSessionsInProgram :one
+SELECT COUNT(*) FROM sessions played
+JOIN coach_program_week_sessions s ON s.id = played.program_session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+WHERE w.program_id = $1 AND played.origin = 'played'
+`
+
+func (q *Queries) CountPlayedSessionsInProgram(ctx context.Context, programID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countPlayedSessionsInProgram, programID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPlayedSessionsInWeek = `-- name: CountPlayedSessionsInWeek :one
+SELECT COUNT(*) FROM sessions played
+JOIN coach_program_week_sessions s ON s.id = played.program_session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+WHERE w.program_id = $1 AND w.week_number = $2
+  AND played.origin = 'played'
+`
+
+type CountPlayedSessionsInWeekParams struct {
+	ProgramID  pgtype.UUID
+	WeekNumber int32
+}
+
+func (q *Queries) CountPlayedSessionsInWeek(ctx context.Context, arg CountPlayedSessionsInWeekParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPlayedSessionsInWeek, arg.ProgramID, arg.WeekNumber)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCoachProgramWeekSession = `-- name: CreateCoachProgramWeekSession :one
 INSERT INTO coach_program_week_sessions
   (week_id, training_id, day_of_week, times_per_week, is_everyday, position, notes)
@@ -170,7 +204,15 @@ SELECT
   s.created_at,
   s.updated_at,
   ct.title         AS training_title,
-  ct.training_type AS training_type
+  ct.training_type AS training_type,
+  -- Locked once played: the prescription must keep describing what was played.
+  -- Only a played session counts. A logged one may not hold the link at all
+  -- (sessions_logged_has_no_program_session_check), and treating it as locking
+  -- would hand an athlete a way to freeze their coach's week by hand.
+  EXISTS (
+    SELECT 1 FROM sessions played
+    WHERE played.program_session_id = s.id AND played.origin = 'played'
+  ) AS is_locked
 FROM coach_program_week_sessions s
 JOIN trainings ct ON ct.id = s.training_id
 WHERE s.week_id = $1
@@ -190,6 +232,7 @@ type GetCoachProgramWeekSessionsRow struct {
 	UpdatedAt     pgtype.Timestamptz
 	TrainingTitle string
 	TrainingType  string
+	IsLocked      bool
 }
 
 func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype.UUID) ([]GetCoachProgramWeekSessionsRow, error) {
@@ -214,6 +257,7 @@ func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype
 			&i.UpdatedAt,
 			&i.TrainingTitle,
 			&i.TrainingType,
+			&i.IsLocked,
 		); err != nil {
 			return nil, err
 		}
@@ -251,6 +295,35 @@ func (q *Queries) GetCoachProgramWeeks(ctx context.Context, programID pgtype.UUI
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockCoachProgramWeekSessions = `-- name: LockCoachProgramWeekSessions :many
+SELECT id FROM coach_program_week_sessions
+WHERE week_id = $1
+FOR UPDATE
+`
+
+// Takes the row locks the freeze check reads under, so a session played between
+// the check and the delete cannot slip past it. FOR UPDATE is the only mode that
+// conflicts with the FOR KEY SHARE the sessions FK takes.
+func (q *Queries) LockCoachProgramWeekSessions(ctx context.Context, weekID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockCoachProgramWeekSessions, weekID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -455,6 +455,14 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid program session ID"})
 	}
+	// Only a played session was run from a prescription. The coach's week edits
+	// are frozen against this link, so a logged session holding one would let an
+	// athlete lock their coach out of a session they never played.
+	if origin != originPlayed && programSessionID.Valid {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Only a played session can reference a program session",
+		})
+	}
 
 	if !h.authorizeSessionLinks(c, userUUID, trainingID, programSessionID) {
 		return nil

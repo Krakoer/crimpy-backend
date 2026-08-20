@@ -315,14 +315,14 @@ func (h *ProgramHandler) UpdateProgram(c fiber.Ctx) error {
 
 // DeleteProgram godoc
 // @Summary Delete a training program
-// @Description Delete a program and its weeks. Only the owning coach can delete.
+// @Description Delete a program and its weeks. Only the owning coach can delete. Refused when any week holds a session the athlete already played, because the cascade would null the link that session keeps to what was prescribed.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
 // @Param program_id path string true "Program ID"
 // @Success 200 {object} map[string]string "Program deleted"
-// @Failure 400 {object} map[string]string "Invalid ID"
+// @Failure 400 {object} map[string]string "Invalid ID, or the program holds a played session"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Program not found"
 // @Router /api/coach/clients/{user_id}/programs/{program_id} [delete]
@@ -338,6 +338,19 @@ func (h *ProgramHandler) DeleteProgram(c fiber.Ctx) error {
 	programUUID, ok := h.verifyProgramOwnership(c, coachUUID, clientUUID, c.Params("program_id"))
 	if !ok {
 		return nil
+	}
+
+	// Cascades all the way down to the week sessions, so it is the week delete
+	// refusal one level up.
+	played, err := h.queries.CountPlayedSessionsInProgram(c.Context(), programUUID)
+	if err != nil {
+		slog.Error("failed to count played sessions", "program_id", programUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete program"})
+	}
+	if played > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "This program holds a session the athlete already played and cannot be deleted",
+		})
 	}
 
 	if err := h.queries.DeleteCoachProgram(c.Context(), programUUID); err != nil {

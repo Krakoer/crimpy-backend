@@ -58,6 +58,8 @@ CREATE TABLE "sessions" (
   "origin"              TEXT        NOT NULL DEFAULT 'logged',
   -- What the session was played from, so it can be shown against what was
   -- prescribed. Both null for logged sessions, and for templates deleted since.
+  -- program_session_id is refused outright on a logged session, see the check
+  -- below.
   "training_id"         UUID,
   "program_session_id"  UUID,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
@@ -70,7 +72,12 @@ CREATE TABLE "sessions" (
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
-  CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged'))
+  CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged')),
+  -- Only a played session carries the prescription it was run from. The freeze
+  -- on a prescription keys off this link, so letting a hand entered session hold
+  -- one would let an athlete lock their coach out of their own week.
+  CONSTRAINT "sessions_logged_has_no_program_session_check"
+    CHECK (origin = 'played' OR program_session_id IS NULL)
 );
 
 -- Stores the assessments the user has done, with the results.
