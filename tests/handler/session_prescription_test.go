@@ -448,3 +448,92 @@ func TestSessionHandler_GetUserSessions_OmitsPrescription(t *testing.T) {
 	// The detail endpoint still carries it, which is what the list defers to.
 	sessionPrescription(t, getSessionJSON(t, app, userToken, created["id"].(string)))
 }
+
+// recordAssessment logs a session carrying one assessment result, which is how
+// the athlete's results get on file.
+func recordAssessment(t *testing.T, app *fiber.App, userToken string, assessmentType int, right, left float64, date string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":          "Max hang test",
+		"notes":         "",
+		"activity":      0,
+		"origin":        "logged",
+		"duration":      300,
+		"is_assessment": true,
+		"date":          date,
+		"assessments": []map[string]interface{}{
+			{"type": assessmentType, "right_value": right, "left_value": left},
+		},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to record assessment: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 recording assessment, got %d", resp.StatusCode)
+	}
+}
+
+func prescriptionAssessments(t *testing.T, prescription map[string]interface{}) []interface{} {
+	t.Helper()
+	inputs, ok := prescription["resolved_against"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected resolved_against on the prescription, got %v", prescription["resolved_against"])
+	}
+	assessments, ok := inputs["assessments"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected assessments under resolved_against, got %v", inputs["assessments"])
+	}
+	return assessments
+}
+
+// A load set as a percentage of an assessment is stored as the percentage, so
+// the results it resolves against are as much part of the prescription as the
+// percentage is. Reassessing must not restate what the athlete was asked for.
+func TestSessionHandler_CreateSession_FreezesAssessmentResults(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "preassess")
+	trainingID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	recordAssessment(t, app, userToken, 0, 50, 48, "2026-01-10T10:00:00Z")
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, nil)
+	created := playSession(t, app, userToken, map[string]interface{}{
+		"program_session_id": programSessionID,
+	})
+
+	assessments := prescriptionAssessments(t, sessionPrescription(t, created))
+	if len(assessments) != 1 {
+		t.Fatalf("Expected the athlete's one assessment frozen, got %v", assessments)
+	}
+	frozen := assessments[0].(map[string]interface{})
+	if frozen["right_value"] != float64(50) || frozen["left_value"] != float64(48) {
+		t.Fatalf("Expected the results as they stood, got %v", frozen)
+	}
+
+	// The athlete gets stronger. What they were asked to do does not change.
+	recordAssessment(t, app, userToken, 0, 60, 58, "2026-02-10T10:00:00Z")
+
+	reread := prescriptionAssessments(t, sessionPrescription(t, getSessionJSON(t, app, userToken, created["id"].(string))))
+	stillFrozen := reread[0].(map[string]interface{})
+	if stillFrozen["right_value"] != float64(50) || stillFrozen["left_value"] != float64(48) {
+		t.Errorf("Expected the frozen results to survive a reassessment, got %v", stillFrozen)
+	}
+}
+
+// An athlete who has assessed nothing still gets the block, empty, which is the
+// case the clients read as "take the coach fallback".
+func TestSessionHandler_CreateSession_FreezesEmptyAssessmentResults(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "prenoassess")
+	trainingID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, nil)
+	created := playSession(t, app, userToken, map[string]interface{}{
+		"program_session_id": programSessionID,
+	})
+
+	if assessments := prescriptionAssessments(t, sessionPrescription(t, created)); len(assessments) != 0 {
+		t.Errorf("Expected no frozen assessments, got %v", assessments)
+	}
+}

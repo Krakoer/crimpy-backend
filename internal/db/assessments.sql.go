@@ -159,3 +159,60 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 	}
 	return items, nil
 }
+
+const getUserLatestAssessmentValues = `-- name: GetUserLatestAssessmentValues :many
+WITH measured AS (
+  SELECT a.type, a.right_value, a.left_value, s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = $1
+),
+last_right AS (
+  SELECT DISTINCT ON (type) type, right_value
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY type, date DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (type) type, left_value
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY type, date DESC
+)
+SELECT
+  COALESCE(last_right.type, last_left.type)::int AS type,
+  last_right.right_value,
+  last_left.left_value
+FROM last_right
+FULL OUTER JOIN last_left ON last_left.type = last_right.type
+ORDER BY 1
+`
+
+type GetUserLatestAssessmentValuesRow struct {
+	Type       int32
+	RightValue pgtype.Float4
+	LeftValue  pgtype.Float4
+}
+
+// The athlete's assessment results as they stand: the last value measured for
+// each assessment and each hand, by the date of the session that recorded it.
+// The hands are tracked apart, so a later assessment carrying only one of them
+// does not discard the other hand's last measurement, which is how the clients
+// resolve a percentage of an assessment.
+func (q *Queries) GetUserLatestAssessmentValues(ctx context.Context, userID pgtype.UUID) ([]GetUserLatestAssessmentValuesRow, error) {
+	rows, err := q.db.Query(ctx, getUserLatestAssessmentValues, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserLatestAssessmentValuesRow
+	for rows.Next() {
+		var i GetUserLatestAssessmentValuesRow
+		if err := rows.Scan(&i.Type, &i.RightValue, &i.LeftValue); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

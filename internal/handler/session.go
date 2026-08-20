@@ -429,13 +429,51 @@ type PrescriptionSnapshot struct {
 	ProgramSessionID *string                `json:"program_session_id,omitempty"`
 	CoachNotes       *string                `json:"coach_notes,omitempty"`
 	Items            []TrainingItemResponse `json:"items"`
+	ResolvedAgainst  PrescriptionInputs     `json:"resolved_against"`
+}
+
+// PrescriptionInputs are the athlete's own numbers the prescription is read
+// against, frozen with it. A load or a target the coach set as a percentage of
+// an assessment is stored as the percentage, so reading it against the results
+// the athlete has now would restate the prescription every time they reassess.
+//
+// The bodyweight a percent_bw load needs is not here: the app keeps it on the
+// device and never sends it, so the server has nothing to freeze.
+type PrescriptionInputs struct {
+	// Empty when the athlete had done no assessment, which is the case where
+	// the clients fall back to the value the coach set.
+	Assessments []AssessmentResultSnapshot `json:"assessments"`
+}
+
+// AssessmentResultSnapshot is the last value the athlete had measured for one
+// assessment, per hand. A hand that has never been measured is absent rather
+// than zero, since the clients take the coach fallback for it.
+type AssessmentResultSnapshot struct {
+	Type       int32    `json:"type"`
+	RightValue *float32 `json:"right_value,omitempty"`
+	LeftValue  *float32 `json:"left_value,omitempty"`
+}
+
+func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []AssessmentResultSnapshot {
+	results := make([]AssessmentResultSnapshot, 0, len(rows))
+	for _, r := range rows {
+		result := AssessmentResultSnapshot{Type: r.Type}
+		if r.RightValue.Valid {
+			result.RightValue = &r.RightValue.Float32
+		}
+		if r.LeftValue.Valid {
+			result.LeftValue = &r.LeftValue.Float32
+		}
+		results = append(results, result)
+	}
+	return results
 }
 
 // buildPrescriptionSnapshot resolves the training the session was run from, with
 // the program session's per-item overrides already merged in, so a later edit of
 // either cannot rewrite what was prescribed. programSession is nil for a session
 // played straight from a training, outside any program.
-func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) ([]byte, error) {
+func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) ([]byte, error) {
 	training, err := qtx.GetTraining(ctx, trainingID)
 	if err != nil {
 		return nil, err
@@ -462,6 +500,14 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, trainingID 
 	if training.Comment.Valid {
 		snapshot.Comment = &training.Comment.String
 	}
+
+	// Read before the session is inserted, so an assessment this very run
+	// records does not become what its own prescription was read against.
+	assessments, err := qtx.GetUserLatestAssessmentValues(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
 
 	if programSession != nil {
 		id := programSession.ID.String()
@@ -639,7 +685,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 	var prescription []byte
 	if trainingID.Valid {
-		prescription, err = buildPrescriptionSnapshot(c.Context(), qtx, trainingID, programSession)
+		prescription, err = buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
 		if err != nil {
 			slog.Error("failed to snapshot session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
