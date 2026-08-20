@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -52,6 +53,7 @@ type WeekSessionResponse struct {
 	IsEveryday    bool                      `json:"is_everyday"`
 	Position      int32                     `json:"position"`
 	Notes         *string                   `json:"notes,omitempty"`
+	IsLocked      bool                      `json:"is_locked"`
 	Overrides     []SessionOverrideResponse `json:"overrides"`
 }
 
@@ -131,10 +133,111 @@ func validateWeekSession(s WeekSessionRequest) error {
 	return nil
 }
 
+// checkFrozenSessions refuses a payload that would rewrite what was prescribed
+// on a session the athlete already played. Only the training and its overrides
+// describe the prescription, so day, notes and position stay editable, but the
+// row itself must survive: dropping it would null the link the played session
+// holds.
+func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+	existing, err := qtx.GetCoachProgramWeekSessions(ctx, weekID)
+	if err != nil {
+		return err
+	}
+	frozen := make(map[pgtype.UUID]db.GetCoachProgramWeekSessionsRow)
+	for _, row := range existing {
+		if row.IsLocked {
+			frozen[row.ID] = row
+		}
+	}
+	if len(frozen) == 0 {
+		return nil
+	}
+
+	weekOverrides, err := qtx.GetCoachProgramWeekOverrides(ctx, weekID)
+	if err != nil {
+		return err
+	}
+	prescribedOverrides := make(map[pgtype.UUID]map[pgtype.UUID][]byte, len(frozen))
+	for _, o := range weekOverrides {
+		if _, isFrozen := frozen[o.SessionID]; !isFrozen {
+			continue
+		}
+		if prescribedOverrides[o.SessionID] == nil {
+			prescribedOverrides[o.SessionID] = make(map[pgtype.UUID][]byte)
+		}
+		prescribedOverrides[o.SessionID][o.ItemID] = o.Overrides
+	}
+
+	kept := make(map[pgtype.UUID]struct{}, len(sessionIDs))
+	for i, id := range sessionIDs {
+		if !id.Valid {
+			continue
+		}
+		kept[id] = struct{}{}
+		row, isFrozen := frozen[id]
+		if !isFrozen {
+			continue
+		}
+		if err := checkFrozenSession(i, sessions[i], row, prescribedOverrides[id]); err != nil {
+			return err
+		}
+	}
+	for id, row := range frozen {
+		if _, stillThere := kept[id]; !stillThere {
+			return invalidRequestf("session %s was played by the athlete and cannot be removed from the week", row.ID.String())
+		}
+	}
+	return nil
+}
+
+func checkFrozenSession(index int, s WeekSessionRequest, row db.GetCoachProgramWeekSessionsRow, prescribed map[pgtype.UUID][]byte) error {
+	var trainingUUID pgtype.UUID
+	if err := trainingUUID.Scan(s.TrainingID); err != nil {
+		return invalidRequestf("invalid training_id at session %d", index)
+	}
+	if trainingUUID != row.TrainingID {
+		return invalidRequestf("session %d: was played by the athlete, its training cannot be changed", index)
+	}
+
+	seenItems := make(map[pgtype.UUID]struct{}, len(s.Overrides))
+	for _, o := range s.Overrides {
+		var itemUUID pgtype.UUID
+		if err := itemUUID.Scan(o.ItemID); err != nil {
+			return invalidRequestf("invalid item_id in session %d override", index)
+		}
+		current, prescribedForItem := prescribed[itemUUID]
+		if !prescribedForItem || !sameJSON(current, o.Overrides) {
+			return invalidRequestf("session %d: was played by the athlete, its overrides cannot be changed", index)
+		}
+		seenItems[itemUUID] = struct{}{}
+	}
+	if len(seenItems) != len(prescribed) {
+		return invalidRequestf("session %d: was played by the athlete, its overrides cannot be changed", index)
+	}
+	return nil
+}
+
+// sameJSON compares two override payloads by value, because the stored jsonb
+// comes back with its own key order and spacing.
+func sameJSON(a, b []byte) bool {
+	var aValue, bValue any
+	if err := json.Unmarshal(a, &aValue); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &bValue); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(aValue, bValue)
+}
+
 // syncWeekSessions reconciles a week against the payload instead of recreating
 // it, so a session the client sends back by id keeps that id. Sessions played by
 // the athlete reference these ids, and recreating them nulls those references.
 func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+	if err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs); err != nil {
+		return err
+	}
+
 	keptIDs := make([]pgtype.UUID, 0, len(sessions))
 	for _, id := range sessionIDs {
 		if id.Valid {
@@ -262,6 +365,7 @@ func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWe
 			TrainingType:  s.TrainingType,
 			IsEveryday:    s.IsEveryday,
 			Position:      s.Position,
+			IsLocked:      s.IsLocked,
 			Overrides:     overridesBySession[s.ID],
 		}
 		if resp.Overrides == nil {
@@ -334,7 +438,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted.
+// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week.
 // @Tags Programs
 // @Accept json
 // @Produce json

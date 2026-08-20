@@ -1408,7 +1408,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted.",
+                "description": "Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5859,6 +5859,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "is_everyday": {
+                    "type": "boolean"
+                },
+                "is_locked": {
                     "type": "boolean"
                 },
                 "notes": {
