@@ -112,8 +112,8 @@ func TestSessionHandler_CreateSession_SnapshotsResolvedPrescription(t *testing.T
 	})
 
 	prescription := sessionPrescription(t, session)
-	if prescription["training_id"] != trainingID {
-		t.Errorf("Expected training_id %s, got %v", trainingID, prescription["training_id"])
+	if prescription["id"] != trainingID {
+		t.Errorf("Expected the training id %s, got %v", trainingID, prescription["id"])
 	}
 	if prescription["title"] != "Hangboard Training" {
 		t.Errorf("Expected the training title, got %v", prescription["title"])
@@ -210,8 +210,8 @@ func TestSessionHandler_CreateSession_SnapshotsTrainingWithoutProgram(t *testing
 	session := playSession(t, app, userToken, map[string]interface{}{"training_id": trainingID})
 
 	prescription := sessionPrescription(t, session)
-	if prescription["training_id"] != trainingID {
-		t.Errorf("Expected training_id %s, got %v", trainingID, prescription["training_id"])
+	if prescription["id"] != trainingID {
+		t.Errorf("Expected the training id %s, got %v", trainingID, prescription["id"])
 	}
 	if _, present := prescription["program_session_id"]; present {
 		t.Errorf("Expected no program_session_id on a training played outside a program, got %v", prescription["program_session_id"])

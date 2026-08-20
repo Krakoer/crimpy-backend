@@ -415,9 +415,10 @@ func sessionRowsToListItems(rows []db.GetUserSessionsRow) []SessionListItem {
 // PrescriptionSnapshot is what the athlete was asked to do, resolved once when
 // the session is created. The training and the coach's overrides stay editable
 // afterwards, so nothing but this copy still describes the prescription the
-// session was actually run from.
+// session was actually run from. The training keeps its own key names here, id
+// included, so a client can read a snapshot with the training parser it has.
 type PrescriptionSnapshot struct {
-	TrainingID   string  `json:"training_id"`
+	ID           string  `json:"id"`
 	Title        string  `json:"title"`
 	Description  *string `json:"description,omitempty"`
 	TrainingType string  `json:"training_type"`
@@ -446,7 +447,7 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, trainingID,
 
 	var zeroParent pgtype.UUID
 	snapshot := PrescriptionSnapshot{
-		TrainingID:   training.ID.String(),
+		ID:           training.ID.String(),
 		Title:        training.Title,
 		TrainingType: training.TrainingType,
 		Items:        buildTrainingItemTree(rows, zeroParent),
