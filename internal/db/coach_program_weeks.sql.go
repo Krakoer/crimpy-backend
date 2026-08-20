@@ -133,6 +133,38 @@ func (q *Queries) DeleteCoachProgramWeekSessionsNotIn(ctx context.Context, arg D
 	return err
 }
 
+const getCoachProgramSessionOverrides = `-- name: GetCoachProgramSessionOverrides :many
+SELECT id, session_id, item_id, overrides, created_at, updated_at FROM coach_program_session_overrides
+WHERE session_id = $1
+`
+
+func (q *Queries) GetCoachProgramSessionOverrides(ctx context.Context, sessionID pgtype.UUID) ([]CoachProgramSessionOverride, error) {
+	rows, err := q.db.Query(ctx, getCoachProgramSessionOverrides, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CoachProgramSessionOverride
+	for rows.Next() {
+		var i CoachProgramSessionOverride
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.ItemID,
+			&i.Overrides,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCoachProgramWeek = `-- name: GetCoachProgramWeek :one
 SELECT id, program_id, week_number, notes, created_at, updated_at FROM coach_program_weeks
 WHERE program_id = $1 AND week_number = $2
@@ -189,6 +221,28 @@ func (q *Queries) GetCoachProgramWeekOverrides(ctx context.Context, weekID pgtyp
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCoachProgramWeekSession = `-- name: GetCoachProgramWeekSession :one
+SELECT id, week_id, training_id, day_of_week, times_per_week, is_everyday, position, notes, created_at, updated_at FROM coach_program_week_sessions WHERE id = $1
+`
+
+func (q *Queries) GetCoachProgramWeekSession(ctx context.Context, id pgtype.UUID) (CoachProgramWeekSession, error) {
+	row := q.db.QueryRow(ctx, getCoachProgramWeekSession, id)
+	var i CoachProgramWeekSession
+	err := row.Scan(
+		&i.ID,
+		&i.WeekID,
+		&i.TrainingID,
+		&i.DayOfWeek,
+		&i.TimesPerWeek,
+		&i.IsEveryday,
+		&i.Position,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getCoachProgramWeekSessions = `-- name: GetCoachProgramWeekSessions :many

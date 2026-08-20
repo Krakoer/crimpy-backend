@@ -62,6 +62,13 @@ CREATE TABLE "sessions" (
   -- below.
   "training_id"         UUID,
   "program_session_id"  UUID,
+  -- The prescription resolved at create time: the training as it read then,
+  -- with the program session overrides already merged into its items. The
+  -- template it was resolved from stays editable, so only this snapshot still
+  -- describes what the athlete was actually asked to do. Null when the session
+  -- was not run from a training, and on rows created before the snapshot
+  -- existed.
+  "prescription"        JSONB,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
   "repeater_sets"       INTEGER,
   "repeater_reps"       INTEGER,

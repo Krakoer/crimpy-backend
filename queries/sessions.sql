@@ -1,11 +1,11 @@
 -- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, duration, date,
+  program_session_id, prescription, duration, date,
   repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
   repeater_set_rest, repeater_split_hand
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 ) RETURNING *;
 
 -- name: GetSession :one
