@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"crimpy/backend/internal/db"
 	"encoding/json"
 	"fmt"
@@ -20,8 +21,17 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	if item.Cycles.Valid {
 		req.Cycles = &item.Cycles.Int32
 	}
+	if item.CycleRestSeconds.Valid {
+		req.CycleRestSeconds = &item.CycleRestSeconds.Int32
+	}
 	if item.Reps.Valid {
 		req.Reps = &item.Reps.Int32
+	}
+	if item.RestSeconds.Valid {
+		req.RestSeconds = &item.RestSeconds.Int32
+	}
+	if item.WorktimeSeconds.Valid {
+		req.WorktimeSeconds = &item.WorktimeSeconds.Int32
 	}
 	if item.Hand.Valid {
 		req.Hand = &item.Hand.String
@@ -214,61 +224,86 @@ func validateItemArrays(item TrainingItemRequest) error {
 	return validateHandPositions(item.HandPositions, hand, rows)
 }
 
-// hangboardOverride is the subset of a session override that changes the
-// hangboard layout. Every other key passes through untouched.
-type hangboardOverride struct {
-	Cycles          *int32          `json:"cycles"`
-	Reps            *int32          `json:"reps"`
-	Hand            *string         `json:"hand"`
-	Granularity     *string         `json:"granularity"`
-	Loads           json.RawMessage `json:"loads"`
-	LeftLoads       json.RawMessage `json:"left_loads"`
-	HandPositions   json.RawMessage `json:"hand_positions"`
-	EdgeSizesMm     json.RawMessage `json:"edge_sizes_mm"`
-	VariableTargets json.RawMessage `json:"variable_targets"`
+// itemOverride is every field a session override may replace on the item it
+// targets. It has to name the same keys the clients merge, since an override
+// key missing here is silently dropped from the prescription snapshot rather
+// than merely being ignored. Kept in step with the app's applyOverride by
+// TestOverrideCoversEveryClientKey.
+//
+// Note hb_worktime_seconds: the override names the item's worktime_seconds
+// field with a different key, and the clients read it that way.
+type itemOverride struct {
+	Cycles           *int32          `json:"cycles"`
+	CycleRestSeconds *int32          `json:"cycle_rest_seconds"`
+	Reps             *int32          `json:"reps"`
+	RestSeconds      *int32          `json:"rest_seconds"`
+	WorktimeSeconds  *int32          `json:"hb_worktime_seconds"`
+	Hand             *string         `json:"hand"`
+	Granularity      *string         `json:"granularity"`
+	Loads            json.RawMessage `json:"loads"`
+	LeftLoads        json.RawMessage `json:"left_loads"`
+	HandPositions    json.RawMessage `json:"hand_positions"`
+	EdgeSizesMm      json.RawMessage `json:"edge_sizes_mm"`
+	VariableTargets  json.RawMessage `json:"variable_targets"`
 }
 
 // overridableItem points at the fields an override may replace. The request and
 // response item shapes each expose one, so a session override is merged the same
 // way whichever shape holds the item.
 type overridableItem struct {
-	cycles          **int32
-	reps            **int32
-	hand            **string
-	granularity     **string
-	loads           *json.RawMessage
-	leftLoads       *json.RawMessage
-	handPositions   *json.RawMessage
-	edgeSizesMm     *json.RawMessage
-	variableTargets *json.RawMessage
+	cycles           **int32
+	cycleRestSeconds **int32
+	reps             **int32
+	restSeconds      **int32
+	worktimeSeconds  **int32
+	hand             **string
+	granularity      **string
+	loads            *json.RawMessage
+	leftLoads        *json.RawMessage
+	handPositions    *json.RawMessage
+	edgeSizesMm      *json.RawMessage
+	variableTargets  *json.RawMessage
 }
 
 func (i *TrainingItemRequest) overridable() overridableItem {
 	return overridableItem{
-		cycles:          &i.Cycles,
-		reps:            &i.Reps,
-		hand:            &i.Hand,
-		granularity:     &i.Granularity,
-		loads:           &i.Loads,
-		leftLoads:       &i.LeftLoads,
-		handPositions:   &i.HandPositions,
-		edgeSizesMm:     &i.EdgeSizesMm,
-		variableTargets: &i.VariableTargets,
+		cycles:           &i.Cycles,
+		cycleRestSeconds: &i.CycleRestSeconds,
+		reps:             &i.Reps,
+		restSeconds:      &i.RestSeconds,
+		worktimeSeconds:  &i.WorktimeSeconds,
+		hand:             &i.Hand,
+		granularity:      &i.Granularity,
+		loads:            &i.Loads,
+		leftLoads:        &i.LeftLoads,
+		handPositions:    &i.HandPositions,
+		edgeSizesMm:      &i.EdgeSizesMm,
+		variableTargets:  &i.VariableTargets,
 	}
 }
 
 func (i *TrainingItemResponse) overridable() overridableItem {
 	return overridableItem{
-		cycles:          &i.Cycles,
-		reps:            &i.Reps,
-		hand:            &i.Hand,
-		granularity:     &i.Granularity,
-		loads:           &i.Loads,
-		leftLoads:       &i.LeftLoads,
-		handPositions:   &i.HandPositions,
-		edgeSizesMm:     &i.EdgeSizesMm,
-		variableTargets: &i.VariableTargets,
+		cycles:           &i.Cycles,
+		cycleRestSeconds: &i.CycleRestSeconds,
+		reps:             &i.Reps,
+		restSeconds:      &i.RestSeconds,
+		worktimeSeconds:  &i.WorktimeSeconds,
+		hand:             &i.Hand,
+		granularity:      &i.Granularity,
+		loads:            &i.Loads,
+		leftLoads:        &i.LeftLoads,
+		handPositions:    &i.HandPositions,
+		edgeSizesMm:      &i.EdgeSizesMm,
+		variableTargets:  &i.VariableTargets,
 	}
+}
+
+// isEmptyJSONArray reports whether raw is the empty array. An override carrying
+// one prescribes nothing, so the clients leave the base value in place rather
+// than wiping it, and the merge has to agree.
+func isEmptyJSONArray(raw json.RawMessage) bool {
+	return string(bytes.TrimSpace(raw)) == "[]"
 }
 
 // mergeItemOverride merges an override into the item it targets, field by
@@ -277,35 +312,55 @@ func mergeItemOverride(target overridableItem, raw json.RawMessage) error {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
-	var over hangboardOverride
+	var over itemOverride
 	if err := json.Unmarshal(raw, &over); err != nil {
 		return fmt.Errorf("overrides must be an object")
 	}
-	if over.Cycles != nil {
-		*target.cycles = over.Cycles
+	for _, field := range []struct {
+		override *int32
+		target   **int32
+	}{
+		{over.Cycles, target.cycles},
+		{over.CycleRestSeconds, target.cycleRestSeconds},
+		{over.Reps, target.reps},
+		{over.RestSeconds, target.restSeconds},
+		{over.WorktimeSeconds, target.worktimeSeconds},
+	} {
+		if field.override != nil {
+			*field.target = field.override
+		}
 	}
-	if over.Reps != nil {
-		*target.reps = over.Reps
-	}
-	if over.Hand != nil {
-		*target.hand = over.Hand
-	}
-	if over.Granularity != nil {
-		*target.granularity = over.Granularity
+	for _, field := range []struct {
+		override *string
+		target   **string
+	}{
+		{over.Hand, target.hand},
+		{over.Granularity, target.granularity},
+	} {
+		if field.override != nil {
+			*field.target = field.override
+		}
 	}
 	for _, field := range []struct {
 		override json.RawMessage
 		target   *json.RawMessage
+		// An empty array is a value for variable_targets, which is an object,
+		// and a no-op for the layout arrays.
+		keepBaseWhenEmpty bool
 	}{
-		{over.Loads, target.loads},
-		{over.LeftLoads, target.leftLoads},
-		{over.HandPositions, target.handPositions},
-		{over.EdgeSizesMm, target.edgeSizesMm},
-		{over.VariableTargets, target.variableTargets},
+		{over.Loads, target.loads, true},
+		{over.LeftLoads, target.leftLoads, true},
+		{over.HandPositions, target.handPositions, true},
+		{over.EdgeSizesMm, target.edgeSizesMm, true},
+		{over.VariableTargets, target.variableTargets, false},
 	} {
-		if len(field.override) > 0 && string(field.override) != "null" {
-			*field.target = field.override
+		if len(field.override) == 0 || string(field.override) == "null" {
+			continue
 		}
+		if field.keepBaseWhenEmpty && isEmptyJSONArray(field.override) {
+			continue
+		}
+		*field.target = field.override
 	}
 	return nil
 }

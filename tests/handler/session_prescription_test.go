@@ -250,3 +250,82 @@ func TestSessionHandler_CreateSession_NoPrescriptionWithoutTraining(t *testing.T
 		t.Errorf("Expected no prescription on a session run from nothing, got %v", session["prescription"])
 	}
 }
+
+// prescribeSession puts one session on week 1 and returns its program session id.
+func prescribeSession(t *testing.T, app *fiber.App, coachToken, userID, programID, trainingID string, overrides map[string]interface{}) string {
+	t.Helper()
+	session := map[string]interface{}{
+		"training_id": trainingID,
+		"day_of_week": 0,
+	}
+	if overrides != nil {
+		session["overrides"] = overrides["overrides"]
+	}
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{session},
+	})
+	return weekSessionIDs(created)[0]
+}
+
+// The snapshot has to freeze every key an override may carry, not just the ones
+// that reshape the hangboard grid. A timing the coach overrode and the athlete
+// ran is part of what they were asked to do.
+func TestSessionHandler_CreateSession_SnapshotsNonLayoutOverrides(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "prenonlayout")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": itemID, "overrides": map[string]interface{}{
+				"rest_seconds":        120,
+				"hb_worktime_seconds": 10,
+				"cycle_rest_seconds":  240,
+			}},
+		},
+	})
+
+	session := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+
+	item := prescriptionItems(t, sessionPrescription(t, session))[0].(map[string]interface{})
+	for _, field := range []struct {
+		key  string
+		want float64
+	}{
+		{"rest_seconds", 120},
+		{"worktime_seconds", 10},
+		{"cycle_rest_seconds", 240},
+	} {
+		if item[field.key] != field.want {
+			t.Errorf("Expected the overridden %s %v in the snapshot, got %v", field.key, field.want, item[field.key])
+		}
+	}
+}
+
+// An override carrying an empty array prescribes nothing, so the clients leave
+// the training value in place and the snapshot has to agree.
+func TestSessionHandler_CreateSession_EmptyArrayOverrideKeepsTrainingValue(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "preempty")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": itemID, "overrides": map[string]interface{}{"loads": []interface{}{}}},
+		},
+	})
+
+	session := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+
+	item := prescriptionItems(t, sessionPrescription(t, session))[0].(map[string]interface{})
+	loads, ok := item["loads"].([]interface{})
+	if !ok || len(loads) != 1 {
+		t.Fatalf("Expected the training loads kept, got %v", item["loads"])
+	}
+}
