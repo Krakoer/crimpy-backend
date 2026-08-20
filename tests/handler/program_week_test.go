@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -812,4 +813,425 @@ func createTestPerRepCoachTraining(t *testing.T, coachToken string, app *fiber.A
 	trainingID = result["id"].(string)
 	itemID = result["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
 	return trainingID, itemID
+}
+
+func upsertWeekSessions(t *testing.T, app *fiber.App, coachToken, userID, programID string, weekNum int, week map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	body, _ := json.Marshal(week)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, weekNum), body, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to upsert week: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 upserting week, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result
+}
+
+func upsertWeekStatus(t *testing.T, app *fiber.App, coachToken, userID, programID string, weekNum int, week map[string]interface{}) int {
+	t.Helper()
+	body, _ := json.Marshal(week)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, weekNum), body, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to upsert week: %v", err)
+	}
+	return resp.StatusCode
+}
+
+func weekSessionIDs(week map[string]interface{}) []string {
+	sessions := week["sessions"].([]interface{})
+	ids := make([]string, 0, len(sessions))
+	for _, s := range sessions {
+		ids = append(ids, s.(map[string]interface{})["id"].(string))
+	}
+	return ids
+}
+
+func TestWeekHandler_UpsertWeek_KeepsSessionIDsSentBack(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkidcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkiduser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+			{"training_id": trainingID, "times_per_week": 2},
+		},
+	})
+	originalIDs := weekSessionIDs(created)
+
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"notes": "Typo fixed",
+		"sessions": []map[string]interface{}{
+			{"id": originalIDs[0], "training_id": trainingID, "day_of_week": 0},
+			{"id": originalIDs[1], "training_id": trainingID, "times_per_week": 2},
+		},
+	})
+
+	updatedIDs := weekSessionIDs(updated)
+	if len(updatedIDs) != 2 {
+		t.Fatalf("Expected 2 sessions after edit, got %d", len(updatedIDs))
+	}
+	for i, id := range originalIDs {
+		if updatedIDs[i] != id {
+			t.Errorf("Expected session %d to keep id %s, got %s", i, id, updatedIDs[i])
+		}
+	}
+	if updated["notes"] != "Typo fixed" {
+		t.Errorf("Expected updated notes, got %v", updated["notes"])
+	}
+}
+
+func TestWeekHandler_UpsertWeek_KeepsPlayedSessionLink(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wklinkcoach@test.com")
+	userID, userToken := testutil.CreateTestUser(t, queries, "wklinkuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	week := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	programSessionID := weekSessionIDs(week)[0]
+
+	sessionBody, _ := json.Marshal(map[string]interface{}{
+		"name":               "Prescribed hangboard",
+		"notes":              "",
+		"activity":           0,
+		"origin":             "played",
+		"duration":           600,
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", sessionBody, userToken))
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating session, got %d", resp.StatusCode)
+	}
+	var playedSession map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&playedSession)
+	playedSessionID := playedSession["id"].(string)
+
+	upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"notes": "Coach fixed a typo",
+		"sessions": []map[string]interface{}{
+			{"id": programSessionID, "training_id": trainingID, "day_of_week": 0},
+		},
+	})
+
+	resp, err = app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/sessions/"+playedSessionID, nil, userToken))
+	if err != nil {
+		t.Fatalf("Failed to fetch session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 fetching session, got %d", resp.StatusCode)
+	}
+	var reloaded map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&reloaded)
+	session := reloaded["session"].(map[string]interface{})
+	if session["program_session_id"] != programSessionID {
+		t.Errorf("Expected played session to keep program_session_id %s, got %v", programSessionID, session["program_session_id"])
+	}
+}
+
+func TestWeekHandler_UpsertWeek_DeletesSessionsMissingFromPayload(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkdropcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkdropuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+			{"training_id": trainingID, "day_of_week": 2},
+			{"training_id": trainingID, "day_of_week": 4},
+		},
+	})
+	originalIDs := weekSessionIDs(created)
+
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": originalIDs[0], "training_id": trainingID, "day_of_week": 0},
+			{"id": originalIDs[2], "training_id": trainingID, "day_of_week": 4},
+			{"training_id": trainingID, "day_of_week": 6},
+		},
+	})
+
+	updatedIDs := weekSessionIDs(updated)
+	if len(updatedIDs) != 3 {
+		t.Fatalf("Expected 3 sessions, got %d", len(updatedIDs))
+	}
+	if updatedIDs[0] != originalIDs[0] || updatedIDs[1] != originalIDs[2] {
+		t.Errorf("Expected kept sessions to keep their ids, got %v from %v", updatedIDs, originalIDs)
+	}
+	if updatedIDs[2] == originalIDs[1] {
+		t.Errorf("Expected the added session to be a new row, got the removed session id %s", originalIDs[1])
+	}
+}
+
+func TestWeekHandler_UpsertWeek_KeepsSessionIDWhenScheduleChanges(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkmovecoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkmoveuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	sessionID := weekSessionIDs(created)[0]
+
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionID, "training_id": trainingID, "is_everyday": true, "notes": "Every day now"},
+		},
+	})
+
+	session := updated["sessions"].([]interface{})[0].(map[string]interface{})
+	if session["id"] != sessionID {
+		t.Errorf("Expected id %s to survive a schedule change, got %v", sessionID, session["id"])
+	}
+	if session["is_everyday"] != true {
+		t.Errorf("Expected is_everyday true, got %v", session["is_everyday"])
+	}
+	if _, ok := session["day_of_week"]; ok {
+		t.Errorf("Expected day_of_week to be cleared, got %v", session["day_of_week"])
+	}
+	if session["notes"] != "Every day now" {
+		t.Errorf("Expected updated notes, got %v", session["notes"])
+	}
+}
+
+func TestWeekHandler_UpsertWeek_DropsOverridesMissingFromPayload(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkovrcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkovruser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 6}},
+				},
+			},
+		},
+	})
+	sessionID := weekSessionIDs(created)[0]
+
+	updated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionID, "training_id": trainingID, "day_of_week": 1},
+		},
+	})
+
+	session := updated["sessions"].([]interface{})[0].(map[string]interface{})
+	if session["id"] != sessionID {
+		t.Errorf("Expected id %s to be kept, got %v", sessionID, session["id"])
+	}
+	overrides := session["overrides"].([]interface{})
+	if len(overrides) != 0 {
+		t.Errorf("Expected overrides to be dropped, got %v", overrides)
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RejectsForeignSessionID(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkforeigncoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkforeignuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	weekOne := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	otherWeekSessionID := weekSessionIDs(weekOne)[0]
+
+	status := upsertWeekStatus(t, app, coachToken, userID, programID, 2, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": otherWeekSessionID, "training_id": trainingID, "day_of_week": 0},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a session id from another week, got %d", status)
+	}
+
+	stillThere := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": otherWeekSessionID, "training_id": trainingID, "day_of_week": 0},
+		},
+	})
+	if weekSessionIDs(stillThere)[0] != otherWeekSessionID {
+		t.Errorf("Expected the rejected upsert to leave week 1 untouched")
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RejectsSessionIDFromAnotherCoach(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachAID, coachAToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxcoacha@test.com")
+	userAID, _ := testutil.CreateTestUser(t, queries, "wkxusera@test.com")
+	enrollUserDirect(t, pool, coachAID, userAID)
+
+	coachBID, coachBToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxcoachb@test.com")
+	userBID, _ := testutil.CreateTestUser(t, queries, "wkxuserb@test.com")
+	enrollUserDirect(t, pool, coachBID, userBID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programA := createTestProgram(t, coachAToken, userAID, app)
+	trainingA := createTestCoachTraining(t, coachAToken, app)
+	weekA := upsertWeekSessions(t, app, coachAToken, userAID, programA, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingA, "day_of_week": 0}},
+	})
+	sessionAID := weekSessionIDs(weekA)[0]
+
+	programB := createTestProgram(t, coachBToken, userBID, app)
+	trainingB := createTestCoachTraining(t, coachBToken, app)
+
+	status := upsertWeekStatus(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionAID, "training_id": trainingB, "day_of_week": 0},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a session id owned by another coach, got %d", status)
+	}
+
+	untouched := upsertWeekSessions(t, app, coachAToken, userAID, programA, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionAID, "training_id": trainingA, "day_of_week": 0},
+		},
+	})
+	session := untouched["sessions"].([]interface{})[0].(map[string]interface{})
+	if session["id"] != sessionAID {
+		t.Errorf("Expected coach A's session to survive, got %v", session["id"])
+	}
+	if session["training_id"] != trainingA {
+		t.Errorf("Expected coach A's training to be untouched, got %v", session["training_id"])
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RejectsMalformedAndDuplicateSessionIDs(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkbadidcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkbadiduser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	sessionID := weekSessionIDs(created)[0]
+
+	cases := []struct {
+		name     string
+		sessions []map[string]interface{}
+	}{
+		{"malformed id", []map[string]interface{}{
+			{"id": "not-a-uuid", "training_id": trainingID, "day_of_week": 0},
+		}},
+		{"duplicate id", []map[string]interface{}{
+			{"id": sessionID, "training_id": trainingID, "day_of_week": 0},
+			{"id": sessionID, "training_id": trainingID, "day_of_week": 2},
+		}},
+		{"duplicate id in another spelling", []map[string]interface{}{
+			{"id": sessionID, "training_id": trainingID, "day_of_week": 0},
+			{"id": strings.ToUpper(sessionID), "training_id": trainingID, "day_of_week": 2},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{"sessions": tc.sessions})
+			if status != fiber.StatusBadRequest {
+				t.Errorf("Expected 400, got %d", status)
+			}
+		})
+	}
 }

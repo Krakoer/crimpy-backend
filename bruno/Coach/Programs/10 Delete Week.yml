@@ -1,10 +1,10 @@
 info:
-  name: Get Week
+  name: Delete Week
   type: http
-  seq: 8
+  seq: 10
 
 http:
-  method: GET
+  method: DELETE
   url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs/{{programId}}/weeks/{{weekNumber}}"
   body:
     type: none

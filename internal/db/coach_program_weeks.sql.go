@@ -54,6 +54,21 @@ func (q *Queries) CreateCoachProgramWeekSession(ctx context.Context, arg CreateC
 	return i, err
 }
 
+const deleteCoachProgramSessionOverridesNotIn = `-- name: DeleteCoachProgramSessionOverridesNotIn :exec
+DELETE FROM coach_program_session_overrides
+WHERE session_id = $1 AND NOT (item_id = ANY($2::uuid[]))
+`
+
+type DeleteCoachProgramSessionOverridesNotInParams struct {
+	SessionID   pgtype.UUID
+	KeptItemIds []pgtype.UUID
+}
+
+func (q *Queries) DeleteCoachProgramSessionOverridesNotIn(ctx context.Context, arg DeleteCoachProgramSessionOverridesNotInParams) error {
+	_, err := q.db.Exec(ctx, deleteCoachProgramSessionOverridesNotIn, arg.SessionID, arg.KeptItemIds)
+	return err
+}
+
 const deleteCoachProgramWeek = `-- name: DeleteCoachProgramWeek :exec
 DELETE FROM coach_program_weeks
 WHERE program_id = $1 AND week_number = $2
@@ -69,12 +84,18 @@ func (q *Queries) DeleteCoachProgramWeek(ctx context.Context, arg DeleteCoachPro
 	return err
 }
 
-const deleteCoachProgramWeekSessions = `-- name: DeleteCoachProgramWeekSessions :exec
-DELETE FROM coach_program_week_sessions WHERE week_id = $1
+const deleteCoachProgramWeekSessionsNotIn = `-- name: DeleteCoachProgramWeekSessionsNotIn :exec
+DELETE FROM coach_program_week_sessions
+WHERE week_id = $1 AND NOT (id = ANY($2::uuid[]))
 `
 
-func (q *Queries) DeleteCoachProgramWeekSessions(ctx context.Context, weekID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteCoachProgramWeekSessions, weekID)
+type DeleteCoachProgramWeekSessionsNotInParams struct {
+	WeekID  pgtype.UUID
+	KeptIds []pgtype.UUID
+}
+
+func (q *Queries) DeleteCoachProgramWeekSessionsNotIn(ctx context.Context, arg DeleteCoachProgramWeekSessionsNotInParams) error {
+	_, err := q.db.Exec(ctx, deleteCoachProgramWeekSessionsNotIn, arg.WeekID, arg.KeptIds)
 	return err
 }
 
@@ -235,6 +256,57 @@ func (q *Queries) GetCoachProgramWeeks(ctx context.Context, programID pgtype.UUI
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCoachProgramWeekSession = `-- name: UpdateCoachProgramWeekSession :one
+UPDATE coach_program_week_sessions
+SET training_id    = $1,
+    day_of_week    = $2,
+    times_per_week = $3,
+    is_everyday    = $4,
+    position       = $5,
+    notes          = $6,
+    updated_at     = now()
+WHERE id = $7 AND week_id = $8
+RETURNING id, week_id, training_id, day_of_week, times_per_week, is_everyday, position, notes, created_at, updated_at
+`
+
+type UpdateCoachProgramWeekSessionParams struct {
+	TrainingID   pgtype.UUID
+	DayOfWeek    pgtype.Int4
+	TimesPerWeek pgtype.Int4
+	IsEveryday   bool
+	Position     int32
+	Notes        pgtype.Text
+	ID           pgtype.UUID
+	WeekID       pgtype.UUID
+}
+
+func (q *Queries) UpdateCoachProgramWeekSession(ctx context.Context, arg UpdateCoachProgramWeekSessionParams) (CoachProgramWeekSession, error) {
+	row := q.db.QueryRow(ctx, updateCoachProgramWeekSession,
+		arg.TrainingID,
+		arg.DayOfWeek,
+		arg.TimesPerWeek,
+		arg.IsEveryday,
+		arg.Position,
+		arg.Notes,
+		arg.ID,
+		arg.WeekID,
+	)
+	var i CoachProgramWeekSession
+	err := row.Scan(
+		&i.ID,
+		&i.WeekID,
+		&i.TrainingID,
+		&i.DayOfWeek,
+		&i.TimesPerWeek,
+		&i.IsEveryday,
+		&i.Position,
+		&i.Notes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertCoachProgramSessionOverride = `-- name: UpsertCoachProgramSessionOverride :one

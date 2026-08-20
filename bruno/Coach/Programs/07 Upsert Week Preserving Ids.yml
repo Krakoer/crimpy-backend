@@ -1,7 +1,7 @@
 info:
-  name: Upsert Week
+  name: Upsert Week Preserving Ids
   type: http
-  seq: 6
+  seq: 7
 
 http:
   method: PUT
@@ -13,9 +13,10 @@ http:
     type: json
     data: |-
       {
-        "notes": "First heavy week",
+        "notes": "First heavy week, notes fixed",
         "sessions": [
           {
+            "id": "{{weekSessionId}}",
             "training_id": "{{coachTrainingId}}",
             "day_of_week": 0,
             "notes": "Focus on max load",
@@ -30,6 +31,7 @@ http:
             ]
           },
           {
+            "id": "{{weekSessionId2}}",
             "training_id": "{{coachTrainingId}}",
             "times_per_week": 2,
             "overrides": []
@@ -45,9 +47,10 @@ runtime:
     - type: after-response
       code: |-
         if (res.status === 200) {
-          bru.setEnvVar("weekId", res.body.id);
-          bru.setEnvVar("weekSessionId", res.body.sessions[0].id);
-          bru.setEnvVar("weekSessionId2", res.body.sessions[1].id);
+          const kept = res.body.sessions[0].id === bru.getEnvVar("weekSessionId");
+          if (!kept) {
+            throw new Error("session id was not preserved across the save");
+          }
         }
 
 settings:

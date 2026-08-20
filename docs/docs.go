@@ -1408,7 +1408,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upsert a week's sessions and overrides. Existing sessions for the week are replaced.",
+                "description": "Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5825,6 +5825,9 @@ const docTemplate = `{
             "properties": {
                 "day_of_week": {
                     "type": "integer"
+                },
+                "id": {
+                    "type": "string"
                 },
                 "is_everyday": {
                     "type": "boolean"
