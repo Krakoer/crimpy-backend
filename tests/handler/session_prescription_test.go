@@ -329,3 +329,91 @@ func TestSessionHandler_CreateSession_EmptyArrayOverrideKeepsTrainingValue(t *te
 		t.Fatalf("Expected the training loads kept, got %v", item["loads"])
 	}
 }
+
+// playSessionExpecting posts a played session and returns the raw response, so a
+// test can assert on a refusal rather than on the session it would have created.
+func playSessionExpecting(t *testing.T, app *fiber.App, userToken string, links map[string]interface{}) *http.Response {
+	t.Helper()
+	payload := map[string]interface{}{
+		"name":     "Prescribed hangboard",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"duration": 600,
+	}
+	for k, v := range links {
+		payload[k] = v
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to play session: %v", err)
+	}
+	return resp
+}
+
+// prescribeSessionOnWeek puts one session on the given week, so a test can make a
+// second training reachable to the athlete without prescribing it for the week
+// under test.
+func prescribeSessionOnWeek(t *testing.T, app *fiber.App, coachToken, userID, programID, trainingID string, weekNum int) string {
+	t.Helper()
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, weekNum, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+		},
+	})
+	return weekSessionIDs(created)[0]
+}
+
+// The program session decides the training, so a request pairing it with some
+// other training the athlete can also reach is refused rather than freezing a
+// prescription that was never given.
+func TestSessionHandler_CreateSession_RejectsTrainingThatIsNotPrescribed(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "premismatch")
+	prescribedID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+	otherID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, prescribedID, nil)
+	// The other training is reachable too, since the same program prescribes it.
+	prescribeSessionOnWeek(t, app, coachToken, userID, programID, otherID, 2)
+
+	resp := playSessionExpecting(t, app, userToken, map[string]interface{}{
+		"training_id":        otherID,
+		"program_session_id": programSessionID,
+	})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 playing a training the program session does not prescribe, got %d", resp.StatusCode)
+	}
+}
+
+// A played session that names only its program session still freezes what that
+// row prescribed. It locks the coach's week either way, so leaving it without a
+// snapshot would lose the prescription outright.
+func TestSessionHandler_CreateSession_SnapshotsFromProgramSessionAlone(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "prepsonly")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+		},
+	})
+
+	session := playSession(t, app, userToken, map[string]interface{}{
+		"program_session_id": programSessionID,
+	})
+
+	if session["training_id"] != trainingID {
+		t.Errorf("Expected the session to adopt the prescribed training %s, got %v", trainingID, session["training_id"])
+	}
+	prescription := sessionPrescription(t, session)
+	if prescription["id"] != trainingID {
+		t.Errorf("Expected the prescribed training id %s, got %v", trainingID, prescription["id"])
+	}
+	item := prescriptionItems(t, prescription)[0].(map[string]interface{})
+	if item["reps"] != float64(5) {
+		t.Errorf("Expected the override merged into the snapshot, got %v", item["reps"])
+	}
+}

@@ -3257,7 +3257,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session sent with a training_id freezes the prescription it was run from onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused.",
                 "consumes": [
                     "application/json"
                 ],

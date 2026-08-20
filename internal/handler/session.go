@@ -433,8 +433,9 @@ type PrescriptionSnapshot struct {
 
 // buildPrescriptionSnapshot resolves the training the session was run from, with
 // the program session's per-item overrides already merged in, so a later edit of
-// either cannot rewrite what was prescribed.
-func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, trainingID, programSessionID pgtype.UUID) ([]byte, error) {
+// either cannot rewrite what was prescribed. programSession is nil for a session
+// played straight from a training, outside any program.
+func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) ([]byte, error) {
 	training, err := qtx.GetTraining(ctx, trainingID)
 	if err != nil {
 		return nil, err
@@ -462,18 +463,14 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, trainingID,
 		snapshot.Comment = &training.Comment.String
 	}
 
-	if programSessionID.Valid {
-		programSession, err := qtx.GetCoachProgramWeekSession(ctx, programSessionID)
-		if err != nil {
-			return nil, err
-		}
+	if programSession != nil {
 		id := programSession.ID.String()
 		snapshot.ProgramSessionID = &id
 		if programSession.Notes.Valid {
 			snapshot.CoachNotes = &programSession.Notes.String
 		}
 
-		overrides, err := qtx.GetCoachProgramSessionOverrides(ctx, programSessionID)
+		overrides, err := qtx.GetCoachProgramSessionOverrides(ctx, programSession.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -507,7 +504,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session sent with a training_id freezes the prescription it was run from onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -618,9 +615,31 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 	qtx := h.queries.WithTx(tx)
 
+	// The program week row is what prescribed this session, so it decides the
+	// training rather than the request. That closes two holes the independent
+	// link checks leave open: a request pairing a program session with some
+	// other training the caller may also reach, and one sending no training at
+	// all, which would lock the coach's week against a session carrying no
+	// record of what it asked for.
+	var programSession *db.CoachProgramWeekSession
+	if programSessionID.Valid {
+		ps, err := qtx.GetCoachProgramWeekSession(c.Context(), programSessionID)
+		if err != nil {
+			slog.Error("failed to read session program session", "user_id", userID, "program_session_id", programSessionID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+		}
+		if trainingID.Valid && trainingID != ps.TrainingID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Training does not match the one the program session prescribes",
+			})
+		}
+		trainingID = ps.TrainingID
+		programSession = &ps
+	}
+
 	var prescription []byte
 	if trainingID.Valid {
-		prescription, err = buildPrescriptionSnapshot(c.Context(), qtx, trainingID, programSessionID)
+		prescription, err = buildPrescriptionSnapshot(c.Context(), qtx, trainingID, programSession)
 		if err != nil {
 			slog.Error("failed to snapshot session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
