@@ -1,0 +1,252 @@
+package handler_test
+
+import (
+	"crimpy/backend/internal/handler"
+	"crimpy/backend/tests/testutil"
+	"encoding/json"
+	"net/http"
+	"testing"
+
+	"github.com/gofiber/fiber/v3"
+)
+
+func playSession(t *testing.T, app *fiber.App, userToken string, links map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	payload := map[string]interface{}{
+		"name":     "Prescribed hangboard",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"duration": 600,
+	}
+	for k, v := range links {
+		payload[k] = v
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to play session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing session, got %d", resp.StatusCode)
+	}
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+	return created
+}
+
+func getSessionJSON(t *testing.T, app *fiber.App, userToken, sessionID string) map[string]interface{} {
+	t.Helper()
+	resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, "/api/sessions/"+sessionID, nil, userToken))
+	if err != nil {
+		t.Fatalf("Failed to get session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 getting session, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	session, ok := result["session"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected a session in the response, got %v", result)
+	}
+	return session
+}
+
+func sessionPrescription(t *testing.T, session map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	prescription, ok := session["prescription"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected a prescription on the session, got %v", session["prescription"])
+	}
+	return prescription
+}
+
+func prescriptionItems(t *testing.T, prescription map[string]interface{}) []interface{} {
+	t.Helper()
+	items, ok := prescription["items"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected items on the prescription, got %v", prescription["items"])
+	}
+	return items
+}
+
+func replaceTrainingItems(t *testing.T, app *fiber.App, coachToken, trainingID string, items []map[string]interface{}) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":         "Hangboard Training",
+		"training_type": "hangboard",
+		"items":         items,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, "/api/trainings/"+trainingID, body, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to update training: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 updating training, got %d", resp.StatusCode)
+	}
+}
+
+func TestSessionHandler_CreateSession_SnapshotsResolvedPrescription(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "presnap")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"notes":       "Warm up first",
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+	programSessionID := weekSessionIDs(created)[0]
+
+	session := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+
+	prescription := sessionPrescription(t, session)
+	if prescription["training_id"] != trainingID {
+		t.Errorf("Expected training_id %s, got %v", trainingID, prescription["training_id"])
+	}
+	if prescription["title"] != "Hangboard Training" {
+		t.Errorf("Expected the training title, got %v", prescription["title"])
+	}
+	if prescription["program_session_id"] != programSessionID {
+		t.Errorf("Expected program_session_id %s, got %v", programSessionID, prescription["program_session_id"])
+	}
+	if prescription["coach_notes"] != "Warm up first" {
+		t.Errorf("Expected the coach notes, got %v", prescription["coach_notes"])
+	}
+
+	items := prescriptionItems(t, prescription)
+	if len(items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(items))
+	}
+	item := items[0].(map[string]interface{})
+	if item["reps"] != float64(5) {
+		t.Errorf("Expected the override reps 5 merged into the snapshot, got %v", item["reps"])
+	}
+}
+
+// The point of the snapshot: the training and the overrides stay editable, and
+// the played session keeps describing what the athlete was actually asked to do.
+func TestSessionHandler_CreateSession_PrescriptionSurvivesTrainingEdit(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "presurv")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemID, "overrides": map[string]interface{}{"reps": 5}},
+				},
+			},
+		},
+	})
+	programSessionID := weekSessionIDs(created)[0]
+
+	played := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+	sessionID := played["id"].(string)
+
+	replaceTrainingItems(t, app, coachToken, trainingID, []map[string]interface{}{
+		{
+			"type":             "hangboard_rep",
+			"reps":             12,
+			"worktime_seconds": 10,
+			"rest_seconds":     30,
+			"hand":             "both",
+			"granularity":      "uniform",
+			"loads":            []map[string]interface{}{{"value": 40, "unit": "kg"}},
+		},
+	})
+
+	prescription := sessionPrescription(t, getSessionJSON(t, app, userToken, sessionID))
+	items := prescriptionItems(t, prescription)
+	if len(items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(items))
+	}
+	item := items[0].(map[string]interface{})
+	if item["reps"] != float64(5) {
+		t.Errorf("Expected the snapshot to keep reps 5 after the training was rewritten, got %v", item["reps"])
+	}
+	if item["rest_seconds"] != float64(60) {
+		t.Errorf("Expected the snapshot to keep rest_seconds 60, got %v", item["rest_seconds"])
+	}
+	loads, ok := item["loads"].([]interface{})
+	if !ok || len(loads) != 1 {
+		t.Fatalf("Expected the snapshot loads, got %v", item["loads"])
+	}
+	if loads[0].(map[string]interface{})["unit"] != "bw" {
+		t.Errorf("Expected the snapshot to keep the bodyweight load, got %v", loads[0])
+	}
+}
+
+func TestSessionHandler_CreateSession_SnapshotsTrainingWithoutProgram(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "presolo@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+	})
+
+	trainingID, _ := createTestCoachTrainingWithItems(t, userToken, app)
+
+	session := playSession(t, app, userToken, map[string]interface{}{"training_id": trainingID})
+
+	prescription := sessionPrescription(t, session)
+	if prescription["training_id"] != trainingID {
+		t.Errorf("Expected training_id %s, got %v", trainingID, prescription["training_id"])
+	}
+	if _, present := prescription["program_session_id"]; present {
+		t.Errorf("Expected no program_session_id on a training played outside a program, got %v", prescription["program_session_id"])
+	}
+	if len(prescriptionItems(t, prescription)) != 1 {
+		t.Errorf("Expected the training items in the snapshot, got %v", prescription["items"])
+	}
+}
+
+func TestSessionHandler_CreateSession_NoPrescriptionWithoutTraining(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "prenone@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: handler.NewSessionHandler(queries, pool),
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":     "Free session",
+		"notes":    "",
+		"activity": 1,
+		"duration": 300,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+	if _, present := session["prescription"]; present {
+		t.Errorf("Expected no prescription on a session run from nothing, got %v", session["prescription"])
+	}
+}
