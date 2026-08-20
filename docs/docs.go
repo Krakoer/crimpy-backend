@@ -5162,7 +5162,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prescription": {
-                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing, and on rows created\nbefore the snapshot existed.",
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
                     "type": "object"
                 },
                 "program_session_id": {
@@ -5253,7 +5253,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prescription": {
-                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing, and on rows created\nbefore the snapshot existed.",
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
                     "type": "object"
                 },
                 "program_session_id": {

@@ -376,8 +376,9 @@ definitions:
       prescription:
         description: |-
           Prescription is what the athlete was asked to do, frozen when the session
-          was created. Absent on a session run from nothing, and on rows created
-          before the snapshot existed.
+          was created. Absent on a session run from nothing. The list endpoints
+          leave it out, since it is a whole training per row and only the detail
+          screen reads it.
         type: object
       program_session_id:
         type: string
@@ -439,8 +440,9 @@ definitions:
       prescription:
         description: |-
           Prescription is what the athlete was asked to do, frozen when the session
-          was created. Absent on a session run from nothing, and on rows created
-          before the snapshot existed.
+          was created. Absent on a session run from nothing. The list endpoints
+          leave it out, since it is a whole training per row and only the detail
+          screen reads it.
         type: object
       program_session_id:
         type: string

@@ -13,8 +13,30 @@ SELECT * FROM sessions WHERE id = $1;
 
 -- name: GetUserSessions :many
 -- Carries the rep count so the history list can say how many reps a session
--- holds without fetching every rep of every session.
-SELECT sessions.*, COUNT(rep_datas.id) AS rep_count
+-- holds without fetching every rep of every session. The columns are listed out
+-- rather than starred so the prescription snapshot stays off the list: it is a
+-- whole training per row, it is only read by the detail screen, and a history of
+-- a few hundred played sessions would otherwise ship megabytes to render a list.
+SELECT
+  sessions.id,
+  sessions.user_id,
+  sessions.name,
+  sessions.notes,
+  sessions.date,
+  sessions.is_assessment,
+  sessions.activity,
+  sessions.origin,
+  sessions.training_id,
+  sessions.program_session_id,
+  sessions.duration,
+  sessions.repeater_sets,
+  sessions.repeater_reps,
+  sessions.repeater_work_time,
+  sessions.repeater_rest_time,
+  sessions.repeater_set_rest,
+  sessions.repeater_split_hand,
+  sessions.updated_at,
+  COUNT(rep_datas.id) AS rep_count
 FROM sessions
 LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
 WHERE sessions.user_id = $1

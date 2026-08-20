@@ -417,3 +417,34 @@ func TestSessionHandler_CreateSession_SnapshotsFromProgramSessionAlone(t *testin
 		t.Errorf("Expected the override merged into the snapshot, got %v", item["reps"])
 	}
 }
+
+// The snapshot is a whole training per row, and only the detail screen reads it.
+func TestSessionHandler_GetUserSessions_OmitsPrescription(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "prelist")
+	trainingID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, nil)
+	created := playSession(t, app, userToken, map[string]interface{}{
+		"program_session_id": programSessionID,
+	})
+
+	resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, "/api/sessions", nil, userToken))
+	if err != nil {
+		t.Fatalf("Failed to list sessions: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 listing sessions, got %d", resp.StatusCode)
+	}
+	var list []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&list)
+	if len(list) != 1 {
+		t.Fatalf("Expected 1 session in the list, got %d", len(list))
+	}
+	if _, present := list[0]["prescription"]; present {
+		t.Errorf("Expected no prescription on a list item, got %v", list[0]["prescription"])
+	}
+
+	// The detail endpoint still carries it, which is what the list defers to.
+	sessionPrescription(t, getSessionJSON(t, app, userToken, created["id"].(string)))
+}

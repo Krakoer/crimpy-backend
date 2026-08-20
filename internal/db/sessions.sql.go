@@ -179,7 +179,26 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 }
 
 const getUserSessions = `-- name: GetUserSessions :many
-SELECT sessions.id, sessions.user_id, sessions.name, sessions.notes, sessions.date, sessions.is_assessment, sessions.activity, sessions.origin, sessions.training_id, sessions.program_session_id, sessions.prescription, sessions.duration, sessions.repeater_sets, sessions.repeater_reps, sessions.repeater_work_time, sessions.repeater_rest_time, sessions.repeater_set_rest, sessions.repeater_split_hand, sessions.updated_at, COUNT(rep_datas.id) AS rep_count
+SELECT
+  sessions.id,
+  sessions.user_id,
+  sessions.name,
+  sessions.notes,
+  sessions.date,
+  sessions.is_assessment,
+  sessions.activity,
+  sessions.origin,
+  sessions.training_id,
+  sessions.program_session_id,
+  sessions.duration,
+  sessions.repeater_sets,
+  sessions.repeater_reps,
+  sessions.repeater_work_time,
+  sessions.repeater_rest_time,
+  sessions.repeater_set_rest,
+  sessions.repeater_split_hand,
+  sessions.updated_at,
+  COUNT(rep_datas.id) AS rep_count
 FROM sessions
 LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
 WHERE sessions.user_id = $1
@@ -198,7 +217,6 @@ type GetUserSessionsRow struct {
 	Origin            string
 	TrainingID        pgtype.UUID
 	ProgramSessionID  pgtype.UUID
-	Prescription      []byte
 	Duration          int32
 	RepeaterSets      pgtype.Int4
 	RepeaterReps      pgtype.Int4
@@ -211,7 +229,10 @@ type GetUserSessionsRow struct {
 }
 
 // Carries the rep count so the history list can say how many reps a session
-// holds without fetching every rep of every session.
+// holds without fetching every rep of every session. The columns are listed out
+// rather than starred so the prescription snapshot stays off the list: it is a
+// whole training per row, it is only read by the detail screen, and a history of
+// a few hundred played sessions would otherwise ship megabytes to render a list.
 func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]GetUserSessionsRow, error) {
 	rows, err := q.db.Query(ctx, getUserSessions, userID)
 	if err != nil {
@@ -232,7 +253,6 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Ge
 			&i.Origin,
 			&i.TrainingID,
 			&i.ProgramSessionID,
-			&i.Prescription,
 			&i.Duration,
 			&i.RepeaterSets,
 			&i.RepeaterReps,

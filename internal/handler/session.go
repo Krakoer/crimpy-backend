@@ -180,8 +180,9 @@ type SessionResponse struct {
 	TrainingID       *string `json:"training_id,omitempty"`
 	ProgramSessionID *string `json:"program_session_id,omitempty"`
 	// Prescription is what the athlete was asked to do, frozen when the session
-	// was created. Absent on a session run from nothing, and on rows created
-	// before the snapshot existed.
+	// was created. Absent on a session run from nothing. The list endpoints
+	// leave it out, since it is a whole training per row and only the detail
+	// screen reads it.
 	Prescription      json.RawMessage `json:"prescription,omitempty" swaggertype:"object"`
 	Duration          int32           `json:"duration"`
 	RepeaterSets      *int32          `json:"repeater_sets,omitempty"`
@@ -286,7 +287,6 @@ func sessionRowToListItem(r db.GetUserSessionsRow) SessionListItem {
 			Origin:            r.Origin,
 			TrainingID:        r.TrainingID,
 			ProgramSessionID:  r.ProgramSessionID,
-			Prescription:      r.Prescription,
 			Duration:          r.Duration,
 			RepeaterSets:      r.RepeaterSets,
 			RepeaterReps:      r.RepeaterReps,
