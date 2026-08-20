@@ -82,21 +82,30 @@ func invalidRequestf(format string, args ...any) error {
 	return invalidRequest{fmt.Errorf(format, args...)}
 }
 
-func validateWeekSessions(sessions []WeekSessionRequest) error {
-	seenIDs := make(map[string]struct{}, len(sessions))
+// validateWeekSessions checks the payload and parses the session ids it carries,
+// returning them positionally so an id is parsed once. Duplicates are keyed on
+// the parsed uuid rather than the string, because pgtype accepts several
+// spellings of the same uuid and two of them would otherwise pass as distinct
+// ids and collapse onto one row.
+func validateWeekSessions(sessions []WeekSessionRequest) ([]pgtype.UUID, error) {
+	sessionIDs := make([]pgtype.UUID, len(sessions))
+	seenIDs := make(map[pgtype.UUID]struct{}, len(sessions))
 	for i, s := range sessions {
 		if err := validateWeekSession(s); err != nil {
-			return fmt.Errorf("session %d: %w", i, err)
+			return nil, fmt.Errorf("session %d: %w", i, err)
 		}
 		if s.ID == nil {
 			continue
 		}
-		if _, duplicate := seenIDs[*s.ID]; duplicate {
-			return fmt.Errorf("session %d: id %s appears more than once", i, *s.ID)
+		if err := sessionIDs[i].Scan(*s.ID); err != nil {
+			return nil, fmt.Errorf("session %d: invalid id %s", i, *s.ID)
 		}
-		seenIDs[*s.ID] = struct{}{}
+		if _, duplicate := seenIDs[sessionIDs[i]]; duplicate {
+			return nil, fmt.Errorf("session %d: id %s appears more than once", i, *s.ID)
+		}
+		seenIDs[sessionIDs[i]] = struct{}{}
 	}
-	return nil
+	return sessionIDs, nil
 }
 
 func validateWeekSession(s WeekSessionRequest) error {
@@ -125,17 +134,12 @@ func validateWeekSession(s WeekSessionRequest) error {
 // syncWeekSessions reconciles a week against the payload instead of recreating
 // it, so a session the client sends back by id keeps that id. Sessions played by
 // the athlete reference these ids, and recreating them nulls those references.
-func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest) error {
-	sessionIDs := make([]pgtype.UUID, len(sessions))
+func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
 	keptIDs := make([]pgtype.UUID, 0, len(sessions))
-	for i, s := range sessions {
-		if s.ID == nil {
-			continue
+	for _, id := range sessionIDs {
+		if id.Valid {
+			keptIDs = append(keptIDs, id)
 		}
-		if err := sessionIDs[i].Scan(*s.ID); err != nil {
-			return invalidRequestf("invalid id at session %d", i)
-		}
-		keptIDs = append(keptIDs, sessionIDs[i])
 	}
 
 	if err := qtx.DeleteCoachProgramWeekSessionsNotIn(ctx, db.DeleteCoachProgramWeekSessionsNotInParams{
@@ -367,7 +371,8 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-	if err := validateWeekSessions(req.Sessions); err != nil {
+	sessionIDs, err := validateWeekSessions(req.Sessions)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
@@ -393,7 +398,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := h.syncWeekSessions(c.Context(), qtx, week.ID, req.Sessions); err != nil {
+	if err := h.syncWeekSessions(c.Context(), qtx, week.ID, req.Sessions, sessionIDs); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})

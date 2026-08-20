@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -1136,6 +1137,57 @@ func TestWeekHandler_UpsertWeek_RejectsForeignSessionID(t *testing.T) {
 	}
 }
 
+func TestWeekHandler_UpsertWeek_RejectsSessionIDFromAnotherCoach(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachAID, coachAToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxcoacha@test.com")
+	userAID, _ := testutil.CreateTestUser(t, queries, "wkxusera@test.com")
+	enrollUserDirect(t, pool, coachAID, userAID)
+
+	coachBID, coachBToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxcoachb@test.com")
+	userBID, _ := testutil.CreateTestUser(t, queries, "wkxuserb@test.com")
+	enrollUserDirect(t, pool, coachBID, userBID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programA := createTestProgram(t, coachAToken, userAID, app)
+	trainingA := createTestCoachTraining(t, coachAToken, app)
+	weekA := upsertWeekSessions(t, app, coachAToken, userAID, programA, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingA, "day_of_week": 0}},
+	})
+	sessionAID := weekSessionIDs(weekA)[0]
+
+	programB := createTestProgram(t, coachBToken, userBID, app)
+	trainingB := createTestCoachTraining(t, coachBToken, app)
+
+	status := upsertWeekStatus(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionAID, "training_id": trainingB, "day_of_week": 0},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a session id owned by another coach, got %d", status)
+	}
+
+	untouched := upsertWeekSessions(t, app, coachAToken, userAID, programA, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionAID, "training_id": trainingA, "day_of_week": 0},
+		},
+	})
+	session := untouched["sessions"].([]interface{})[0].(map[string]interface{})
+	if session["id"] != sessionAID {
+		t.Errorf("Expected coach A's session to survive, got %v", session["id"])
+	}
+	if session["training_id"] != trainingA {
+		t.Errorf("Expected coach A's training to be untouched, got %v", session["training_id"])
+	}
+}
+
 func TestWeekHandler_UpsertWeek_RejectsMalformedAndDuplicateSessionIDs(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
@@ -1168,6 +1220,10 @@ func TestWeekHandler_UpsertWeek_RejectsMalformedAndDuplicateSessionIDs(t *testin
 		{"duplicate id", []map[string]interface{}{
 			{"id": sessionID, "training_id": trainingID, "day_of_week": 0},
 			{"id": sessionID, "training_id": trainingID, "day_of_week": 2},
+		}},
+		{"duplicate id in another spelling", []map[string]interface{}{
+			{"id": sessionID, "training_id": trainingID, "day_of_week": 0},
+			{"id": strings.ToUpper(sessionID), "training_id": trainingID, "day_of_week": 2},
 		}},
 	}
 	for _, tc := range cases {
