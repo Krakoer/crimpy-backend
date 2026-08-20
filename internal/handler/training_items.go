@@ -228,42 +228,93 @@ type hangboardOverride struct {
 	VariableTargets json.RawMessage `json:"variable_targets"`
 }
 
-// applyItemOverride merges an override onto the item it targets, field by
+// overridableItem points at the fields an override may replace. The request and
+// response item shapes each expose one, so a session override is merged the same
+// way whichever shape holds the item.
+type overridableItem struct {
+	cycles          **int32
+	reps            **int32
+	hand            **string
+	granularity     **string
+	loads           *json.RawMessage
+	leftLoads       *json.RawMessage
+	handPositions   *json.RawMessage
+	edgeSizesMm     *json.RawMessage
+	variableTargets *json.RawMessage
+}
+
+func (i *TrainingItemRequest) overridable() overridableItem {
+	return overridableItem{
+		cycles:          &i.Cycles,
+		reps:            &i.Reps,
+		hand:            &i.Hand,
+		granularity:     &i.Granularity,
+		loads:           &i.Loads,
+		leftLoads:       &i.LeftLoads,
+		handPositions:   &i.HandPositions,
+		edgeSizesMm:     &i.EdgeSizesMm,
+		variableTargets: &i.VariableTargets,
+	}
+}
+
+func (i *TrainingItemResponse) overridable() overridableItem {
+	return overridableItem{
+		cycles:          &i.Cycles,
+		reps:            &i.Reps,
+		hand:            &i.Hand,
+		granularity:     &i.Granularity,
+		loads:           &i.Loads,
+		leftLoads:       &i.LeftLoads,
+		handPositions:   &i.HandPositions,
+		edgeSizesMm:     &i.EdgeSizesMm,
+		variableTargets: &i.VariableTargets,
+	}
+}
+
+// mergeItemOverride merges an override into the item it targets, field by
 // field, the way the clients apply it.
-func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingItemRequest, error) {
+func mergeItemOverride(target overridableItem, raw json.RawMessage) error {
 	if len(raw) == 0 || string(raw) == "null" {
-		return base, nil
+		return nil
 	}
 	var over hangboardOverride
 	if err := json.Unmarshal(raw, &over); err != nil {
-		return base, fmt.Errorf("overrides must be an object")
+		return fmt.Errorf("overrides must be an object")
 	}
-	merged := base
 	if over.Cycles != nil {
-		merged.Cycles = over.Cycles
+		*target.cycles = over.Cycles
 	}
 	if over.Reps != nil {
-		merged.Reps = over.Reps
+		*target.reps = over.Reps
 	}
 	if over.Hand != nil {
-		merged.Hand = over.Hand
+		*target.hand = over.Hand
 	}
 	if over.Granularity != nil {
-		merged.Granularity = over.Granularity
+		*target.granularity = over.Granularity
 	}
 	for _, field := range []struct {
 		override json.RawMessage
 		target   *json.RawMessage
 	}{
-		{over.Loads, &merged.Loads},
-		{over.LeftLoads, &merged.LeftLoads},
-		{over.HandPositions, &merged.HandPositions},
-		{over.EdgeSizesMm, &merged.EdgeSizesMm},
-		{over.VariableTargets, &merged.VariableTargets},
+		{over.Loads, target.loads},
+		{over.LeftLoads, target.leftLoads},
+		{over.HandPositions, target.handPositions},
+		{over.EdgeSizesMm, target.edgeSizesMm},
+		{over.VariableTargets, target.variableTargets},
 	} {
 		if len(field.override) > 0 && string(field.override) != "null" {
 			*field.target = field.override
 		}
+	}
+	return nil
+}
+
+// applyItemOverride returns the item as the override leaves it.
+func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingItemRequest, error) {
+	merged := base
+	if err := mergeItemOverride(merged.overridable(), raw); err != nil {
+		return base, err
 	}
 	return merged, nil
 }
