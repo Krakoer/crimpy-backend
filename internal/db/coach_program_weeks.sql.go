@@ -170,7 +170,11 @@ SELECT
   s.created_at,
   s.updated_at,
   ct.title         AS training_title,
-  ct.training_type AS training_type
+  ct.training_type AS training_type,
+  -- Locked once played: the prescription must keep describing what was played.
+  EXISTS (
+    SELECT 1 FROM sessions played WHERE played.program_session_id = s.id
+  ) AS is_locked
 FROM coach_program_week_sessions s
 JOIN trainings ct ON ct.id = s.training_id
 WHERE s.week_id = $1
@@ -190,6 +194,7 @@ type GetCoachProgramWeekSessionsRow struct {
 	UpdatedAt     pgtype.Timestamptz
 	TrainingTitle string
 	TrainingType  string
+	IsLocked      bool
 }
 
 func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype.UUID) ([]GetCoachProgramWeekSessionsRow, error) {
@@ -214,6 +219,7 @@ func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype
 			&i.UpdatedAt,
 			&i.TrainingTitle,
 			&i.TrainingType,
+			&i.IsLocked,
 		); err != nil {
 			return nil, err
 		}
