@@ -22,6 +22,7 @@ type SessionOverrideRequest struct {
 }
 
 type WeekSessionRequest struct {
+	ID           *string                  `json:"id"`
 	TrainingID   string                   `json:"training_id"`
 	DayOfWeek    *int32                   `json:"day_of_week"`
 	TimesPerWeek *int32                   `json:"times_per_week"`
@@ -81,6 +82,23 @@ func invalidRequestf(format string, args ...any) error {
 	return invalidRequest{fmt.Errorf(format, args...)}
 }
 
+func validateWeekSessions(sessions []WeekSessionRequest) error {
+	seenIDs := make(map[string]struct{}, len(sessions))
+	for i, s := range sessions {
+		if err := validateWeekSession(s); err != nil {
+			return fmt.Errorf("session %d: %w", i, err)
+		}
+		if s.ID == nil {
+			continue
+		}
+		if _, duplicate := seenIDs[*s.ID]; duplicate {
+			return fmt.Errorf("session %d: id %s appears more than once", i, *s.ID)
+		}
+		seenIDs[*s.ID] = struct{}{}
+	}
+	return nil
+}
+
 func validateWeekSession(s WeekSessionRequest) error {
 	modes := 0
 	if s.DayOfWeek != nil {
@@ -104,84 +122,121 @@ func validateWeekSession(s WeekSessionRequest) error {
 	return nil
 }
 
-func (h *ProgramHandler) insertWeekSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest) ([]WeekSessionResponse, error) {
-	result := make([]WeekSessionResponse, 0, len(sessions))
+// syncWeekSessions reconciles a week against the payload instead of recreating
+// it, so a session the client sends back by id keeps that id. Sessions played by
+// the athlete reference these ids, and recreating them nulls those references.
+func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest) error {
+	sessionIDs := make([]pgtype.UUID, len(sessions))
+	keptIDs := make([]pgtype.UUID, 0, len(sessions))
 	for i, s := range sessions {
-		var trainingUUID pgtype.UUID
-		if err := trainingUUID.Scan(s.TrainingID); err != nil {
-			return nil, invalidRequestf("invalid training_id at session %d", i)
+		if s.ID == nil {
+			continue
 		}
-		params := db.CreateCoachProgramWeekSessionParams{
-			WeekID:     weekID,
-			TrainingID: trainingUUID,
-			IsEveryday: s.IsEveryday,
-			Position:   int32(i),
+		if err := sessionIDs[i].Scan(*s.ID); err != nil {
+			return invalidRequestf("invalid id at session %d", i)
 		}
-		if s.DayOfWeek != nil {
-			params.DayOfWeek = pgtype.Int4{Int32: *s.DayOfWeek, Valid: true}
-		}
-		if s.TimesPerWeek != nil {
-			params.TimesPerWeek = pgtype.Int4{Int32: *s.TimesPerWeek, Valid: true}
-		}
-		if s.Notes != nil {
-			params.Notes = pgtype.Text{String: *s.Notes, Valid: true}
-		}
-		session, err := qtx.CreateCoachProgramWeekSession(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-
-		overrides := make([]SessionOverrideResponse, 0, len(s.Overrides))
-		for _, o := range s.Overrides {
-			var itemUUID pgtype.UUID
-			if err := itemUUID.Scan(o.ItemID); err != nil {
-				return nil, invalidRequestf("invalid item_id in session %d override", i)
-			}
-			item, err := qtx.GetTrainingItem(ctx, itemUUID)
-			if err != nil {
-				return nil, invalidRequestf("unknown item_id in session %d override", i)
-			}
-			if err := validateItemOverride(itemToRequest(item), o.Overrides); err != nil {
-				return nil, invalidRequestf("session %d override on item %s: %s", i, o.ItemID, err)
-			}
-			override, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
-				SessionID: session.ID,
-				ItemID:    itemUUID,
-				Overrides: []byte(o.Overrides),
-			})
-			if err != nil {
-				return nil, err
-			}
-			overrides = append(overrides, SessionOverrideResponse{
-				ID:        override.ID.String(),
-				ItemID:    override.ItemID.String(),
-				Overrides: json.RawMessage(override.Overrides),
-			})
-		}
-
-		resp := WeekSessionResponse{
-			ID:            session.ID.String(),
-			TrainingID:    session.TrainingID.String(),
-			TrainingTitle: "",
-			TrainingType:  "",
-			IsEveryday:    session.IsEveryday,
-			Position:      session.Position,
-			Overrides:     overrides,
-		}
-		if session.DayOfWeek.Valid {
-			v := session.DayOfWeek.Int32
-			resp.DayOfWeek = &v
-		}
-		if session.TimesPerWeek.Valid {
-			v := session.TimesPerWeek.Int32
-			resp.TimesPerWeek = &v
-		}
-		if session.Notes.Valid {
-			resp.Notes = &session.Notes.String
-		}
-		result = append(result, resp)
+		keptIDs = append(keptIDs, sessionIDs[i])
 	}
-	return result, nil
+
+	if err := qtx.DeleteCoachProgramWeekSessionsNotIn(ctx, db.DeleteCoachProgramWeekSessionsNotInParams{
+		WeekID:  weekID,
+		KeptIds: keptIDs,
+	}); err != nil {
+		return err
+	}
+
+	for i, s := range sessions {
+		session, err := h.upsertWeekSession(ctx, qtx, weekID, sessionIDs[i], i, s)
+		if err != nil {
+			return err
+		}
+		if err := h.syncSessionOverrides(ctx, qtx, session.ID, i, s.Overrides); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries, weekID, sessionID pgtype.UUID, index int, s WeekSessionRequest) (db.CoachProgramWeekSession, error) {
+	var none db.CoachProgramWeekSession
+
+	var trainingUUID pgtype.UUID
+	if err := trainingUUID.Scan(s.TrainingID); err != nil {
+		return none, invalidRequestf("invalid training_id at session %d", index)
+	}
+
+	var dayOfWeek, timesPerWeek pgtype.Int4
+	if s.DayOfWeek != nil {
+		dayOfWeek = pgtype.Int4{Int32: *s.DayOfWeek, Valid: true}
+	}
+	if s.TimesPerWeek != nil {
+		timesPerWeek = pgtype.Int4{Int32: *s.TimesPerWeek, Valid: true}
+	}
+	var notes pgtype.Text
+	if s.Notes != nil {
+		notes = pgtype.Text{String: *s.Notes, Valid: true}
+	}
+
+	if !sessionID.Valid {
+		return qtx.CreateCoachProgramWeekSession(ctx, db.CreateCoachProgramWeekSessionParams{
+			WeekID:       weekID,
+			TrainingID:   trainingUUID,
+			DayOfWeek:    dayOfWeek,
+			TimesPerWeek: timesPerWeek,
+			IsEveryday:   s.IsEveryday,
+			Position:     int32(index),
+			Notes:        notes,
+		})
+	}
+
+	session, err := qtx.UpdateCoachProgramWeekSession(ctx, db.UpdateCoachProgramWeekSessionParams{
+		ID:           sessionID,
+		WeekID:       weekID,
+		TrainingID:   trainingUUID,
+		DayOfWeek:    dayOfWeek,
+		TimesPerWeek: timesPerWeek,
+		IsEveryday:   s.IsEveryday,
+		Position:     int32(index),
+		Notes:        notes,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return none, invalidRequestf("session %d: id %s does not belong to this week", index, *s.ID)
+	}
+	return session, err
+}
+
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, sessionID pgtype.UUID, index int, overrides []SessionOverrideRequest) error {
+	itemIDs := make([]pgtype.UUID, len(overrides))
+	for i, o := range overrides {
+		if err := itemIDs[i].Scan(o.ItemID); err != nil {
+			return invalidRequestf("invalid item_id in session %d override", index)
+		}
+	}
+
+	if err := qtx.DeleteCoachProgramSessionOverridesNotIn(ctx, db.DeleteCoachProgramSessionOverridesNotInParams{
+		SessionID:   sessionID,
+		KeptItemIds: itemIDs,
+	}); err != nil {
+		return err
+	}
+
+	for i, o := range overrides {
+		item, err := qtx.GetTrainingItem(ctx, itemIDs[i])
+		if err != nil {
+			return invalidRequestf("unknown item_id in session %d override", index)
+		}
+		if err := validateItemOverride(itemToRequest(item), o.Overrides); err != nil {
+			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, err)
+		}
+		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
+			SessionID: sessionID,
+			ItemID:    itemIDs[i],
+			Overrides: []byte(o.Overrides),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) WeekResponse {
@@ -275,7 +330,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. Existing sessions for the week are replaced.
+// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted.
 // @Tags Programs
 // @Accept json
 // @Produce json
@@ -312,10 +367,8 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-	for i, s := range req.Sessions {
-		if err := validateWeekSession(s); err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("session %d: %s", i, err.Error())})
-		}
+	if err := validateWeekSessions(req.Sessions); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	tx, err := h.pool.Begin(c.Context())
@@ -340,18 +393,13 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := qtx.DeleteCoachProgramWeekSessions(c.Context(), week.ID); err != nil {
-		slog.Error("failed to delete week sessions", "week_id", week.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to replace week sessions"})
-	}
-
-	if _, err := h.insertWeekSessions(c.Context(), qtx, week.ID, req.Sessions); err != nil {
+	if err := h.syncWeekSessions(c.Context(), qtx, week.ID, req.Sessions); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
 		}
-		slog.Error("failed to insert week sessions", "week_id", week.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create week sessions"})
+		slog.Error("failed to sync week sessions", "week_id", week.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save week sessions"})
 	}
 
 	if err := tx.Commit(c.Context()); err != nil {

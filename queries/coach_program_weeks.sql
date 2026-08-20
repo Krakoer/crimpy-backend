@@ -24,6 +24,18 @@ INSERT INTO coach_program_week_sessions
 VALUES (@week_id, @training_id, @day_of_week, @times_per_week, @is_everyday, @position, @notes)
 RETURNING *;
 
+-- name: UpdateCoachProgramWeekSession :one
+UPDATE coach_program_week_sessions
+SET training_id    = @training_id,
+    day_of_week    = @day_of_week,
+    times_per_week = @times_per_week,
+    is_everyday    = @is_everyday,
+    position       = @position,
+    notes          = @notes,
+    updated_at     = now()
+WHERE id = @id AND week_id = @week_id
+RETURNING *;
+
 -- name: GetCoachProgramWeekSessions :many
 SELECT
   s.id,
@@ -43,8 +55,9 @@ JOIN trainings ct ON ct.id = s.training_id
 WHERE s.week_id = @week_id
 ORDER BY s.position;
 
--- name: DeleteCoachProgramWeekSessions :exec
-DELETE FROM coach_program_week_sessions WHERE week_id = @week_id;
+-- name: DeleteCoachProgramWeekSessionsNotIn :exec
+DELETE FROM coach_program_week_sessions
+WHERE week_id = @week_id AND NOT (id = ANY(@kept_ids::uuid[]));
 
 -- name: UpsertCoachProgramSessionOverride :one
 INSERT INTO coach_program_session_overrides (session_id, item_id, overrides)
@@ -52,6 +65,10 @@ VALUES (@session_id, @item_id, @overrides)
 ON CONFLICT (session_id, item_id) DO UPDATE
   SET overrides = EXCLUDED.overrides, updated_at = now()
 RETURNING *;
+
+-- name: DeleteCoachProgramSessionOverridesNotIn :exec
+DELETE FROM coach_program_session_overrides
+WHERE session_id = @session_id AND NOT (item_id = ANY(@kept_item_ids::uuid[]));
 
 -- name: GetCoachProgramWeekOverrides :many
 SELECT o.*
