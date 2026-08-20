@@ -51,13 +51,38 @@ SELECT
   ct.title         AS training_title,
   ct.training_type AS training_type,
   -- Locked once played: the prescription must keep describing what was played.
+  -- Only a played session counts. A logged one may not hold the link at all
+  -- (sessions_logged_has_no_program_session_check), and treating it as locking
+  -- would hand an athlete a way to freeze their coach's week by hand.
   EXISTS (
-    SELECT 1 FROM sessions played WHERE played.program_session_id = s.id
+    SELECT 1 FROM sessions played
+    WHERE played.program_session_id = s.id AND played.origin = 'played'
   ) AS is_locked
 FROM coach_program_week_sessions s
 JOIN trainings ct ON ct.id = s.training_id
 WHERE s.week_id = @week_id
 ORDER BY s.position;
+
+-- Takes the row locks the freeze check reads under, so a session played between
+-- the check and the delete cannot slip past it. FOR UPDATE is the only mode that
+-- conflicts with the FOR KEY SHARE the sessions FK takes.
+-- name: LockCoachProgramWeekSessions :many
+SELECT id FROM coach_program_week_sessions
+WHERE week_id = @week_id
+FOR UPDATE;
+
+-- name: CountPlayedSessionsInWeek :one
+SELECT COUNT(*) FROM sessions played
+JOIN coach_program_week_sessions s ON s.id = played.program_session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+WHERE w.program_id = @program_id AND w.week_number = @week_number
+  AND played.origin = 'played';
+
+-- name: CountPlayedSessionsInProgram :one
+SELECT COUNT(*) FROM sessions played
+JOIN coach_program_week_sessions s ON s.id = played.program_session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+WHERE w.program_id = @program_id AND played.origin = 'played';
 
 -- name: DeleteCoachProgramWeekSessionsNotIn :exec
 DELETE FROM coach_program_week_sessions

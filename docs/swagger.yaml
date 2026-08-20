@@ -1557,6 +1557,8 @@ paths:
   /api/coach/clients/{user_id}/programs/{program_id}:
     delete:
       description: Delete a program and its weeks. Only the owning coach can delete.
+        Refused when any week holds a session the athlete already played, because
+        the cascade would null the link that session keeps to what was prescribed.
       parameters:
       - description: Client user ID
         in: path
@@ -1578,7 +1580,7 @@ paths:
               type: string
             type: object
         "400":
-          description: Invalid ID
+          description: Invalid ID, or the program holds a played session
           schema:
             additionalProperties:
               type: string
@@ -1736,7 +1738,9 @@ paths:
       - Programs
   /api/coach/clients/{user_id}/programs/{program_id}/weeks/{week_number}:
     delete:
-      description: Delete a week and all its sessions/overrides (cascade).
+      description: Delete a week and all its sessions/overrides (cascade). Refused
+        when the week holds a session the athlete already played, because the cascade
+        would null the link that session keeps to what was prescribed.
       parameters:
       - description: Client user ID
         in: path
@@ -1758,6 +1762,12 @@ paths:
       responses:
         "200":
           description: Week deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Week holds a played session
           schema:
             additionalProperties:
               type: string

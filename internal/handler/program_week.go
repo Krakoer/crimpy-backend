@@ -139,6 +139,12 @@ func validateWeekSession(s WeekSessionRequest) error {
 // row itself must survive: dropping it would null the link the played session
 // holds.
 func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+	// Lock the rows first: without this the athlete can play a session between
+	// this read and the delete below, and the delete then nulls the link the
+	// check would have refused.
+	if _, err := qtx.LockCoachProgramWeekSessions(ctx, weekID); err != nil {
+		return err
+	}
 	existing, err := qtx.GetCoachProgramWeekSessions(ctx, weekID)
 	if err != nil {
 		return err
@@ -204,6 +210,9 @@ func checkFrozenSession(index int, s WeekSessionRequest, row db.GetCoachProgramW
 		var itemUUID pgtype.UUID
 		if err := itemUUID.Scan(o.ItemID); err != nil {
 			return invalidRequestf("invalid item_id in session %d override", index)
+		}
+		if !json.Valid(o.Overrides) {
+			return invalidRequestf("invalid overrides in session %d", index)
 		}
 		current, prescribedForItem := prescribed[itemUUID]
 		if !prescribedForItem || !sameJSON(current, o.Overrides) {
@@ -619,7 +628,7 @@ func (h *ProgramHandler) GetWeek(c fiber.Ctx) error {
 
 // DeleteWeek godoc
 // @Summary Delete a program week
-// @Description Delete a week and all its sessions/overrides (cascade).
+// @Description Delete a week and all its sessions/overrides (cascade). Refused when the week holds a session the athlete already played, because the cascade would null the link that session keeps to what was prescribed.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -627,6 +636,7 @@ func (h *ProgramHandler) GetWeek(c fiber.Ctx) error {
 // @Param program_id path string true "Program ID"
 // @Param week_number path int true "Week number"
 // @Success 200 {object} map[string]string "Week deleted"
+// @Failure 400 {object} map[string]string "Week holds a played session"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Program or week not found"
 // @Router /api/coach/clients/{user_id}/programs/{program_id}/weeks/{week_number} [delete]
@@ -647,6 +657,22 @@ func (h *ProgramHandler) DeleteWeek(c fiber.Ctx) error {
 	weekNum, err := parseWeekNumber(c.Params("week_number"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// The week cascades to its sessions and the sessions FK nulls on delete, so
+	// dropping the week is the same prescription loss the week PUT refuses.
+	played, err := h.queries.CountPlayedSessionsInWeek(c.Context(), db.CountPlayedSessionsInWeekParams{
+		ProgramID:  programUUID,
+		WeekNumber: weekNum,
+	})
+	if err != nil {
+		slog.Error("failed to count played sessions", "program_id", programUUID.String(), "week_number", weekNum, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete week"})
+	}
+	if played > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "This week holds a session the athlete already played and cannot be deleted",
+		})
 	}
 
 	if err := h.queries.DeleteCoachProgramWeek(c.Context(), db.DeleteCoachProgramWeekParams{

@@ -1211,7 +1211,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a program and its weeks. Only the owning coach can delete.",
+                "description": "Delete a program and its weeks. Only the owning coach can delete. Refused when any week holds a session the athlete already played, because the cascade would null the link that session keeps to what was prescribed.",
                 "produces": [
                     "application/json"
                 ],
@@ -1246,7 +1246,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid ID",
+                        "description": "Invalid ID, or the program holds a played session",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1493,7 +1493,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a week and all its sessions/overrides (cascade).",
+                "description": "Delete a week and all its sessions/overrides (cascade). Refused when the week holds a session the athlete already played, because the cascade would null the link that session keeps to what was prescribed.",
                 "produces": [
                     "application/json"
                 ],
@@ -1527,6 +1527,15 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Week deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Week holds a played session",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
