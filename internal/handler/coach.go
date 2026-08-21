@@ -476,7 +476,7 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
 // @Param session_id path string true "Session ID"
-// @Success 200 {object} map[string]interface{} "Session details with rep_datas and assessments"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas and assessments"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
 // @Failure 404 {object} map[string]string "Session not found or does not belong to client"
@@ -511,10 +511,10 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		assessments = []db.Assessment{}
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"session":     sessionToResponse(session),
-		"rep_datas":   repDatasToResponses(repDatas),
-		"assessments": assessmentsToResponses(assessments),
+	return c.Status(fiber.StatusOK).JSON(SessionDetailResponse{
+		Session:     sessionToResponse(session),
+		RepDatas:    repDatasToResponses(repDatas),
+		Assessments: assessmentsToResponses(assessments),
 	})
 }
 

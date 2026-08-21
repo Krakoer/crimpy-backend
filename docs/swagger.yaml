@@ -32,6 +32,25 @@ definitions:
       type:
         type: integer
     type: object
+  handler.AssessmentResponse:
+    properties:
+      grip_position:
+        type: integer
+      id:
+        type: string
+      left_value:
+        type: number
+      right_value:
+        type: number
+      session_id:
+        type: string
+      type:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.ChangePasswordRequest:
     properties:
       new_password:
@@ -349,11 +368,60 @@ definitions:
         type: boolean
       target_weight:
         type: number
+      training_item_id:
+        description: |-
+          TrainingItemID is the prescription item this rep was played from, absent
+          for a rep recorded outside a training.
+        type: string
+    type: object
+  handler.RepDataResponse:
+    properties:
+      average_weight:
+        type: number
+      duration:
+        type: integer
+      edge_size_mm:
+        type: integer
+      grip_position:
+        type: integer
+      id:
+        type: string
+      index:
+        type: integer
+      is_rest:
+        type: boolean
+      right_hand:
+        type: boolean
+      session_id:
+        type: string
+      target_weight:
+        type: number
+      training_item_id:
+        description: |-
+          TrainingItemID keys into the session prescription items, so the reps can
+          be read block by block. Absent on a rep played outside a training, and on
+          sessions recorded before the app sent it.
+        type: string
+      updated_at:
+        type: string
     type: object
   handler.ResendVerificationRequest:
     properties:
       email:
         type: string
+    type: object
+  handler.SessionDetailResponse:
+    properties:
+      assessments:
+        items:
+          $ref: '#/definitions/handler.AssessmentResponse'
+        type: array
+      rep_datas:
+        items:
+          $ref: '#/definitions/handler.RepDataResponse'
+        type: array
+      session:
+        $ref: '#/definitions/handler.SessionResponse'
     type: object
   handler.SessionListItem:
     properties:
@@ -1956,8 +2024,7 @@ paths:
         "200":
           description: Session details with rep_datas and assessments
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/handler.SessionDetailResponse'
         "400":
           description: Invalid session ID
           schema:
@@ -3013,6 +3080,8 @@ paths:
         the session, with the program session overrides merged in, so later edits
         of the training cannot rewrite it. When a program_session_id is sent, that
         row decides the training, and a training_id disagreeing with it is refused.
+        A rep may name the prescription item it was played from through training_item_id,
+        which must be one of the items the session was prescribed.
       parameters:
       - description: Session details
         in: body
@@ -3123,8 +3192,7 @@ paths:
         "200":
           description: Session details with rep_datas and assessments
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/handler.SessionDetailResponse'
         "400":
           description: Invalid session ID
           schema:

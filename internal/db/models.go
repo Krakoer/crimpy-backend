@@ -120,18 +120,19 @@ type RefreshToken struct {
 }
 
 type RepData struct {
-	ID            pgtype.UUID
-	UserID        pgtype.UUID
-	AverageWeight float32
-	SessionID     pgtype.UUID
-	IsRest        bool
-	RightHand     bool
-	Duration      int32
-	TargetWeight  float32
-	Index         int32
-	GripPosition  int32
-	EdgeSizeMm    pgtype.Int4
-	UpdatedAt     pgtype.Timestamptz
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	AverageWeight  float32
+	SessionID      pgtype.UUID
+	IsRest         bool
+	RightHand      bool
+	Duration       int32
+	TargetWeight   float32
+	Index          int32
+	GripPosition   int32
+	EdgeSizeMm     pgtype.Int4
+	TrainingItemID pgtype.UUID
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type SensorConfig struct {

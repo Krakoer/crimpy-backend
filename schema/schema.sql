@@ -121,6 +121,17 @@ CREATE TABLE "rep_datas" (
   -- Depth in millimeters of the edge the rep was pulled on, null when the step
   -- prescribes no edge (rests, exercises done off the hangboard).
   "edge_size_mm"   INTEGER,
+  -- Which item of the prescription the rep was played from, so the reps of a
+  -- training can be read block by block instead of as one pooled list. Null for
+  -- a rep recorded outside a training, and for sessions played before the app
+  -- started sending it.
+  --
+  -- Deliberately not a foreign key: it points into the session's frozen
+  -- prescription snapshot, which keeps the item ids it was resolved with, not
+  -- into the still editable "training_items" row. A reference would have to null
+  -- itself when the coach deletes the item, losing the grouping the snapshot can
+  -- still describe.
+  "training_item_id" UUID,
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );

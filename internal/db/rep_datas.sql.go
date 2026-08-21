@@ -13,22 +13,23 @@ import (
 
 const createRepData = `-- name: CreateRepData :one
 INSERT INTO rep_datas (
-  user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, updated_at
+  user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, updated_at
 `
 
 type CreateRepDataParams struct {
-	UserID        pgtype.UUID
-	AverageWeight float32
-	SessionID     pgtype.UUID
-	IsRest        bool
-	RightHand     bool
-	Duration      int32
-	TargetWeight  float32
-	Index         int32
-	GripPosition  int32
-	EdgeSizeMm    pgtype.Int4
+	UserID         pgtype.UUID
+	AverageWeight  float32
+	SessionID      pgtype.UUID
+	IsRest         bool
+	RightHand      bool
+	Duration       int32
+	TargetWeight   float32
+	Index          int32
+	GripPosition   int32
+	EdgeSizeMm     pgtype.Int4
+	TrainingItemID pgtype.UUID
 }
 
 func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (RepData, error) {
@@ -43,6 +44,7 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		arg.Index,
 		arg.GripPosition,
 		arg.EdgeSizeMm,
+		arg.TrainingItemID,
 	)
 	var i RepData
 	err := row.Scan(
@@ -57,13 +59,14 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		&i.Index,
 		&i.GripPosition,
 		&i.EdgeSizeMm,
+		&i.TrainingItemID,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
-SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
+SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
 `
 
 func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) ([]RepData, error) {
@@ -87,6 +90,7 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 			&i.Index,
 			&i.GripPosition,
 			&i.EdgeSizeMm,
+			&i.TrainingItemID,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err

@@ -1645,8 +1645,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Session details with rep_datas and assessments",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
                     },
                     "400": {
@@ -3257,7 +3256,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3356,8 +3355,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Session details with rep_datas and assessments",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
                     },
                     "400": {
@@ -4638,6 +4636,35 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.AssessmentResponse": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.ChangePasswordRequest": {
             "type": "object",
             "properties": {
@@ -5123,6 +5150,52 @@ const docTemplate = `{
                 },
                 "target_weight": {
                     "type": "number"
+                },
+                "training_item_id": {
+                    "description": "TrainingItemID is the prescription item this rep was played from, absent\nfor a rep recorded outside a training.",
+                    "type": "string"
+                }
+            }
+        },
+        "handler.RepDataResponse": {
+            "type": "object",
+            "properties": {
+                "average_weight": {
+                    "type": "number"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "edge_size_mm": {
+                    "type": "integer"
+                },
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "is_rest": {
+                    "type": "boolean"
+                },
+                "right_hand": {
+                    "type": "boolean"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "target_weight": {
+                    "type": "number"
+                },
+                "training_item_id": {
+                    "description": "TrainingItemID keys into the session prescription items, so the reps can\nbe read block by block. Absent on a rep played outside a training, and on\nsessions recorded before the app sent it.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -5131,6 +5204,26 @@ const docTemplate = `{
             "properties": {
                 "email": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.SessionDetailResponse": {
+            "type": "object",
+            "properties": {
+                "assessments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentResponse"
+                    }
+                },
+                "rep_datas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.RepDataResponse"
+                    }
+                },
+                "session": {
+                    "$ref": "#/definitions/handler.SessionResponse"
                 }
             }
         },
