@@ -57,9 +57,11 @@ CREATE TABLE "sessions" (
   -- field stays editable.
   "origin"              TEXT        NOT NULL DEFAULT 'logged',
   -- What the session was played from, so it can be shown against what was
-  -- prescribed. Both null for logged sessions, and for templates deleted since.
-  -- program_session_id is refused outright on a logged session, see the check
-  -- below.
+  -- prescribed. Both null for a session that answers no prescription, and for
+  -- templates deleted since. A logged session may carry program_session_id too:
+  -- a coach slot with nothing to step through is completed by hand, and that is
+  -- still an answer to the prescription. Only a played one freezes the week,
+  -- see is_locked in queries/coach_program_weeks.sql.
   "training_id"         UUID,
   "program_session_id"  UUID,
   -- The prescription resolved at create time: the training as it read then,
@@ -79,11 +81,6 @@ CREATE TABLE "sessions" (
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
   CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged')),
-  -- Only a played session carries the prescription it was run from. The freeze
-  -- on a prescription keys off this link, so letting a hand entered session hold
-  -- one would let an athlete lock their coach out of their own week.
-  CONSTRAINT "sessions_logged_has_no_program_session_check"
-    CHECK (origin = 'played' OR program_session_id IS NULL),
   -- A session run from a training carries the snapshot of it. Holding the link
   -- without the snapshot would say the session was prescribed something while
   -- keeping no record of what, which no write path produces. Not the converse:

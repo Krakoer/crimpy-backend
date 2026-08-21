@@ -51,9 +51,10 @@ SELECT
   ct.title         AS training_title,
   ct.training_type AS training_type,
   -- Locked once played: the prescription must keep describing what was played.
-  -- Only a played session counts. A logged one may not hold the link at all
-  -- (sessions_logged_has_no_program_session_check), and treating it as locking
-  -- would hand an athlete a way to freeze their coach's week by hand.
+  -- Only a played session counts. A logged one may hold the link, to complete a
+  -- slot with nothing to step through, but must not lock: it is typed in after
+  -- the fact, so counting it would hand an athlete a way to freeze their coach's
+  -- week by hand.
   EXISTS (
     SELECT 1 FROM sessions played
     WHERE played.program_session_id = s.id AND played.origin = 'played'
