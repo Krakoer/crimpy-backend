@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -1151,13 +1152,14 @@ func TestSessionHandler_CreateSession_LinksRepsToPrescriptionItems(t *testing.T)
 	}
 }
 
-func TestSessionHandler_CreateSession_RefusesRepItemOutsidePrescription(t *testing.T) {
+func TestSessionHandler_CreateSession_DropsRepItemOutsidePrescription(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
 	_, token := testutil.CreateTestUser(t, queries, "session-rep-item-bad@test.com")
+	_, otherToken := testutil.CreateTestUser(t, queries, "session-rep-item-other@test.com")
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler:  handler.NewSessionHandler(queries, pool),
@@ -1166,12 +1168,14 @@ func TestSessionHandler_CreateSession_RefusesRepItemOutsidePrescription(t *testi
 
 	trainingID, _ := createTestTwoBlockTraining(t, token, app)
 	_, otherItemIDs := createTestTwoBlockTraining(t, token, app)
+	_, foreignItemIDs := createTestTwoBlockTraining(t, otherToken, app)
 
-	cases := []struct {
-		name    string
-		links   map[string]interface{}
-		itemID  string
-		wantErr string
+	// A link the frozen prescription does not hold is a coach edit landing
+	// mid-run, not a client bug: the rep is kept and only the grouping is lost.
+	dropped := []struct {
+		name   string
+		links  map[string]interface{}
+		itemID string
 	}{
 		{
 			name:   "item of another training",
@@ -1179,49 +1183,100 @@ func TestSessionHandler_CreateSession_RefusesRepItemOutsidePrescription(t *testi
 			itemID: otherItemIDs[0],
 		},
 		{
-			name:   "malformed id",
+			name:   "item of another user's training",
 			links:  map[string]interface{}{"training_id": trainingID},
-			itemID: "not-a-uuid",
+			itemID: foreignItemIDs[0],
 		},
 		{
 			name:   "session with no prescription",
 			links:  map[string]interface{}{},
 			itemID: otherItemIDs[0],
 		},
+		{
+			name:   "unknown id",
+			links:  map[string]interface{}{"training_id": trainingID},
+			itemID: "00000000-0000-0000-0000-000000000000",
+		},
 	}
 
-	for _, tc := range cases {
+	for _, tc := range dropped {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := map[string]interface{}{
-				"name":     "Bad Link Session",
-				"notes":    "",
-				"activity": 0,
-				"origin":   "played",
-				"duration": 600,
-				"rep_datas": []map[string]interface{}{
-					{
-						"average_weight":   30.0,
-						"is_rest":          false,
-						"right_hand":       true,
-						"duration":         7,
-						"target_weight":    35.0,
-						"index":            0,
-						"grip_position":    0,
-						"training_item_id": tc.itemID,
-					},
-				},
-			}
-			for k, v := range tc.links {
-				payload[k] = v
-			}
-			body, _ := json.Marshal(payload)
-			resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+			resp, err := app.Test(testutil.NewJSONRequestWithAuth(
+				http.MethodPost, "/api/sessions", repItemLinkPayload(tc.links, tc.itemID), token))
 			if err != nil {
 				t.Fatalf("Failed to create session: %v", err)
 			}
-			if resp.StatusCode != fiber.StatusBadRequest {
-				t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			if resp.StatusCode != fiber.StatusCreated {
+				t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+			}
+			var created map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			req := testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", created["id"].(string)), nil)
+			req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+			resp, err = app.Test(req)
+			if err != nil {
+				t.Fatalf("Failed to read session: %v", err)
+			}
+			var response map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&response)
+
+			repDatas, ok := response["rep_datas"].([]interface{})
+			if !ok || len(repDatas) != 1 {
+				t.Fatalf("Expected 1 rep data, got %v", response["rep_datas"])
+			}
+			if got := repDatas[0].(map[string]interface{})["training_item_id"]; got != nil {
+				t.Errorf("Expected the unprescribed link dropped to null, got %v", got)
+			}
+			if got := repDatas[0].(map[string]interface{})["average_weight"]; got != 30.0 {
+				t.Errorf("Expected the rep itself kept, got average_weight %v", got)
 			}
 		})
 	}
+
+	// A malformed id cannot come from a race, so it still fails the request.
+	t.Run("malformed id", func(t *testing.T) {
+		resp, err := app.Test(testutil.NewJSONRequestWithAuth(
+			http.MethodPost, "/api/sessions",
+			repItemLinkPayload(map[string]interface{}{"training_id": trainingID}, "not-a-uuid"), token))
+		if err != nil {
+			t.Fatalf("Failed to create session: %v", err)
+		}
+		if resp.StatusCode != fiber.StatusBadRequest {
+			t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+		}
+		var body map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&body)
+		if got, _ := body["error"].(string); !strings.Contains(got, "rep 0") {
+			t.Errorf("Expected the error to name the offending rep, got %q", got)
+		}
+	})
+}
+
+// repItemLinkPayload is a one-rep session body carrying itemID as its link.
+func repItemLinkPayload(links map[string]interface{}, itemID string) []byte {
+	payload := map[string]interface{}{
+		"name":     "Bad Link Session",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"duration": 600,
+		"rep_datas": []map[string]interface{}{
+			{
+				"average_weight":   30.0,
+				"is_rest":          false,
+				"right_hand":       true,
+				"duration":         7,
+				"target_weight":    35.0,
+				"index":            0,
+				"grip_position":    0,
+				"training_item_id": itemID,
+			},
+		},
+	}
+	for k, v := range links {
+		payload[k] = v
+	}
+	body, _ := json.Marshal(payload)
+	return body
 }

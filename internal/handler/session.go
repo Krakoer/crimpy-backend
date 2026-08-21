@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -347,6 +348,15 @@ func repDatasToResponses(rows []db.RepData) []RepDataResponse {
 	return items
 }
 
+// SessionDetailResponse is the envelope both session-read endpoints return: the
+// session with the reps and assessments recorded against it. Typed so the
+// clients reading training_item_id off a rep have a generated contract for it.
+type SessionDetailResponse struct {
+	Session     SessionResponse      `json:"session"`
+	RepDatas    []RepDataResponse    `json:"rep_datas"`
+	Assessments []AssessmentResponse `json:"assessments"`
+}
+
 // AssessmentResponse is an assessment result as the endpoints return it.
 type AssessmentResponse struct {
 	ID           string   `json:"id"`
@@ -482,20 +492,18 @@ func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []A
 // either cannot rewrite what was prescribed. programSession is nil for a session
 // played straight from a training, outside any program.
 func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) (PrescriptionSnapshot, error) {
-	var snapshot PrescriptionSnapshot
-
 	training, err := qtx.GetTraining(ctx, trainingID)
 	if err != nil {
-		return snapshot, err
+		return PrescriptionSnapshot{}, err
 	}
 
 	rows, err := qtx.GetTrainingItems(ctx, trainingID)
 	if err != nil {
-		return snapshot, err
+		return PrescriptionSnapshot{}, err
 	}
 
 	var zeroParent pgtype.UUID
-	snapshot = PrescriptionSnapshot{
+	snapshot := PrescriptionSnapshot{
 		ID:           training.ID.String(),
 		Title:        training.Title,
 		TrainingType: training.TrainingType,
@@ -515,7 +523,7 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 	// records does not become what its own prescription was read against.
 	assessments, err := qtx.GetUserLatestAssessmentValues(ctx, userID)
 	if err != nil {
-		return snapshot, err
+		return PrescriptionSnapshot{}, err
 	}
 	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
 
@@ -528,18 +536,46 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 
 		overrides, err := qtx.GetCoachProgramSessionOverrides(ctx, programSession.ID)
 		if err != nil {
-			return snapshot, err
+			return PrescriptionSnapshot{}, err
 		}
 		byItem := make(map[string]json.RawMessage, len(overrides))
 		for _, o := range overrides {
 			byItem[o.ItemID.String()] = json.RawMessage(o.Overrides)
 		}
 		if err := mergeItemOverrides(snapshot.Items, byItem); err != nil {
-			return snapshot, err
+			return PrescriptionSnapshot{}, err
 		}
 	}
 
 	return snapshot, nil
+}
+
+// resolveRepItemLinks turns each rep's training item link into the value to
+// store. A link naming an item the frozen prescription does not hold is dropped
+// to NULL rather than refused: the ids rotate whenever the coach edits the
+// training mid-run (UpdateTraining re-inserts every item), and the link is only
+// a grouping hint the reader already falls back from, so refusing would trade a
+// lost grouping for a lost session. A malformed id is a client bug, not a race,
+// and still fails the request - the returned index names the offending rep, or
+// -1 when every link resolved.
+func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]struct{}, userID string) ([]pgtype.UUID, int) {
+	resolved := make([]pgtype.UUID, len(reps))
+	for i, rd := range reps {
+		itemID, err := optionalUUID(rd.TrainingItemID)
+		if err != nil {
+			return nil, i
+		}
+		if itemID.Valid {
+			if _, ok := prescribedItemIDs[itemID.String()]; !ok {
+				slog.Warn("dropping rep link to an item the prescription does not hold",
+					"user_id", userID, "rep_index", i, "training_item_id", itemID.String())
+				resolved[i] = pgtype.UUID{}
+				continue
+			}
+		}
+		resolved[i] = itemID
+	}
+	return resolved, -1
 }
 
 // collectItemIDs gathers the id of every item of a prescription, nested ones
@@ -718,6 +754,15 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		collectItemIDs(snapshot.Items, prescribedItemIDs)
 	}
 
+	// Resolved before anything is written, so a rejected id costs a round trip
+	// rather than a session insert and every rep before the bad one.
+	repItemIDs, errIndex := resolveRepItemLinks(req.RepDatas, prescribedItemIDs, userID)
+	if errIndex >= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Invalid training item ID on rep %d", errIndex),
+		})
+	}
+
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
 		UserID:            userUUID,
 		Name:              req.Name,
@@ -742,26 +787,11 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 	}
 
-	for _, rd := range req.RepDatas {
+	for i, rd := range req.RepDatas {
 		var edgeSizeMm pgtype.Int4
 		if rd.EdgeSizeMm != nil {
 			edgeSizeMm.Int32 = *rd.EdgeSizeMm
 			edgeSizeMm.Valid = true
-		}
-
-		trainingItemID, err := optionalUUID(rd.TrainingItemID)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training item ID"})
-		}
-		// The link is read against the prescription frozen just above, so an id
-		// that is not in it would name a block the session cannot show. Letting
-		// it through would leave reps grouped under nothing.
-		if trainingItemID.Valid {
-			if _, ok := prescribedItemIDs[trainingItemID.String()]; !ok {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error": "Rep references an item the session was not prescribed",
-				})
-			}
 		}
 
 		_, err = qtx.CreateRepData(c.Context(), db.CreateRepDataParams{
@@ -775,7 +805,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			Index:          rd.Index,
 			GripPosition:   rd.GripPosition,
 			EdgeSizeMm:     edgeSizeMm,
-			TrainingItemID: trainingItemID,
+			TrainingItemID: repItemIDs[i],
 		})
 		if err != nil {
 			slog.Error("failed to create rep data", "user_id", userID, "session_id", session.ID, "error", err)
@@ -861,7 +891,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Session ID (UUID)"
-// @Success 200 {object} map[string]interface{} "Session details with rep_datas and assessments"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas and assessments"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Session not found"
@@ -875,10 +905,10 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
 	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
 
-	return c.JSON(fiber.Map{
-		"session":     sessionToResponse(session),
-		"rep_datas":   repDatasToResponses(repDatas),
-		"assessments": assessmentsToResponses(assessments),
+	return c.JSON(SessionDetailResponse{
+		Session:     sessionToResponse(session),
+		RepDatas:    repDatasToResponses(repDatas),
+		Assessments: assessmentsToResponses(assessments),
 	})
 }
 

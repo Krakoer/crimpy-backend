@@ -1645,8 +1645,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Session details with rep_datas and assessments",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
                     },
                     "400": {
@@ -3356,8 +3355,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Session details with rep_datas and assessments",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
                     },
                     "400": {
@@ -4638,6 +4636,35 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.AssessmentResponse": {
+            "type": "object",
+            "properties": {
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.ChangePasswordRequest": {
             "type": "object",
             "properties": {
@@ -5130,11 +5157,73 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.RepDataResponse": {
+            "type": "object",
+            "properties": {
+                "average_weight": {
+                    "type": "number"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "edge_size_mm": {
+                    "type": "integer"
+                },
+                "grip_position": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "is_rest": {
+                    "type": "boolean"
+                },
+                "right_hand": {
+                    "type": "boolean"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "target_weight": {
+                    "type": "number"
+                },
+                "training_item_id": {
+                    "description": "TrainingItemID keys into the session prescription items, so the reps can\nbe read block by block. Absent on a rep played outside a training, and on\nsessions recorded before the app sent it.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.ResendVerificationRequest": {
             "type": "object",
             "properties": {
                 "email": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.SessionDetailResponse": {
+            "type": "object",
+            "properties": {
+                "assessments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentResponse"
+                    }
+                },
+                "rep_datas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.RepDataResponse"
+                    }
+                },
+                "session": {
+                    "$ref": "#/definitions/handler.SessionResponse"
                 }
             }
         },
