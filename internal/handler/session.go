@@ -147,6 +147,9 @@ type RepDataRequest struct {
 	Index         int32   `json:"index"`
 	GripPosition  int32   `json:"grip_position"`
 	EdgeSizeMm    *int32  `json:"edge_size_mm,omitempty"`
+	// TrainingItemID is the prescription item this rep was played from, absent
+	// for a rep recorded outside a training.
+	TrainingItemID *string `json:"training_item_id,omitempty"`
 }
 
 type AssessmentRequest struct {
@@ -312,22 +315,27 @@ type RepDataResponse struct {
 	RightHand     bool    `json:"right_hand"`
 	GripPosition  int32   `json:"grip_position"`
 	EdgeSizeMm    *int32  `json:"edge_size_mm,omitempty"`
-	UpdatedAt     string  `json:"updated_at"`
+	// TrainingItemID keys into the session prescription items, so the reps can
+	// be read block by block. Absent on a rep played outside a training, and on
+	// sessions recorded before the app sent it.
+	TrainingItemID *string `json:"training_item_id,omitempty"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 func repDataToResponse(r db.RepData) RepDataResponse {
 	return RepDataResponse{
-		ID:            r.ID.String(),
-		SessionID:     r.SessionID.String(),
-		AverageWeight: r.AverageWeight,
-		TargetWeight:  r.TargetWeight,
-		Duration:      r.Duration,
-		Index:         r.Index,
-		IsRest:        r.IsRest,
-		RightHand:     r.RightHand,
-		GripPosition:  r.GripPosition,
-		EdgeSizeMm:    optionalInt32(r.EdgeSizeMm),
-		UpdatedAt:     r.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:             r.ID.String(),
+		SessionID:      r.SessionID.String(),
+		AverageWeight:  r.AverageWeight,
+		TargetWeight:   r.TargetWeight,
+		Duration:       r.Duration,
+		Index:          r.Index,
+		IsRest:         r.IsRest,
+		RightHand:      r.RightHand,
+		GripPosition:   r.GripPosition,
+		EdgeSizeMm:     optionalInt32(r.EdgeSizeMm),
+		TrainingItemID: optionalUUIDString(r.TrainingItemID),
+		UpdatedAt:      r.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 }
 
@@ -473,19 +481,21 @@ func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []A
 // the program session's per-item overrides already merged in, so a later edit of
 // either cannot rewrite what was prescribed. programSession is nil for a session
 // played straight from a training, outside any program.
-func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) ([]byte, error) {
+func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) (PrescriptionSnapshot, error) {
+	var snapshot PrescriptionSnapshot
+
 	training, err := qtx.GetTraining(ctx, trainingID)
 	if err != nil {
-		return nil, err
+		return snapshot, err
 	}
 
 	rows, err := qtx.GetTrainingItems(ctx, trainingID)
 	if err != nil {
-		return nil, err
+		return snapshot, err
 	}
 
 	var zeroParent pgtype.UUID
-	snapshot := PrescriptionSnapshot{
+	snapshot = PrescriptionSnapshot{
 		ID:           training.ID.String(),
 		Title:        training.Title,
 		TrainingType: training.TrainingType,
@@ -505,7 +515,7 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 	// records does not become what its own prescription was read against.
 	assessments, err := qtx.GetUserLatestAssessmentValues(ctx, userID)
 	if err != nil {
-		return nil, err
+		return snapshot, err
 	}
 	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
 
@@ -518,18 +528,27 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 
 		overrides, err := qtx.GetCoachProgramSessionOverrides(ctx, programSession.ID)
 		if err != nil {
-			return nil, err
+			return snapshot, err
 		}
 		byItem := make(map[string]json.RawMessage, len(overrides))
 		for _, o := range overrides {
 			byItem[o.ItemID.String()] = json.RawMessage(o.Overrides)
 		}
 		if err := mergeItemOverrides(snapshot.Items, byItem); err != nil {
-			return nil, err
+			return snapshot, err
 		}
 	}
 
-	return json.Marshal(snapshot)
+	return snapshot, nil
+}
+
+// collectItemIDs gathers the id of every item of a prescription, nested ones
+// included, so a rep claiming to come from one can be checked against it.
+func collectItemIDs(items []TrainingItemResponse, ids map[string]struct{}) {
+	for _, item := range items {
+		ids[item.ID] = struct{}{}
+		collectItemIDs(item.Items, ids)
+	}
 }
 
 // mergeItemOverrides walks the item tree and applies the override each item
@@ -550,7 +569,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -684,12 +703,19 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	}
 
 	var prescription []byte
+	prescribedItemIDs := map[string]struct{}{}
 	if trainingID.Valid {
-		prescription, err = buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
+		snapshot, err := buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
 		if err != nil {
 			slog.Error("failed to snapshot session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 		}
+		prescription, err = json.Marshal(snapshot)
+		if err != nil {
+			slog.Error("failed to encode session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+		}
+		collectItemIDs(snapshot.Items, prescribedItemIDs)
 	}
 
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
@@ -723,17 +749,33 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			edgeSizeMm.Valid = true
 		}
 
-		_, err := qtx.CreateRepData(c.Context(), db.CreateRepDataParams{
-			UserID:        userUUID,
-			AverageWeight: rd.AverageWeight,
-			SessionID:     session.ID,
-			IsRest:        rd.IsRest,
-			RightHand:     rd.RightHand,
-			Duration:      rd.Duration,
-			TargetWeight:  rd.TargetWeight,
-			Index:         rd.Index,
-			GripPosition:  rd.GripPosition,
-			EdgeSizeMm:    edgeSizeMm,
+		trainingItemID, err := optionalUUID(rd.TrainingItemID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid training item ID"})
+		}
+		// The link is read against the prescription frozen just above, so an id
+		// that is not in it would name a block the session cannot show. Letting
+		// it through would leave reps grouped under nothing.
+		if trainingItemID.Valid {
+			if _, ok := prescribedItemIDs[trainingItemID.String()]; !ok {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Rep references an item the session was not prescribed",
+				})
+			}
+		}
+
+		_, err = qtx.CreateRepData(c.Context(), db.CreateRepDataParams{
+			UserID:         userUUID,
+			AverageWeight:  rd.AverageWeight,
+			SessionID:      session.ID,
+			IsRest:         rd.IsRest,
+			RightHand:      rd.RightHand,
+			Duration:       rd.Duration,
+			TargetWeight:   rd.TargetWeight,
+			Index:          rd.Index,
+			GripPosition:   rd.GripPosition,
+			EdgeSizeMm:     edgeSizeMm,
+			TrainingItemID: trainingItemID,
 		})
 		if err != nil {
 			slog.Error("failed to create rep data", "user_id", userID, "session_id", session.ID, "error", err)

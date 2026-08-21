@@ -1,4 +1,4 @@
-h1:JzisUDo6IG84ixgKG/eEFR0ptmqlmawxQrs14RZ9MsI=
+h1:DIF1u7jlsDc9o5bbgsV9DmPLcTcAM73QF0wNLgi13ec=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -38,3 +38,4 @@ h1:JzisUDo6IG84ixgKG/eEFR0ptmqlmawxQrs14RZ9MsI=
 20260820175751_constrain_logged_session_program_link.sql h1:n04O8fXYT0+xtoWt1cEW+mb1fImT2N8Px4s8lheh9DM=
 20260820200215_snapshot_session_prescription.sql h1:XywyAKgj+k8j3VW83KNzfyMEWkW9l0ogEgZNbph5vdk=
 20260820202937_require_prescription_with_training.sql h1:ZYyf2Z2wDpozF86h2yUKyHwanLsMDmxCcgr3pjRvgzo=
+20260821074058_add_rep_data_training_item.sql h1:HckJC4PFaFRGauPWdXyLMrQFm/HYI3P6CwEkPW00h+Q=

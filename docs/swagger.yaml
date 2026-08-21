@@ -349,6 +349,11 @@ definitions:
         type: boolean
       target_weight:
         type: number
+      training_item_id:
+        description: |-
+          TrainingItemID is the prescription item this rep was played from, absent
+          for a rep recorded outside a training.
+        type: string
     type: object
   handler.ResendVerificationRequest:
     properties:
@@ -3013,6 +3018,8 @@ paths:
         the session, with the program session overrides merged in, so later edits
         of the training cannot rewrite it. When a program_session_id is sent, that
         row decides the training, and a training_id disagreeing with it is refused.
+        A rep may name the prescription item it was played from through training_item_id,
+        which must be one of the items the session was prescribed.
       parameters:
       - description: Session details
         in: body

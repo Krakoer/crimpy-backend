@@ -1020,3 +1020,208 @@ func TestSessionHandler_UpdateSession_KeepsDateWhenOmitted(t *testing.T) {
 
 	assertSessionDate(t, updated, "2026-08-01T10:00:00Z")
 }
+
+// createTestTwoBlockTraining makes the training the reps-per-item link exists
+// for: two hangboard blocks on different edges, the case a flat rep list cannot
+// be read against its prescription.
+func createTestTwoBlockTraining(t *testing.T, token string, app *fiber.App) (trainingID string, itemIDs []string) {
+	t.Helper()
+	block := func(edge int) map[string]interface{} {
+		return map[string]interface{}{
+			"type":             "hangboard_rep",
+			"reps":             6,
+			"worktime_seconds": 7,
+			"rest_seconds":     60,
+			"hand":             "both",
+			"granularity":      "uniform",
+			"loads":            []map[string]interface{}{{"value": 0, "unit": "bw"}},
+			"edge_sizes_mm":    []int{edge},
+		}
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":         "Two Block Hangboard",
+		"training_type": "hangboard",
+		"items":         []map[string]interface{}{block(20), block(14)},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, token))
+	if err != nil {
+		t.Fatalf("Failed to create training: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating training, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	trainingID = result["id"].(string)
+	for _, raw := range result["items"].([]interface{}) {
+		itemIDs = append(itemIDs, raw.(map[string]interface{})["id"].(string))
+	}
+	if len(itemIDs) != 2 {
+		t.Fatalf("Expected 2 items on the training, got %d", len(itemIDs))
+	}
+	return trainingID, itemIDs
+}
+
+func TestSessionHandler_CreateSession_LinksRepsToPrescriptionItems(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-rep-item@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+	})
+
+	trainingID, itemIDs := createTestTwoBlockTraining(t, token, app)
+
+	reqBody := map[string]interface{}{
+		"name":        "Two Block Session",
+		"notes":       "",
+		"activity":    0,
+		"origin":      "played",
+		"duration":    600,
+		"training_id": trainingID,
+		"rep_datas": []map[string]interface{}{
+			{
+				"average_weight":   30.0,
+				"is_rest":          false,
+				"right_hand":       true,
+				"duration":         7,
+				"target_weight":    35.0,
+				"index":            0,
+				"grip_position":    0,
+				"edge_size_mm":     20,
+				"training_item_id": itemIDs[0],
+			},
+			{
+				"average_weight":   22.0,
+				"is_rest":          false,
+				"right_hand":       true,
+				"duration":         7,
+				"target_weight":    25.0,
+				"index":            1,
+				"grip_position":    0,
+				"edge_size_mm":     14,
+				"training_item_id": itemIDs[1],
+			},
+			{
+				"average_weight": 0.0,
+				"is_rest":        true,
+				"right_hand":     true,
+				"duration":       3,
+				"target_weight":  0.0,
+				"index":          2,
+				"grip_position":  0,
+			},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+
+	req := testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", created["id"].(string)), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to read session: %v", err)
+	}
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	repDatas, ok := response["rep_datas"].([]interface{})
+	if !ok || len(repDatas) != 3 {
+		t.Fatalf("Expected 3 rep datas, got %v", response["rep_datas"])
+	}
+
+	for i, wanted := range []interface{}{itemIDs[0], itemIDs[1], nil} {
+		got := repDatas[i].(map[string]interface{})["training_item_id"]
+		if got != wanted {
+			t.Errorf("Expected rep %d linked to %v, got %v", i, wanted, got)
+		}
+	}
+}
+
+func TestSessionHandler_CreateSession_RefusesRepItemOutsidePrescription(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-rep-item-bad@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:  handler.NewSessionHandler(queries, pool),
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+	})
+
+	trainingID, _ := createTestTwoBlockTraining(t, token, app)
+	_, otherItemIDs := createTestTwoBlockTraining(t, token, app)
+
+	cases := []struct {
+		name    string
+		links   map[string]interface{}
+		itemID  string
+		wantErr string
+	}{
+		{
+			name:   "item of another training",
+			links:  map[string]interface{}{"training_id": trainingID},
+			itemID: otherItemIDs[0],
+		},
+		{
+			name:   "malformed id",
+			links:  map[string]interface{}{"training_id": trainingID},
+			itemID: "not-a-uuid",
+		},
+		{
+			name:   "session with no prescription",
+			links:  map[string]interface{}{},
+			itemID: otherItemIDs[0],
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := map[string]interface{}{
+				"name":     "Bad Link Session",
+				"notes":    "",
+				"activity": 0,
+				"origin":   "played",
+				"duration": 600,
+				"rep_datas": []map[string]interface{}{
+					{
+						"average_weight":   30.0,
+						"is_rest":          false,
+						"right_hand":       true,
+						"duration":         7,
+						"target_weight":    35.0,
+						"index":            0,
+						"grip_position":    0,
+						"training_item_id": tc.itemID,
+					},
+				},
+			}
+			for k, v := range tc.links {
+				payload[k] = v
+			}
+			body, _ := json.Marshal(payload)
+			resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+			if err != nil {
+				t.Fatalf("Failed to create session: %v", err)
+			}
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			}
+		})
+	}
+}
