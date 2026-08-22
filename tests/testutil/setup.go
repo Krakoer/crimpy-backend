@@ -160,6 +160,12 @@ type HandlerConfig struct {
 		GetMyWeek(fiber.Ctx) error
 		GetMyProgramTraining(fiber.Ctx) error
 	}
+	BuiltinTrainingWeightHandler interface {
+		CreateBuiltinTrainingWeight(fiber.Ctx) error
+		GetBuiltinTrainingWeights(fiber.Ctx) error
+		UpdateBuiltinTrainingWeight(fiber.Ctx) error
+		DeleteBuiltinTrainingWeight(fiber.Ctx) error
+	}
 }
 
 func SetupFiberApp(config HandlerConfig) *fiber.App {
@@ -248,6 +254,13 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/user/programs/:program_id/weeks", config.ProgramHandler.GetMyWeeks)
 		api.Get("/user/programs/:program_id/weeks/:week_number", config.ProgramHandler.GetMyWeek)
 		api.Get("/user/programs/:program_id/trainings/:training_id", config.ProgramHandler.GetMyProgramTraining)
+	}
+
+	if config.BuiltinTrainingWeightHandler != nil {
+		api.Post("/builtin-training-weights", config.BuiltinTrainingWeightHandler.CreateBuiltinTrainingWeight)
+		api.Get("/builtin-training-weights", config.BuiltinTrainingWeightHandler.GetBuiltinTrainingWeights)
+		api.Put("/builtin-training-weights/:id", config.BuiltinTrainingWeightHandler.UpdateBuiltinTrainingWeight)
+		api.Delete("/builtin-training-weights/:id", config.BuiltinTrainingWeightHandler.DeleteBuiltinTrainingWeight)
 	}
 
 	return app
