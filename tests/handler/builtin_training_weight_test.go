@@ -48,6 +48,23 @@ func createBuiltinWeight(t *testing.T, app *fiber.App, token, builtinTrainingID 
 	return created
 }
 
+func listBuiltinWeights(t *testing.T, app *fiber.App, token string) []map[string]interface{} {
+	t.Helper()
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/builtin-training-weights", nil, token)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+
+	var weights []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&weights)
+	return weights
+}
+
 func TestBuiltinTrainingWeightHandler_Create_ReturnsSnakeCase(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
@@ -91,18 +108,48 @@ func TestBuiltinTrainingWeightHandler_Create_MissingFields(t *testing.T) {
 	}
 }
 
-func TestBuiltinTrainingWeightHandler_Create_DuplicateRejected(t *testing.T) {
+// A second save for the same builtin training updates the existing override. The
+// app posts without knowing whether a row exists (guest-data import always does),
+// so this has to be idempotent rather than an error.
+func TestBuiltinTrainingWeightHandler_Create_SameTrainingUpdates(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
 	app, token, cleanup := setupBuiltinWeightApp(t, "weight3@test.com")
 	defer cleanup()
 
 	builtinTrainingID := uuid.NewString()
-	createBuiltinWeight(t, app, token, builtinTrainingID, 10.0, 11.0)
+	first := createBuiltinWeight(t, app, token, builtinTrainingID, 10.0, 11.0)
+	second := createBuiltinWeight(t, app, token, builtinTrainingID, 20.0, 21.0)
+
+	if second["id"] != first["id"] {
+		t.Errorf("Expected the existing row %v to be updated, got a new id %v", first["id"], second["id"])
+	}
+	if second["custom_weight_left"] != 20.0 {
+		t.Errorf("Expected custom_weight_left 20.0, got %v", second["custom_weight_left"])
+	}
+	if second["custom_weight_right"] != 21.0 {
+		t.Errorf("Expected custom_weight_right 21.0, got %v", second["custom_weight_right"])
+	}
+
+	weights := listBuiltinWeights(t, app, token)
+	if len(weights) != 1 {
+		t.Errorf("Expected the upsert to leave 1 row, got %d", len(weights))
+	}
+}
+
+// The upsert absorbs the (user_id, builtin_training_id) conflict, so the only
+// duplicate left is a caller reusing an id that already names another row.
+func TestBuiltinTrainingWeightHandler_Create_DuplicateIDRejected(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	app, token, cleanup := setupBuiltinWeightApp(t, "weight3b@test.com")
+	defer cleanup()
+
+	created := createBuiltinWeight(t, app, token, uuid.NewString(), 10.0, 11.0)
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"id":                  uuid.NewString(),
-		"builtin_training_id": builtinTrainingID,
+		"id":                  created["id"],
+		"builtin_training_id": uuid.NewString(),
 		"custom_weight_left":  20.0,
 		"custom_weight_right": 21.0,
 	})
@@ -110,7 +157,7 @@ func TestBuiltinTrainingWeightHandler_Create_DuplicateRejected(t *testing.T) {
 
 	resp, _ := app.Test(req)
 	if resp.StatusCode != fiber.StatusConflict {
-		t.Errorf("Expected %d for a second override on the same training, got %d", fiber.StatusConflict, resp.StatusCode)
+		t.Errorf("Expected %d for a reused id, got %d", fiber.StatusConflict, resp.StatusCode)
 	}
 }
 
@@ -123,22 +170,40 @@ func TestBuiltinTrainingWeightHandler_List(t *testing.T) {
 	builtinTrainingID := uuid.NewString()
 	createBuiltinWeight(t, app, token, builtinTrainingID, 10.0, 11.0)
 
-	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/builtin-training-weights", nil, token)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	if resp.StatusCode != fiber.StatusOK {
-		t.Fatalf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
-	}
-
-	var weights []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&weights)
+	weights := listBuiltinWeights(t, app, token)
 	if len(weights) != 1 {
 		t.Fatalf("Expected 1 weight override, got %d", len(weights))
 	}
 	if weights[0]["builtin_training_id"] != builtinTrainingID {
 		t.Errorf("Expected builtin_training_id %q, got %v", builtinTrainingID, weights[0]["builtin_training_id"])
+	}
+}
+
+// List is the one endpoint here whose isolation comes from the query rather than
+// from ownedResource, so it needs a second user to have anything to leak.
+func TestBuiltinTrainingWeightHandler_List_OnlyOwnWeights(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, ownerToken := testutil.CreateTestUser(t, queries, "weight4owner@test.com")
+	_, otherToken := testutil.CreateTestUser(t, queries, "weight4other@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		BuiltinTrainingWeightHandler: handler.NewBuiltinTrainingWeightHandler(queries),
+	})
+
+	ownerTrainingID := uuid.NewString()
+	createBuiltinWeight(t, app, ownerToken, ownerTrainingID, 10.0, 11.0)
+	createBuiltinWeight(t, app, otherToken, uuid.NewString(), 20.0, 21.0)
+
+	weights := listBuiltinWeights(t, app, ownerToken)
+	if len(weights) != 1 {
+		t.Fatalf("Expected 1 weight override for the caller, got %d", len(weights))
+	}
+	if weights[0]["builtin_training_id"] != ownerTrainingID {
+		t.Errorf("Expected builtin_training_id %q, got %v", ownerTrainingID, weights[0]["builtin_training_id"])
 	}
 }
 
