@@ -679,7 +679,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a custom weight override for a builtin training",
+                "description": "Create a custom weight override for a builtin training. Saving a second time for the same builtin training updates the existing override rather than creating a duplicate.",
                 "consumes": [
                     "application/json"
                 ],
@@ -727,7 +727,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Weight override already exists",
+                        "description": "A weight override with this id already exists",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {

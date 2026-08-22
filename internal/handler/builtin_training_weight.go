@@ -71,15 +71,19 @@ func builtinTrainingWeightsToResponses(rows []db.BuiltinTrainingWeight) []Builti
 	return items
 }
 
-// isUniqueViolation reports whether err is the database refusing a duplicate row.
-func isUniqueViolation(err error) bool {
+// uniqueViolation reports whether err is the database refusing a duplicate row,
+// along with the constraint that rejected it, so callers can tell which one it was.
+func uniqueViolation(err error) (string, bool) {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return pgErr.ConstraintName, true
+	}
+	return "", false
 }
 
 // CreateBuiltinTrainingWeight godoc
 // @Summary Create a builtin training weight override
-// @Description Create a custom weight override for a builtin training
+// @Description Create a custom weight override for a builtin training. Saving a second time for the same builtin training updates the existing override rather than creating a duplicate.
 // @Tags BuiltinTrainingWeight
 // @Accept json
 // @Produce json
@@ -88,7 +92,7 @@ func isUniqueViolation(err error) bool {
 // @Success 201 {object} BuiltinTrainingWeightResponse "Weight override created"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 401 {object} map[string]string "Unauthorized"
-// @Failure 409 {object} map[string]string "Weight override already exists"
+// @Failure 409 {object} map[string]string "A weight override with this id already exists"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/builtin-training-weights [post]
 func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) error {
@@ -125,8 +129,10 @@ func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) 
 		CustomWeightRight: req.CustomWeightRight,
 	})
 	if err != nil {
-		if isUniqueViolation(err) {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Weight override already exists for this builtin training"})
+		// The (user_id, builtin_training_id) conflict is absorbed by the upsert, so
+		// a duplicate here is the caller reusing an id that already names another row.
+		if constraint, ok := uniqueViolation(err); ok && constraint == "builtin_training_weights_pkey" {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "A weight override with this id already exists"})
 		}
 		slog.Error("failed to create builtin training weight", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create builtin training weight"})
