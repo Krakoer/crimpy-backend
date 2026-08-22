@@ -1948,3 +1948,130 @@ func TestWeekHandler_DeleteWeek_AllowsWeekWithoutPlayedSession(t *testing.T) {
 		t.Fatalf("Expected 200 deleting a week with no played session, got %d", resp.StatusCode)
 	}
 }
+
+// The override path reaches the reps column without going through the item
+// validator, so a week cannot be the back door that puts a rep count on a
+// hangboard_rep the athlete's app would expand to a single hang anyway.
+func TestWeekHandler_RejectsOverrideRepsOnHangboardRep(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk15coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wk15user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestSingleHangCoachTraining(t, coachToken, app)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id":   itemID,
+						"overrides": map[string]interface{}{"reps": 4},
+					},
+				},
+			},
+		},
+	})
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if message := fmt.Sprint(result["error"]); !strings.Contains(message, "repeater") {
+		t.Errorf("Expected the error to name the repeater, got %v", message)
+	}
+}
+
+// The other fields of the same override are still accepted on a single hang:
+// only the rep count is refused.
+func TestWeekHandler_AcceptsOverrideLoadOnHangboardRep(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk16coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wk16user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestSingleHangCoachTraining(t, coachToken, app)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id": itemID,
+						"overrides": map[string]interface{}{
+							"loads": []map[string]interface{}{{"value": 25, "unit": "kg"}},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+}
+
+func createTestSingleHangCoachTraining(t *testing.T, coachToken string, app *fiber.App) (trainingID, itemID string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"title": "Single Hang",
+		"items": []map[string]interface{}{
+			{
+				"type":             "hangboard_rep",
+				"worktime_seconds": 7,
+				"rest_seconds":     60,
+				"hand":             "both",
+				"granularity":      "uniform",
+				"edge_sizes_mm":    []interface{}{20},
+				"loads":            []map[string]interface{}{{"value": 10, "unit": "kg"}},
+			},
+		},
+	})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create coach training: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating coach training, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	trainingID = result["id"].(string)
+	itemID = result["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
+	return trainingID, itemID
+}
