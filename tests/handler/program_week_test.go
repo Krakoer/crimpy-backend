@@ -1575,9 +1575,11 @@ func TestWeekHandler_UpsertWeek_FreezesOnlyThePlayedSession(t *testing.T) {
 	}
 }
 
-// A logged session is entered by hand and was never run from a prescription.
-// Accepting the link would let an athlete freeze a week they never played.
-func TestSessionHandler_CreateSession_RefusesProgramSessionOnLoggedSession(t *testing.T) {
+// A coach slot with nothing to step through is completed by hand, so a logged
+// session may answer a prescription. It still must not freeze the week: it was
+// typed in after the fact, and locking on it would hand an athlete a way to
+// pin their coach's week to a session they never played.
+func TestSessionHandler_CreateSession_AcceptsProgramSessionOnLoggedSession(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkloggedlink")
 	trainingID := createTestCoachTraining(t, coachToken, app)
@@ -1600,12 +1602,65 @@ func TestSessionHandler_CreateSession_RefusesProgramSessionOnLoggedSession(t *te
 	if err != nil {
 		t.Fatalf("Failed to post session: %v", err)
 	}
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected 400 for a logged session carrying a program session, got %d", resp.StatusCode)
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 for a logged session carrying a program session, got %d", resp.StatusCode)
+	}
+
+	var session map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		t.Fatalf("Failed to decode session: %v", err)
+	}
+	// The link is what program completion matches on, so it has to come back.
+	if got := session["program_session_id"]; got != sessionID {
+		t.Errorf("Expected the logged session to keep the program session link, got %v", got)
+	}
+	if got := session["origin"]; got != "logged" {
+		t.Errorf("Expected the session to stay logged, got %v", got)
 	}
 
 	if locks := weekSessionLocks(getWeek(t, app, coachToken, userID, programID, 1)); locks[0] {
-		t.Errorf("Expected the session to stay unlocked")
+		t.Errorf("Expected a logged session not to lock the week")
+	}
+}
+
+// The coach must stay free to edit a week an athlete only logged by hand, which
+// is the half of the rule the lock check enforces rather than the constraint.
+func TestWeekHandler_UpsertWeek_EditsWeekHoldingLoggedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "wkloggededit")
+	trainingID := createTestCoachTraining(t, coachToken, app)
+	otherTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingID, "day_of_week": 0}},
+	})
+	sessionID := weekSessionIDs(created)[0]
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":               "Went climbing",
+		"notes":              "",
+		"activity":           0,
+		"origin":             "logged",
+		"duration":           600,
+		"training_id":        trainingID,
+		"program_session_id": sessionID,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to post session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 logging the session, got %d", resp.StatusCode)
+	}
+
+	// Swapping the training would be refused outright on a played session.
+	edited := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": sessionID, "training_id": otherTrainingID, "day_of_week": 2},
+		},
+	})
+	if got := weekSessionIDs(edited); len(got) != 1 || got[0] != sessionID {
+		t.Errorf("Expected the slot to keep its id through the edit, got %v", got)
 	}
 }
 
