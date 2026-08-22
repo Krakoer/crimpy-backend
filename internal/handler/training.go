@@ -193,7 +193,7 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 		if !validItemTypes[item.Type] {
 			return fmt.Errorf("invalid item type %q", item.Type)
 		}
-		if err := validateHangboardRepReps(item); err != nil {
+		if err := validateHangboardRepRepeatFields(item); err != nil {
 			return err
 		}
 		if err := validateItemConfiguration(item); err != nil {

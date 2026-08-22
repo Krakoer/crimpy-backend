@@ -1949,53 +1949,61 @@ func TestWeekHandler_DeleteWeek_AllowsWeekWithoutPlayedSession(t *testing.T) {
 	}
 }
 
-// The override path reaches the reps column without going through the item
-// validator, so a week cannot be the back door that puts a rep count on a
-// hangboard_rep the athlete's app would expand to a single hang anyway.
-func TestWeekHandler_RejectsOverrideRepsOnHangboardRep(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-secret-key")
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
+// The override path reaches the repeat columns without going through the item
+// validator, so a week cannot be the back door that puts a rep or cycle count on
+// a hangboard_rep the athlete's app would expand to a single hang anyway.
+func TestWeekHandler_RejectsOverrideRepeatFieldsOnHangboardRep(t *testing.T) {
+	for index, field := range []string{"reps", "cycles", "cycle_rest_seconds"} {
+		t.Run(field, func(t *testing.T) {
+			t.Setenv("JWT_SECRET", "test-secret-key")
+			pool, queries := testutil.SetupTestDB(t)
+			defer testutil.CleanupTestDB(t, pool)
 
-	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk15coach@test.com")
-	userID, _ := testutil.CreateTestUser(t, queries, "wk15user@test.com")
-	enrollUserDirect(t, pool, coachID, userID)
+			coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, fmt.Sprintf("wk15%dcoach@test.com", index))
+			userID, _ := testutil.CreateTestUser(t, queries, fmt.Sprintf("wk15%duser@test.com", index))
+			enrollUserDirect(t, pool, coachID, userID)
 
-	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		TrainingHandler: handler.NewTrainingHandler(queries, pool),
-		ProgramHandler:  handler.NewProgramHandler(queries, pool),
-	})
+			app := testutil.SetupFiberApp(testutil.HandlerConfig{
+				TrainingHandler: handler.NewTrainingHandler(queries, pool),
+				ProgramHandler:  handler.NewProgramHandler(queries, pool),
+			})
 
-	programID := createTestProgram(t, coachToken, userID, app)
-	trainingID, itemID := createTestSingleHangCoachTraining(t, coachToken, app)
+			programID := createTestProgram(t, coachToken, userID, app)
+			trainingID, itemID := createTestSingleHangCoachTraining(t, coachToken, app)
 
-	body, _ := json.Marshal(map[string]interface{}{
-		"sessions": []map[string]interface{}{
-			{
-				"training_id": trainingID,
-				"day_of_week": 1,
-				"overrides": []map[string]interface{}{
+			body, _ := json.Marshal(map[string]interface{}{
+				"sessions": []map[string]interface{}{
 					{
-						"item_id":   itemID,
-						"overrides": map[string]interface{}{"reps": 4},
+						"training_id": trainingID,
+						"day_of_week": 1,
+						"overrides": []map[string]interface{}{
+							{
+								"item_id":   itemID,
+								"overrides": map[string]interface{}{field: 4},
+							},
+						},
 					},
 				},
-			},
-		},
-	})
+			})
 
-	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
-	}
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-	if message := fmt.Sprint(result["error"]); !strings.Contains(message, "repeater") {
-		t.Errorf("Expected the error to name the repeater, got %v", message)
+			req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("Request failed: %v", err)
+			}
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			}
+			var result map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&result)
+			message := fmt.Sprint(result["error"])
+			if !strings.Contains(message, "repeater") {
+				t.Errorf("Expected the error to name the repeater, got %v", message)
+			}
+			if !strings.Contains(message, field) {
+				t.Errorf("Expected the error to name %s, got %v", field, message)
+			}
+		})
 	}
 }
 

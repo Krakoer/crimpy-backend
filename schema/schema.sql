@@ -239,7 +239,8 @@ CREATE TABLE "training_items" (
   "parent_id"            UUID        REFERENCES "training_items"("id") ON DELETE CASCADE,
   "type"                 TEXT        NOT NULL,
   "position"             INTEGER     NOT NULL DEFAULT 0,
-  -- Circuit and repeater cycles (scalar)
+  -- Circuit and repeater cycles (scalar). A hangboard_rep carries neither, for
+  -- the same reason it carries no reps.
   "cycles"               INTEGER,
   "cycle_rest_seconds"   INTEGER,
   -- Exercise and repeater reps (scalar). A hangboard_rep is a single hang and

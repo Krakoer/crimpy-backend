@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crimpy/backend/internal/db"
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -54,26 +53,47 @@ var hangboardItemTypes = map[string]bool{
 	"hangboard_rep": true,
 }
 
-// errHangboardRepReps is the one wording both write paths answer with, so a
-// caller reads the same refusal whether the count arrived on the item or through
+// errHangboardRepField is the one wording every write path answers with, so a
+// caller reads the same refusal whether the field arrived on the item or through
 // a session override.
-var errHangboardRepReps = errors.New("a hangboard_rep is a single hang and takes no reps; use a repeater to repeat a hang")
+func errHangboardRepField(field string) error {
+	return fmt.Errorf("a hangboard_rep is a single hang and takes no %s; use a repeater to repeat a hang", field)
+}
 
-// validateHangboardRepReps keeps the two hangboard types apart. A hangboard_rep
-// is one hang, and every client expands it to exactly one, so a stored rep count
-// is read back and never run. The repeater is the block that repeats a hang.
-func validateHangboardRepReps(item TrainingItemRequest) error {
-	if item.Type == "hangboard_rep" && item.Reps != nil {
-		return errHangboardRepReps
+// hangboardRepRepeatField names the first field describing a repeated hang that
+// an item carries, and the empty string when it carries none.
+func hangboardRepRepeatField(reps, cycles, cycleRestSeconds *int32) string {
+	switch {
+	case reps != nil:
+		return "reps"
+	case cycles != nil:
+		return "cycles"
+	case cycleRestSeconds != nil:
+		return "cycle_rest_seconds"
+	}
+	return ""
+}
+
+// validateHangboardRepRepeatFields keeps the two hangboard types apart. A
+// hangboard_rep is one hang, and every client expands it to exactly one, so a
+// stored rep or cycle count is read back and never run. The repeater is the
+// block that repeats a hang, and it takes all three.
+func validateHangboardRepRepeatFields(item TrainingItemRequest) error {
+	if item.Type != "hangboard_rep" {
+		return nil
+	}
+	if field := hangboardRepRepeatField(item.Reps, item.Cycles, item.CycleRestSeconds); field != "" {
+		return errHangboardRepField(field)
 	}
 	return nil
 }
 
-// validateOverrideHangboardRepReps closes the same hole on the override path,
-// which reaches the column without going through validateHangboardRepReps. It
-// answers on the rep count the caller sent rather than on the merged item, so
-// what the targeted row already holds cannot make an override fail.
-func validateOverrideHangboardRepReps(base TrainingItemRequest, raw json.RawMessage) error {
+// validateOverrideHangboardRepRepeatFields closes the same hole on the override
+// path, which reaches the columns without going through
+// validateHangboardRepRepeatFields. It answers on what the caller sent rather
+// than on the merged item, so what the targeted row already holds cannot make an
+// override fail.
+func validateOverrideHangboardRepRepeatFields(base TrainingItemRequest, raw json.RawMessage) error {
 	if base.Type != "hangboard_rep" || len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
@@ -81,8 +101,8 @@ func validateOverrideHangboardRepReps(base TrainingItemRequest, raw json.RawMess
 	if err := json.Unmarshal(raw, &over); err != nil {
 		return fmt.Errorf("overrides must be an object")
 	}
-	if over.Reps != nil {
-		return errHangboardRepReps
+	if field := hangboardRepRepeatField(over.Reps, over.Cycles, over.CycleRestSeconds); field != "" {
+		return errHangboardRepField(field)
 	}
 	return nil
 }
@@ -413,7 +433,7 @@ func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingI
 // configuration arrays it invalidates, or shipping arrays that disagree with
 // the granularity in force once the override is applied.
 func validateItemOverride(base TrainingItemRequest, raw json.RawMessage) error {
-	if err := validateOverrideHangboardRepReps(base, raw); err != nil {
+	if err := validateOverrideHangboardRepRepeatFields(base, raw); err != nil {
 		return err
 	}
 	merged, err := applyItemOverride(base, raw)
