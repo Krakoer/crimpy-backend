@@ -3,9 +3,12 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -37,6 +40,43 @@ type UpdateBuiltinTrainingWeightRequest struct {
 	CustomWeightRight float32 `json:"custom_weight_right"`
 }
 
+// BuiltinTrainingWeightResponse is the JSON a weight override is returned as. It
+// is a mapped shape rather than the generated row, so reads speak the same
+// snake_case the request bodies do.
+type BuiltinTrainingWeightResponse struct {
+	ID                string  `json:"id"`
+	UserID            string  `json:"user_id"`
+	BuiltinTrainingID string  `json:"builtin_training_id"`
+	CustomWeightLeft  float32 `json:"custom_weight_left"`
+	CustomWeightRight float32 `json:"custom_weight_right"`
+	UpdatedAt         string  `json:"updated_at"`
+}
+
+func builtinTrainingWeightToResponse(w db.BuiltinTrainingWeight) BuiltinTrainingWeightResponse {
+	return BuiltinTrainingWeightResponse{
+		ID:                w.ID.String(),
+		UserID:            w.UserID.String(),
+		BuiltinTrainingID: w.BuiltinTrainingID.String(),
+		CustomWeightLeft:  w.CustomWeightLeft,
+		CustomWeightRight: w.CustomWeightRight,
+		UpdatedAt:         w.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+}
+
+func builtinTrainingWeightsToResponses(rows []db.BuiltinTrainingWeight) []BuiltinTrainingWeightResponse {
+	items := make([]BuiltinTrainingWeightResponse, 0, len(rows))
+	for _, w := range rows {
+		items = append(items, builtinTrainingWeightToResponse(w))
+	}
+	return items
+}
+
+// isUniqueViolation reports whether err is the database refusing a duplicate row.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
 // CreateBuiltinTrainingWeight godoc
 // @Summary Create a builtin training weight override
 // @Description Create a custom weight override for a builtin training
@@ -45,9 +85,10 @@ type UpdateBuiltinTrainingWeightRequest struct {
 // @Produce json
 // @Security BearerAuth
 // @Param request body CreateBuiltinTrainingWeightRequest true "Weight override details"
-// @Success 201 {object} map[string]interface{} "Weight override created"
+// @Success 201 {object} BuiltinTrainingWeightResponse "Weight override created"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 409 {object} map[string]string "Weight override already exists"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/builtin-training-weights [post]
 func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) error {
@@ -84,11 +125,14 @@ func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) 
 		CustomWeightRight: req.CustomWeightRight,
 	})
 	if err != nil {
+		if isUniqueViolation(err) {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Weight override already exists for this builtin training"})
+		}
 		slog.Error("failed to create builtin training weight", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create builtin training weight"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(weight)
+	return c.Status(fiber.StatusCreated).JSON(builtinTrainingWeightToResponse(weight))
 }
 
 // GetBuiltinTrainingWeights godoc
@@ -98,7 +142,7 @@ func (h *BuiltinTrainingWeightHandler) CreateBuiltinTrainingWeight(c fiber.Ctx) 
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {array} map[string]interface{} "List of weight overrides"
+// @Success 200 {array} BuiltinTrainingWeightResponse "List of weight overrides"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/builtin-training-weights [get]
@@ -119,10 +163,7 @@ func (h *BuiltinTrainingWeightHandler) GetBuiltinTrainingWeights(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve builtin training weights"})
 	}
 
-	if weights == nil {
-		weights = []db.BuiltinTrainingWeight{}
-	}
-	return c.JSON(weights)
+	return c.JSON(builtinTrainingWeightsToResponses(weights))
 }
 
 // UpdateBuiltinTrainingWeight godoc
@@ -134,7 +175,7 @@ func (h *BuiltinTrainingWeightHandler) GetBuiltinTrainingWeights(c fiber.Ctx) er
 // @Security BearerAuth
 // @Param id path string true "Weight override ID (UUID)"
 // @Param request body UpdateBuiltinTrainingWeightRequest true "Updated weights"
-// @Success 200 {object} map[string]interface{} "Updated weight override"
+// @Success 200 {object} BuiltinTrainingWeightResponse "Updated weight override"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Not found"
@@ -161,7 +202,7 @@ func (h *BuiltinTrainingWeightHandler) UpdateBuiltinTrainingWeight(c fiber.Ctx) 
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update builtin training weight"})
 	}
 
-	return c.JSON(updated)
+	return c.JSON(builtinTrainingWeightToResponse(updated))
 }
 
 // DeleteBuiltinTrainingWeight godoc

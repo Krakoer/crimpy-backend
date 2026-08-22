@@ -51,6 +51,21 @@ definitions:
       user_id:
         type: string
     type: object
+  handler.BuiltinTrainingWeightResponse:
+    properties:
+      builtin_training_id:
+        type: string
+      custom_weight_left:
+        type: number
+      custom_weight_right:
+        type: number
+      id:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   handler.ChangePasswordRequest:
     properties:
       new_password:
@@ -1365,8 +1380,7 @@ paths:
           description: List of weight overrides
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/handler.BuiltinTrainingWeightResponse'
             type: array
         "401":
           description: Unauthorized
@@ -1402,8 +1416,7 @@ paths:
         "201":
           description: Weight override created
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/handler.BuiltinTrainingWeightResponse'
         "400":
           description: Invalid request
           schema:
@@ -1412,6 +1425,12 @@ paths:
             type: object
         "401":
           description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Weight override already exists
           schema:
             additionalProperties:
               type: string
@@ -1498,8 +1517,7 @@ paths:
         "200":
           description: Updated weight override
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/handler.BuiltinTrainingWeightResponse'
         "400":
           description: Invalid request
           schema:
