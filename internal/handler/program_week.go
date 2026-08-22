@@ -344,8 +344,11 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 			ID:         itemIDs[i],
 			TrainingID: session.TrainingID,
 		})
-		if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return invalidRequestf("unknown item_id in session %d override", index)
+		}
+		if err != nil {
+			return err
 		}
 		if err := validateItemOverride(itemToRequest(item), o.Overrides); err != nil {
 			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, err)
