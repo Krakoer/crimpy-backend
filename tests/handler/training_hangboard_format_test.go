@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -495,5 +496,101 @@ func TestTrainingHandler_RejectsPerHandArraysOnSharedHandMode(t *testing.T) {
 				t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
 			}
 		})
+	}
+}
+
+// A hangboard_rep is one hang, so a rep count on it describes work no client
+// runs. The repeater is the block that repeats a hang.
+// A single hang carries none of the fields that describe a repeated one.
+var hangboardRepRepeatFields = []string{"reps", "cycles", "cycle_rest_seconds"}
+
+func singleHangItem() map[string]interface{} {
+	return map[string]interface{}{
+		"type":             "hangboard_rep",
+		"worktime_seconds": 7,
+		"rest_seconds":     60,
+		"hand":             "both",
+		"granularity":      "uniform",
+		"edge_sizes_mm":    []interface{}{20},
+	}
+}
+
+func TestTrainingHandler_RejectsRepeatFieldsOnHangboardRep(t *testing.T) {
+	for _, field := range hangboardRepRepeatFields {
+		t.Run(field, func(t *testing.T) {
+			app, token := hangboardTestApp(t, fmt.Sprintf("hbformat9%s@test.com", field))
+
+			item := singleHangItem()
+			item[field] = 4
+			resp := postTraining(t, app, token, []map[string]interface{}{item})
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			}
+			message := fmt.Sprint(decodeJSONBody(t, resp)["error"])
+			if !strings.Contains(message, "repeater") {
+				t.Errorf("Expected the error to name the repeater, got %v", message)
+			}
+			if !strings.Contains(message, field) {
+				t.Errorf("Expected the error to name %s, got %v", field, message)
+			}
+		})
+	}
+}
+
+func TestTrainingHandler_RejectsRepeatFieldsOnHangboardRepUpdate(t *testing.T) {
+	for _, field := range hangboardRepRepeatFields {
+		t.Run(field, func(t *testing.T) {
+			app, token := hangboardTestApp(t, fmt.Sprintf("hbformat10%s@test.com", field))
+
+			singleHang := singleHangItem()
+			resp := postTraining(t, app, token, []map[string]interface{}{singleHang})
+			if resp.StatusCode != fiber.StatusCreated {
+				t.Fatalf("Expected %d, got %d", fiber.StatusCreated, resp.StatusCode)
+			}
+			trainingID := decodeJSONBody(t, resp)["id"].(string)
+
+			singleHang[field] = 4
+			body, _ := json.Marshal(map[string]interface{}{
+				"title": "Hangboard",
+				"items": []map[string]interface{}{singleHang},
+			})
+			req := testutil.NewJSONRequest(http.MethodPut, fmt.Sprintf("/api/trainings/%s", trainingID), body)
+			req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatalf("Request failed: %v", err)
+			}
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			}
+			message := fmt.Sprint(decodeJSONBody(t, resp)["error"])
+			if !strings.Contains(message, "repeater") {
+				t.Errorf("Expected the error to name the repeater, got %v", message)
+			}
+			if !strings.Contains(message, field) {
+				t.Errorf("Expected the error to name %s, got %v", field, message)
+			}
+		})
+	}
+}
+
+// A bare single hang, carrying none of them, is still accepted.
+func TestTrainingHandler_AcceptsHangboardRepWithoutRepeatFields(t *testing.T) {
+	app, token := hangboardTestApp(t, "hbformat12@test.com")
+
+	resp := postTraining(t, app, token, []map[string]interface{}{singleHangItem()})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+}
+
+// The repeater keeps taking the rep count the hangboard_rep refuses.
+func TestTrainingHandler_AcceptsRepsOnRepeater(t *testing.T) {
+	app, token := hangboardTestApp(t, "hbformat11@test.com")
+
+	resp := postTraining(t, app, token, []map[string]interface{}{perSetHangboardItem()})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected %d, got %d", fiber.StatusCreated, resp.StatusCode)
 	}
 }

@@ -23,14 +23,15 @@ http:
             "items": []
           },
           {
-            "type": "hangboard_rep",
+            "type": "repeater",
             "position": 1,
             "cycles": 3,
             "cycle_rest_seconds": 120,
             "reps": 6,
-            "hb_worktime_seconds": 7,
+            "worktime_seconds": 7,
             "rest_seconds": 3,
-            "both_hands": true,
+            "hand": "both",
+            "granularity": "rep",
             "loads": [
               {"value": 0, "unit": "kg"},
               {"value": 0, "unit": "kg"},
@@ -39,7 +40,7 @@ http:
               {"value": 0, "unit": "kg"},
               {"value": 0, "unit": "kg"}
             ],
-            "hand_positions": [["crimp"], ["crimp"], ["crimp"], ["crimp"], ["crimp"], ["crimp"]],
+            "hand_positions": [["crimp", "crimp", "crimp", "crimp", "crimp", "crimp"]],
             "edge_sizes_mm": [20, 20, 20, 20, 20, 20],
             "items": []
           },
