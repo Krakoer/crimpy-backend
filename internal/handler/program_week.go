@@ -242,7 +242,7 @@ func sameJSON(a, b []byte) bool {
 // syncWeekSessions reconciles a week against the payload instead of recreating
 // it, so a session the client sends back by id keeps that id. Sessions played by
 // the athlete reference these ids, and recreating them nulls those references.
-func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, coachID, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
 	if err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs); err != nil {
 		return err
 	}
@@ -262,23 +262,36 @@ func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, 
 	}
 
 	for i, s := range sessions {
-		session, err := h.upsertWeekSession(ctx, qtx, weekID, sessionIDs[i], i, s)
+		session, err := h.upsertWeekSession(ctx, qtx, coachID, weekID, sessionIDs[i], i, s)
 		if err != nil {
 			return err
 		}
-		if err := h.syncSessionOverrides(ctx, qtx, session.ID, i, s.Overrides); err != nil {
+		if err := h.syncSessionOverrides(ctx, qtx, session, i, s.Overrides); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries, weekID, sessionID pgtype.UUID, index int, s WeekSessionRequest) (db.CoachProgramWeekSession, error) {
+// upsertWeekSession resolves the training against the coach, so a week can only
+// ever schedule a training the coach owns. Without it the week read joins
+// trainings unconditionally and hands back another coach's title and type, and
+// the item scoping in syncSessionOverrides is defeated, since the foreign items
+// then legitimately belong to the session's training.
+func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries, coachID, weekID, sessionID pgtype.UUID, index int, s WeekSessionRequest) (db.CoachProgramWeekSession, error) {
 	var none db.CoachProgramWeekSession
 
 	var trainingUUID pgtype.UUID
 	if err := trainingUUID.Scan(s.TrainingID); err != nil {
 		return none, invalidRequestf("invalid training_id at session %d", index)
+	}
+	if _, err := qtx.GetTrainingOwnedBy(ctx, db.GetTrainingOwnedByParams{
+		ID:     trainingUUID,
+		UserID: coachID,
+	}); errors.Is(err, pgx.ErrNoRows) {
+		return none, invalidRequestf("unknown training_id at session %d", index)
+	} else if err != nil {
+		return none, err
 	}
 
 	var dayOfWeek, timesPerWeek pgtype.Int4
@@ -321,7 +334,10 @@ func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries,
 	return session, err
 }
 
-func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, sessionID pgtype.UUID, index int, overrides []SessionOverrideRequest) error {
+// syncSessionOverrides resolves every override against the session's own
+// training, so an item id belonging to another training, and therefore possibly
+// to another coach, is rejected rather than stored.
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, session db.CoachProgramWeekSession, index int, overrides []SessionOverrideRequest) error {
 	itemIDs := make([]pgtype.UUID, len(overrides))
 	for i, o := range overrides {
 		if err := itemIDs[i].Scan(o.ItemID); err != nil {
@@ -330,22 +346,28 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 	}
 
 	if err := qtx.DeleteCoachProgramSessionOverridesNotIn(ctx, db.DeleteCoachProgramSessionOverridesNotInParams{
-		SessionID:   sessionID,
+		SessionID:   session.ID,
 		KeptItemIds: itemIDs,
 	}); err != nil {
 		return err
 	}
 
 	for i, o := range overrides {
-		item, err := qtx.GetTrainingItem(ctx, itemIDs[i])
-		if err != nil {
+		item, err := qtx.GetTrainingItemInTraining(ctx, db.GetTrainingItemInTrainingParams{
+			ID:         itemIDs[i],
+			TrainingID: session.TrainingID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
 			return invalidRequestf("unknown item_id in session %d override", index)
+		}
+		if err != nil {
+			return err
 		}
 		if err := validateItemOverride(itemToRequest(item), o.Overrides); err != nil {
 			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, err)
 		}
 		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
-			SessionID: sessionID,
+			SessionID: session.ID,
 			ItemID:    itemIDs[i],
 			Overrides: []byte(o.Overrides),
 		}); err != nil {
@@ -511,7 +533,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := h.syncWeekSessions(c.Context(), qtx, week.ID, req.Sessions, sessionIDs); err != nil {
+	if err := h.syncWeekSessions(c.Context(), qtx, coachUUID, week.ID, req.Sessions, sessionIDs); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})

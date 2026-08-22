@@ -6,6 +6,9 @@ RETURNING *;
 -- name: GetTraining :one
 SELECT * FROM trainings WHERE id = @id;
 
+-- name: GetTrainingOwnedBy :one
+SELECT id FROM trainings WHERE id = @id AND user_id = @user_id;
+
 -- name: GetTrainings :many
 SELECT * FROM trainings WHERE user_id = @user_id ORDER BY title;
 
@@ -50,8 +53,8 @@ LEFT JOIN exercises ON exercises.id = training_items.exercise_id
 WHERE training_items.training_id = @training_id
 ORDER BY training_items.position;
 
--- name: GetTrainingItem :one
-SELECT * FROM training_items WHERE id = @id;
+-- name: GetTrainingItemInTraining :one
+SELECT * FROM training_items WHERE id = @id AND training_id = @training_id;
 
 -- name: DeleteTrainingItems :exec
 DELETE FROM training_items WHERE training_id = @training_id;
