@@ -10,7 +10,12 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 )
+
+// The one answer every override item id the session's training does not hold
+// gets back, whoever owns it and whether or not it exists.
+const unknownOverrideItemError = "unknown item_id in session 0 override"
 
 func createTestCoachTrainingWithItems(t *testing.T, coachToken string, app *fiber.App) (trainingID, itemID string) {
 	t.Helper()
@@ -840,6 +845,22 @@ func upsertWeekStatus(t *testing.T, app *fiber.App, coachToken, userID, programI
 	return resp.StatusCode
 }
 
+// upsertWeekError returns the status and the error message, so a test can pin
+// the wording rather than only the status. Overrides rejected for an item the
+// session's training does not hold must stay indistinguishable from each other.
+func upsertWeekError(t *testing.T, app *fiber.App, coachToken, userID, programID string, weekNum int, week map[string]interface{}) (int, string) {
+	t.Helper()
+	body, _ := json.Marshal(week)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, weekNum), body, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to upsert week: %v", err)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	message, _ := result["error"].(string)
+	return resp.StatusCode, message
+}
+
 func getWeek(t *testing.T, app *fiber.App, coachToken, userID, programID string, weekNum int) map[string]interface{} {
 	t.Helper()
 	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, weekURL(userID, programID, weekNum), nil, coachToken))
@@ -1228,7 +1249,7 @@ func TestWeekHandler_UpsertWeek_RejectsOverrideItemFromAnotherCoach(t *testing.T
 		"sessions": []map[string]interface{}{{"training_id": trainingB, "day_of_week": 0}},
 	})
 
-	status := upsertWeekStatus(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
+	status, message := upsertWeekError(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
 		"sessions": []map[string]interface{}{
 			{
 				"training_id": trainingB,
@@ -1241,6 +1262,9 @@ func TestWeekHandler_UpsertWeek_RejectsOverrideItemFromAnotherCoach(t *testing.T
 	})
 	if status != fiber.StatusBadRequest {
 		t.Errorf("Expected 400 for an item id owned by another coach, got %d", status)
+	}
+	if message != unknownOverrideItemError {
+		t.Errorf("Expected %q, got %q", unknownOverrideItemError, message)
 	}
 
 	week := getWeek(t, app, coachBToken, userBID, programB, 1)
@@ -1268,7 +1292,7 @@ func TestWeekHandler_UpsertWeek_RejectsOverrideItemFromAnotherTraining(t *testin
 	scheduledTraining, _ := createTestCoachTrainingWithItems(t, coachToken, app)
 	_, unrelatedItem := createTestCoachTrainingWithItems(t, coachToken, app)
 
-	status := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+	status, message := upsertWeekError(t, app, coachToken, userID, programID, 1, map[string]interface{}{
 		"sessions": []map[string]interface{}{
 			{
 				"training_id": scheduledTraining,
@@ -1281,6 +1305,48 @@ func TestWeekHandler_UpsertWeek_RejectsOverrideItemFromAnotherTraining(t *testin
 	})
 	if status != fiber.StatusBadRequest {
 		t.Errorf("Expected 400 for an item id from an unrelated training, got %d", status)
+	}
+	if message != unknownOverrideItemError {
+		t.Errorf("Expected %q, got %q", unknownOverrideItemError, message)
+	}
+}
+
+// An item id the session's training does not hold answers the same way whether
+// it exists or not, so the endpoint cannot be used to tell a real item uuid from
+// a random one, nor to learn an item's type from the validation wording.
+func TestWeekHandler_UpsertWeek_RejectsUnknownOverrideItemIdentically(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wknoitemcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wknoitemuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	scheduledTraining, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	status, message := upsertWeekError(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": scheduledTraining,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": uuid.NewString(), "overrides": map[string]interface{}{"reps": 8}},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for an item id that exists nowhere, got %d", status)
+	}
+	if message != unknownOverrideItemError {
+		t.Errorf("Expected %q, got %q", unknownOverrideItemError, message)
 	}
 }
 
