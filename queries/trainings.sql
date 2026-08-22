@@ -50,8 +50,8 @@ LEFT JOIN exercises ON exercises.id = training_items.exercise_id
 WHERE training_items.training_id = @training_id
 ORDER BY training_items.position;
 
--- name: GetTrainingItem :one
-SELECT * FROM training_items WHERE id = @id;
+-- name: GetTrainingItemInTraining :one
+SELECT * FROM training_items WHERE id = @id AND training_id = @training_id;
 
 -- name: DeleteTrainingItems :exec
 DELETE FROM training_items WHERE training_id = @training_id;

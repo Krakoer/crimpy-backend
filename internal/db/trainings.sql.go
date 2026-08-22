@@ -199,12 +199,17 @@ func (q *Queries) GetTraining(ctx context.Context, id pgtype.UUID) (Training, er
 	return i, err
 }
 
-const getTrainingItem = `-- name: GetTrainingItem :one
-SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at FROM training_items WHERE id = $1
+const getTrainingItemInTraining = `-- name: GetTrainingItemInTraining :one
+SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, reps, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at FROM training_items WHERE id = $1 AND training_id = $2
 `
 
-func (q *Queries) GetTrainingItem(ctx context.Context, id pgtype.UUID) (TrainingItem, error) {
-	row := q.db.QueryRow(ctx, getTrainingItem, id)
+type GetTrainingItemInTrainingParams struct {
+	ID         pgtype.UUID
+	TrainingID pgtype.UUID
+}
+
+func (q *Queries) GetTrainingItemInTraining(ctx context.Context, arg GetTrainingItemInTrainingParams) (TrainingItem, error) {
+	row := q.db.QueryRow(ctx, getTrainingItemInTraining, arg.ID, arg.TrainingID)
 	var i TrainingItem
 	err := row.Scan(
 		&i.ID,

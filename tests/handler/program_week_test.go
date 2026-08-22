@@ -1202,6 +1202,88 @@ func TestWeekHandler_UpsertWeek_RejectsSessionIDFromAnotherCoach(t *testing.T) {
 	}
 }
 
+func TestWeekHandler_UpsertWeek_RejectsOverrideItemFromAnotherCoach(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachAID, coachAToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxitemcoacha@test.com")
+	userAID, _ := testutil.CreateTestUser(t, queries, "wkxitemusera@test.com")
+	enrollUserDirect(t, pool, coachAID, userAID)
+
+	coachBID, coachBToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxitemcoachb@test.com")
+	userBID, _ := testutil.CreateTestUser(t, queries, "wkxitemuserb@test.com")
+	enrollUserDirect(t, pool, coachBID, userBID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	_, itemA := createTestCoachTrainingWithItems(t, coachAToken, app)
+
+	programB := createTestProgram(t, coachBToken, userBID, app)
+	trainingB, _ := createTestCoachTrainingWithItems(t, coachBToken, app)
+	upsertWeekSessions(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{"training_id": trainingB, "day_of_week": 0}},
+	})
+
+	status := upsertWeekStatus(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingB,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": itemA, "overrides": map[string]interface{}{"reps": 8}},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for an item id owned by another coach, got %d", status)
+	}
+
+	week := getWeek(t, app, coachBToken, userBID, programB, 1)
+	session := week["sessions"].([]interface{})[0].(map[string]interface{})
+	if overrides := session["overrides"].([]interface{}); len(overrides) != 0 {
+		t.Errorf("Expected no override to be stored, got %v", overrides)
+	}
+}
+
+func TestWeekHandler_UpsertWeek_RejectsOverrideItemFromAnotherTraining(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkotheritemcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkotheritemuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	scheduledTraining, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+	_, unrelatedItem := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	status := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": scheduledTraining,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{"item_id": unrelatedItem, "overrides": map[string]interface{}{"reps": 8}},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for an item id from an unrelated training, got %d", status)
+	}
+}
+
 func TestWeekHandler_UpsertWeek_RejectsMalformedAndDuplicateSessionIDs(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)

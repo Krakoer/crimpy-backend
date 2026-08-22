@@ -266,7 +266,7 @@ func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, 
 		if err != nil {
 			return err
 		}
-		if err := h.syncSessionOverrides(ctx, qtx, session.ID, i, s.Overrides); err != nil {
+		if err := h.syncSessionOverrides(ctx, qtx, session, i, s.Overrides); err != nil {
 			return err
 		}
 	}
@@ -321,7 +321,10 @@ func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries,
 	return session, err
 }
 
-func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, sessionID pgtype.UUID, index int, overrides []SessionOverrideRequest) error {
+// syncSessionOverrides resolves every override against the session's own
+// training, so an item id belonging to another training, and therefore possibly
+// to another coach, is rejected rather than stored.
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, session db.CoachProgramWeekSession, index int, overrides []SessionOverrideRequest) error {
 	itemIDs := make([]pgtype.UUID, len(overrides))
 	for i, o := range overrides {
 		if err := itemIDs[i].Scan(o.ItemID); err != nil {
@@ -330,14 +333,17 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 	}
 
 	if err := qtx.DeleteCoachProgramSessionOverridesNotIn(ctx, db.DeleteCoachProgramSessionOverridesNotInParams{
-		SessionID:   sessionID,
+		SessionID:   session.ID,
 		KeptItemIds: itemIDs,
 	}); err != nil {
 		return err
 	}
 
 	for i, o := range overrides {
-		item, err := qtx.GetTrainingItem(ctx, itemIDs[i])
+		item, err := qtx.GetTrainingItemInTraining(ctx, db.GetTrainingItemInTrainingParams{
+			ID:         itemIDs[i],
+			TrainingID: session.TrainingID,
+		})
 		if err != nil {
 			return invalidRequestf("unknown item_id in session %d override", index)
 		}
@@ -345,7 +351,7 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, err)
 		}
 		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
-			SessionID: sessionID,
+			SessionID: session.ID,
 			ItemID:    itemIDs[i],
 			Overrides: []byte(o.Overrides),
 		}); err != nil {
