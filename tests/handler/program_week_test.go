@@ -17,6 +17,10 @@ import (
 // gets back, whoever owns it and whether or not it exists.
 const unknownOverrideItemError = "unknown item_id in session 0 override"
 
+// The one answer every training id the coach does not own gets back, whether or
+// not it exists.
+const unknownTrainingError = "unknown training_id at session 0"
+
 func createTestCoachTrainingWithItems(t *testing.T, coachToken string, app *fiber.App) (trainingID, itemID string) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]interface{}{
@@ -1220,6 +1224,82 @@ func TestWeekHandler_UpsertWeek_RejectsSessionIDFromAnotherCoach(t *testing.T) {
 	}
 	if session["training_id"] != trainingA {
 		t.Errorf("Expected coach A's training to be untouched, got %v", session["training_id"])
+	}
+}
+
+// Scheduling another coach's training would otherwise be served straight back
+// by the week read, which joins trainings unconditionally, and would re-admit
+// that coach's items as legitimate override targets.
+func TestWeekHandler_UpsertWeek_RejectsTrainingFromAnotherCoach(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachAID, coachAToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxtrcoacha@test.com")
+	userAID, _ := testutil.CreateTestUser(t, queries, "wkxtrusera@test.com")
+	enrollUserDirect(t, pool, coachAID, userAID)
+
+	coachBID, coachBToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkxtrcoachb@test.com")
+	userBID, _ := testutil.CreateTestUser(t, queries, "wkxtruserb@test.com")
+	enrollUserDirect(t, pool, coachBID, userBID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	trainingA, _ := createTestCoachTrainingWithItems(t, coachAToken, app)
+	programB := createTestProgram(t, coachBToken, userBID, app)
+
+	status, message := upsertWeekError(t, app, coachBToken, userBID, programB, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingA, "day_of_week": 0},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a training owned by another coach, got %d", status)
+	}
+	if message != unknownTrainingError {
+		t.Errorf("Expected %q, got %q", unknownTrainingError, message)
+	}
+
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, weekURL(userBID, programB, 1), nil, coachBToken))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusNotFound {
+		t.Errorf("Expected the rejected upsert to leave no week behind, got %d", resp.StatusCode)
+	}
+}
+
+// A training that exists nowhere answers exactly as one owned by another coach,
+// so the endpoint cannot be used to tell a real training uuid from a random one.
+func TestWeekHandler_UpsertWeek_RejectsUnknownTrainingIdentically(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wknotrcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wknotruser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+
+	status, message := upsertWeekError(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": uuid.NewString(), "day_of_week": 0},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a training that exists nowhere, got %d", status)
+	}
+	if message != unknownTrainingError {
+		t.Errorf("Expected %q, got %q", unknownTrainingError, message)
 	}
 }
 

@@ -6,6 +6,9 @@ RETURNING *;
 -- name: GetTraining :one
 SELECT * FROM trainings WHERE id = @id;
 
+-- name: GetTrainingOwnedBy :one
+SELECT id FROM trainings WHERE id = @id AND user_id = @user_id;
+
 -- name: GetTrainings :many
 SELECT * FROM trainings WHERE user_id = @user_id ORDER BY title;
 

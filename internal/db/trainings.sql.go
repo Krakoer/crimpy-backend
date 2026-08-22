@@ -325,6 +325,22 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 	return items, nil
 }
 
+const getTrainingOwnedBy = `-- name: GetTrainingOwnedBy :one
+SELECT id FROM trainings WHERE id = $1 AND user_id = $2
+`
+
+type GetTrainingOwnedByParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) GetTrainingOwnedBy(ctx context.Context, arg GetTrainingOwnedByParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getTrainingOwnedBy, arg.ID, arg.UserID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getTrainings = `-- name: GetTrainings :many
 SELECT id, user_id, title, description, training_type, goal, comment, is_favorite, created_at, updated_at FROM trainings WHERE user_id = $1 ORDER BY title
 `
