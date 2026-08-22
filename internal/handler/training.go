@@ -182,8 +182,9 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
-// validateTrainingItems rejects unknown item types, over-deep trees and
-// malformed configuration arrays before any row is written.
+// validateTrainingItems rejects unknown item types, over-deep trees, rep counts
+// on a type that does not repeat and malformed configuration arrays before any
+// row is written.
 func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 	if len(items) > 0 && depth > maxItemDepth {
 		return fmt.Errorf("items nested more than %d levels deep", maxItemDepth)
@@ -191,6 +192,9 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 	for _, item := range items {
 		if !validItemTypes[item.Type] {
 			return fmt.Errorf("invalid item type %q", item.Type)
+		}
+		if err := validateHangboardRepReps(item); err != nil {
+			return err
 		}
 		if err := validateItemConfiguration(item); err != nil {
 			return err

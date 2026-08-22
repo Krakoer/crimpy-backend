@@ -53,6 +53,16 @@ var hangboardItemTypes = map[string]bool{
 	"hangboard_rep": true,
 }
 
+// validateHangboardRepReps keeps the two hangboard types apart. A hangboard_rep
+// is one hang, and every client expands it to exactly one, so a stored rep count
+// is read back and never run. The repeater is the block that repeats a hang.
+func validateHangboardRepReps(item TrainingItemRequest) error {
+	if item.Type == "hangboard_rep" && item.Reps != nil {
+		return fmt.Errorf("a hangboard_rep is a single hang and takes no reps; use a repeater to repeat a hang")
+	}
+	return nil
+}
+
 var validHands = map[string]bool{
 	"both":      true,
 	"alternate": true,

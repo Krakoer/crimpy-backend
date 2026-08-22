@@ -1030,7 +1030,6 @@ func createTestTwoBlockTraining(t *testing.T, token string, app *fiber.App) (tra
 	block := func(edge int) map[string]interface{} {
 		return map[string]interface{}{
 			"type":             "hangboard_rep",
-			"reps":             6,
 			"worktime_seconds": 7,
 			"rest_seconds":     60,
 			"hand":             "both",

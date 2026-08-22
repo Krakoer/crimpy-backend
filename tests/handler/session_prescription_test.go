@@ -163,7 +163,7 @@ func TestSessionHandler_CreateSession_PrescriptionSurvivesTrainingEdit(t *testin
 
 	replaceTrainingItems(t, app, coachToken, trainingID, []map[string]interface{}{
 		{
-			"type":             "hangboard_rep",
+			"type":             "repeater",
 			"reps":             12,
 			"worktime_seconds": 10,
 			"rest_seconds":     30,

@@ -242,7 +242,8 @@ CREATE TABLE "training_items" (
   -- Circuit and repeater cycles (scalar)
   "cycles"               INTEGER,
   "cycle_rest_seconds"   INTEGER,
-  -- Exercise, repeater, and hangboard_rep reps (scalar)
+  -- Exercise and repeater reps (scalar). A hangboard_rep is a single hang and
+  -- carries none: the repeater is the block that repeats a hang.
   "reps"                 INTEGER,
   "duration"             INTEGER,
   "rest_seconds"         INTEGER,

@@ -27,7 +27,7 @@ func createTestCoachTrainingWithItems(t *testing.T, coachToken string, app *fibe
 		"title": "Hangboard Training",
 		"items": []map[string]interface{}{
 			{
-				"type":                "hangboard_rep",
+				"type":                "repeater",
 				"reps":                6,
 				"hb_worktime_seconds": 7,
 				"rest_seconds":        60,
