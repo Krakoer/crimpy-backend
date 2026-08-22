@@ -649,8 +649,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                                "$ref": "#/definitions/handler.BuiltinTrainingWeightResponse"
                             }
                         }
                     },
@@ -680,7 +679,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a custom weight override for a builtin training",
+                "description": "Create a custom weight override for a builtin training. Saving a second time for the same builtin training updates the existing override rather than creating a duplicate.",
                 "consumes": [
                     "application/json"
                 ],
@@ -706,8 +705,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Weight override created",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.BuiltinTrainingWeightResponse"
                         }
                     },
                     "400": {
@@ -721,6 +719,15 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A weight override with this id already exists",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -780,8 +787,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Updated weight override",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.BuiltinTrainingWeightResponse"
                         }
                     },
                     "400": {
@@ -4656,6 +4662,29 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.BuiltinTrainingWeightResponse": {
+            "type": "object",
+            "properties": {
+                "builtin_training_id": {
+                    "type": "string"
+                },
+                "custom_weight_left": {
+                    "type": "number"
+                },
+                "custom_weight_right": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"

@@ -161,7 +161,8 @@ CREATE TABLE "builtin_training_weights" (
   "custom_weight_left"  REAL        NOT NULL,
   "custom_weight_right" REAL        NOT NULL,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "builtin_training_weights_user_training_unique" UNIQUE ("user_id", "builtin_training_id")
 );
 
 -- Stores exercises created by coaches for use in session templates.

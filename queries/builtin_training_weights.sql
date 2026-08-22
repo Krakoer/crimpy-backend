@@ -1,6 +1,13 @@
 -- name: CreateBuiltinTrainingWeight :one
+-- Upsert: a user has at most one override per builtin training, so a second save
+-- for the same pair updates it instead of failing on the unique constraint. The
+-- conflict target includes user_id, so this can only ever touch the caller's row.
 INSERT INTO builtin_training_weights (id, user_id, builtin_training_id, custom_weight_left, custom_weight_right)
 VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, builtin_training_id) DO UPDATE
+SET custom_weight_left = EXCLUDED.custom_weight_left,
+    custom_weight_right = EXCLUDED.custom_weight_right,
+    updated_at = now()
 RETURNING *;
 
 -- name: GetUserBuiltinTrainingWeights :many
