@@ -71,12 +71,6 @@ CREATE TABLE "sessions" (
   -- session was not run from a training, see the check below.
   "prescription"        JSONB,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
-  "repeater_sets"       INTEGER,
-  "repeater_reps"       INTEGER,
-  "repeater_work_time"  INTEGER,
-  "repeater_rest_time"  INTEGER,
-  "repeater_set_rest"   INTEGER,
-  "repeater_split_hand" BOOLEAN,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),

@@ -4867,24 +4867,6 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.RepDataRequest"
                     }
                 },
-                "repeater_reps": {
-                    "type": "integer"
-                },
-                "repeater_rest_time": {
-                    "type": "integer"
-                },
-                "repeater_set_rest": {
-                    "type": "integer"
-                },
-                "repeater_sets": {
-                    "type": "integer"
-                },
-                "repeater_split_hand": {
-                    "type": "boolean"
-                },
-                "repeater_work_time": {
-                    "type": "integer"
-                },
                 "training_id": {
                     "type": "string"
                 }
@@ -5293,24 +5275,6 @@ const docTemplate = `{
                 "rep_count": {
                     "type": "integer"
                 },
-                "repeater_reps": {
-                    "type": "integer"
-                },
-                "repeater_rest_time": {
-                    "type": "integer"
-                },
-                "repeater_set_rest": {
-                    "type": "integer"
-                },
-                "repeater_sets": {
-                    "type": "integer"
-                },
-                "repeater_split_hand": {
-                    "type": "boolean"
-                },
-                "repeater_work_time": {
-                    "type": "integer"
-                },
                 "training_id": {
                     "type": "string"
                 },
@@ -5380,24 +5344,6 @@ const docTemplate = `{
                 },
                 "program_session_id": {
                     "type": "string"
-                },
-                "repeater_reps": {
-                    "type": "integer"
-                },
-                "repeater_rest_time": {
-                    "type": "integer"
-                },
-                "repeater_set_rest": {
-                    "type": "integer"
-                },
-                "repeater_sets": {
-                    "type": "integer"
-                },
-                "repeater_split_hand": {
-                    "type": "boolean"
-                },
-                "repeater_work_time": {
-                    "type": "integer"
                 },
                 "training_id": {
                     "type": "string"

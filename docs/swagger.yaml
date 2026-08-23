@@ -179,18 +179,6 @@ definitions:
         items:
           $ref: '#/definitions/handler.RepDataRequest'
         type: array
-      repeater_reps:
-        type: integer
-      repeater_rest_time:
-        type: integer
-      repeater_set_rest:
-        type: integer
-      repeater_sets:
-        type: integer
-      repeater_split_hand:
-        type: boolean
-      repeater_work_time:
-        type: integer
       training_id:
         type: string
     type: object
@@ -467,18 +455,6 @@ definitions:
         type: string
       rep_count:
         type: integer
-      repeater_reps:
-        type: integer
-      repeater_rest_time:
-        type: integer
-      repeater_set_rest:
-        type: integer
-      repeater_sets:
-        type: integer
-      repeater_split_hand:
-        type: boolean
-      repeater_work_time:
-        type: integer
       training_id:
         type: string
       updated_at:
@@ -529,18 +505,6 @@ definitions:
         type: object
       program_session_id:
         type: string
-      repeater_reps:
-        type: integer
-      repeater_rest_time:
-        type: integer
-      repeater_set_rest:
-        type: integer
-      repeater_sets:
-        type: integer
-      repeater_split_hand:
-        type: boolean
-      repeater_work_time:
-        type: integer
       training_id:
         type: string
       updated_at:

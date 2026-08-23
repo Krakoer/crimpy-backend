@@ -146,25 +146,19 @@ type SensorConfig struct {
 }
 
 type Session struct {
-	ID                pgtype.UUID
-	UserID            pgtype.UUID
-	Name              string
-	Notes             string
-	Date              pgtype.Timestamptz
-	IsAssessment      bool
-	Activity          int32
-	Origin            string
-	TrainingID        pgtype.UUID
-	ProgramSessionID  pgtype.UUID
-	Prescription      []byte
-	Duration          int32
-	RepeaterSets      pgtype.Int4
-	RepeaterReps      pgtype.Int4
-	RepeaterWorkTime  pgtype.Int4
-	RepeaterRestTime  pgtype.Int4
-	RepeaterSetRest   pgtype.Int4
-	RepeaterSplitHand pgtype.Bool
-	UpdatedAt         pgtype.Timestamptz
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Name             string
+	Notes            string
+	Date             pgtype.Timestamptz
+	IsAssessment     bool
+	Activity         int32
+	Origin           string
+	TrainingID       pgtype.UUID
+	ProgramSessionID pgtype.UUID
+	Prescription     []byte
+	Duration         int32
+	UpdatedAt        pgtype.Timestamptz
 }
 
 type Tag struct {

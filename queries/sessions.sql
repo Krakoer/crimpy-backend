@@ -1,11 +1,9 @@
 -- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, duration, date,
-  repeater_sets, repeater_reps, repeater_work_time, repeater_rest_time,
-  repeater_set_rest, repeater_split_hand
+  program_session_id, prescription, duration, date
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 ) RETURNING *;
 
 -- name: GetSession :one
@@ -29,12 +27,6 @@ SELECT
   sessions.training_id,
   sessions.program_session_id,
   sessions.duration,
-  sessions.repeater_sets,
-  sessions.repeater_reps,
-  sessions.repeater_work_time,
-  sessions.repeater_rest_time,
-  sessions.repeater_set_rest,
-  sessions.repeater_split_hand,
   sessions.updated_at,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
