@@ -120,23 +120,17 @@ func (h *SessionHandler) ownedSession() ownedResource[db.Session] {
 }
 
 type CreateSessionRequest struct {
-	Name              string              `json:"name"`
-	Notes             string              `json:"notes"`
-	Date              string              `json:"date,omitempty"`
-	IsAssessment      bool                `json:"is_assessment"`
-	Activity          int32               `json:"activity"`
-	Origin            string              `json:"origin,omitempty"`
-	TrainingID        *string             `json:"training_id,omitempty"`
-	ProgramSessionID  *string             `json:"program_session_id,omitempty"`
-	Duration          int32               `json:"duration"`
-	RepeaterSets      *int32              `json:"repeater_sets,omitempty"`
-	RepeaterReps      *int32              `json:"repeater_reps,omitempty"`
-	RepeaterWorkTime  *int32              `json:"repeater_work_time,omitempty"`
-	RepeaterRestTime  *int32              `json:"repeater_rest_time,omitempty"`
-	RepeaterSetRest   *int32              `json:"repeater_set_rest,omitempty"`
-	RepeaterSplitHand *bool               `json:"repeater_split_hand,omitempty"`
-	RepDatas          []RepDataRequest    `json:"rep_datas,omitempty"`
-	Assessments       []AssessmentRequest `json:"assessments,omitempty"`
+	Name             string              `json:"name"`
+	Notes            string              `json:"notes"`
+	Date             string              `json:"date,omitempty"`
+	IsAssessment     bool                `json:"is_assessment"`
+	Activity         int32               `json:"activity"`
+	Origin           string              `json:"origin,omitempty"`
+	TrainingID       *string             `json:"training_id,omitempty"`
+	ProgramSessionID *string             `json:"program_session_id,omitempty"`
+	Duration         int32               `json:"duration"`
+	RepDatas         []RepDataRequest    `json:"rep_datas,omitempty"`
+	Assessments      []AssessmentRequest `json:"assessments,omitempty"`
 }
 
 type RepDataRequest struct {
@@ -187,15 +181,9 @@ type SessionResponse struct {
 	// was created. Absent on a session run from nothing. The list endpoints
 	// leave it out, since it is a whole training per row and only the detail
 	// screen reads it.
-	Prescription      json.RawMessage `json:"prescription,omitempty" swaggertype:"object"`
-	Duration          int32           `json:"duration"`
-	RepeaterSets      *int32          `json:"repeater_sets,omitempty"`
-	RepeaterReps      *int32          `json:"repeater_reps,omitempty"`
-	RepeaterWorkTime  *int32          `json:"repeater_work_time,omitempty"`
-	RepeaterRestTime  *int32          `json:"repeater_rest_time,omitempty"`
-	RepeaterSetRest   *int32          `json:"repeater_set_rest,omitempty"`
-	RepeaterSplitHand *bool           `json:"repeater_split_hand,omitempty"`
-	UpdatedAt         string          `json:"updated_at"`
+	Prescription json.RawMessage `json:"prescription,omitempty" swaggertype:"object"`
+	Duration     int32           `json:"duration"`
+	UpdatedAt    string          `json:"updated_at"`
 }
 
 // SessionListItem is a session as the list endpoints return it, with the rep
@@ -209,25 +197,19 @@ type SessionListItem struct {
 // the plain row are separate generated types holding the same columns, so the
 // two mappers below feed this rather than duplicating it.
 type sessionFields struct {
-	ID                pgtype.UUID
-	UserID            pgtype.UUID
-	Name              string
-	Notes             string
-	Date              pgtype.Timestamptz
-	IsAssessment      bool
-	Activity          int32
-	Origin            string
-	TrainingID        pgtype.UUID
-	ProgramSessionID  pgtype.UUID
-	Prescription      []byte
-	Duration          int32
-	RepeaterSets      pgtype.Int4
-	RepeaterReps      pgtype.Int4
-	RepeaterWorkTime  pgtype.Int4
-	RepeaterRestTime  pgtype.Int4
-	RepeaterSetRest   pgtype.Int4
-	RepeaterSplitHand pgtype.Bool
-	UpdatedAt         pgtype.Timestamptz
+	ID               pgtype.UUID
+	UserID           pgtype.UUID
+	Name             string
+	Notes            string
+	Date             pgtype.Timestamptz
+	IsAssessment     bool
+	Activity         int32
+	Origin           string
+	TrainingID       pgtype.UUID
+	ProgramSessionID pgtype.UUID
+	Prescription     []byte
+	Duration         int32
+	UpdatedAt        pgtype.Timestamptz
 }
 
 func optionalUUIDString(id pgtype.UUID) *string {
@@ -258,18 +240,10 @@ func (f sessionFields) toResponse() SessionResponse {
 		TrainingID:       optionalUUIDString(f.TrainingID),
 		ProgramSessionID: optionalUUIDString(f.ProgramSessionID),
 		Duration:         f.Duration,
-		RepeaterSets:     optionalInt32(f.RepeaterSets),
-		RepeaterReps:     optionalInt32(f.RepeaterReps),
-		RepeaterWorkTime: optionalInt32(f.RepeaterWorkTime),
-		RepeaterRestTime: optionalInt32(f.RepeaterRestTime),
-		RepeaterSetRest:  optionalInt32(f.RepeaterSetRest),
 		UpdatedAt:        f.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	if len(f.Prescription) > 0 {
 		resp.Prescription = json.RawMessage(f.Prescription)
-	}
-	if f.RepeaterSplitHand.Valid {
-		resp.RepeaterSplitHand = &f.RepeaterSplitHand.Bool
 	}
 	return resp
 }
@@ -281,24 +255,18 @@ func sessionToResponse(s db.Session) SessionResponse {
 func sessionRowToListItem(r db.GetUserSessionsRow) SessionListItem {
 	return SessionListItem{
 		SessionResponse: sessionFields{
-			ID:                r.ID,
-			UserID:            r.UserID,
-			Name:              r.Name,
-			Notes:             r.Notes,
-			Date:              r.Date,
-			IsAssessment:      r.IsAssessment,
-			Activity:          r.Activity,
-			Origin:            r.Origin,
-			TrainingID:        r.TrainingID,
-			ProgramSessionID:  r.ProgramSessionID,
-			Duration:          r.Duration,
-			RepeaterSets:      r.RepeaterSets,
-			RepeaterReps:      r.RepeaterReps,
-			RepeaterWorkTime:  r.RepeaterWorkTime,
-			RepeaterRestTime:  r.RepeaterRestTime,
-			RepeaterSetRest:   r.RepeaterSetRest,
-			RepeaterSplitHand: r.RepeaterSplitHand,
-			UpdatedAt:         r.UpdatedAt,
+			ID:               r.ID,
+			UserID:           r.UserID,
+			Name:             r.Name,
+			Notes:            r.Notes,
+			Date:             r.Date,
+			IsAssessment:     r.IsAssessment,
+			Activity:         r.Activity,
+			Origin:           r.Origin,
+			TrainingID:       r.TrainingID,
+			ProgramSessionID: r.ProgramSessionID,
+			Duration:         r.Duration,
+			UpdatedAt:        r.UpdatedAt,
 		}.toResponse(),
 		RepCount: r.RepCount,
 	}
@@ -670,34 +638,6 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		sessionDate = pgtype.Timestamptz{Time: t, Valid: true}
 	}
 
-	var repeaterSets, repeaterReps, repeaterWorkTime, repeaterRestTime, repeaterSetRest pgtype.Int4
-	var repeaterSplitHand pgtype.Bool
-
-	if req.RepeaterSets != nil {
-		repeaterSets.Int32 = *req.RepeaterSets
-		repeaterSets.Valid = true
-	}
-	if req.RepeaterReps != nil {
-		repeaterReps.Int32 = *req.RepeaterReps
-		repeaterReps.Valid = true
-	}
-	if req.RepeaterWorkTime != nil {
-		repeaterWorkTime.Int32 = *req.RepeaterWorkTime
-		repeaterWorkTime.Valid = true
-	}
-	if req.RepeaterRestTime != nil {
-		repeaterRestTime.Int32 = *req.RepeaterRestTime
-		repeaterRestTime.Valid = true
-	}
-	if req.RepeaterSetRest != nil {
-		repeaterSetRest.Int32 = *req.RepeaterSetRest
-		repeaterSetRest.Valid = true
-	}
-	if req.RepeaterSplitHand != nil {
-		repeaterSplitHand.Bool = *req.RepeaterSplitHand
-		repeaterSplitHand.Valid = true
-	}
-
 	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "user_id", userID, "error", err)
@@ -755,23 +695,17 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	}
 
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
-		UserID:            userUUID,
-		Name:              req.Name,
-		Notes:             req.Notes,
-		Date:              sessionDate,
-		IsAssessment:      req.IsAssessment,
-		Activity:          req.Activity,
-		Origin:            origin,
-		TrainingID:        trainingID,
-		ProgramSessionID:  programSessionID,
-		Prescription:      prescription,
-		Duration:          req.Duration,
-		RepeaterSets:      repeaterSets,
-		RepeaterReps:      repeaterReps,
-		RepeaterWorkTime:  repeaterWorkTime,
-		RepeaterRestTime:  repeaterRestTime,
-		RepeaterSetRest:   repeaterSetRest,
-		RepeaterSplitHand: repeaterSplitHand,
+		UserID:           userUUID,
+		Name:             req.Name,
+		Notes:            req.Notes,
+		Date:             sessionDate,
+		IsAssessment:     req.IsAssessment,
+		Activity:         req.Activity,
+		Origin:           origin,
+		TrainingID:       trainingID,
+		ProgramSessionID: programSessionID,
+		Prescription:     prescription,
+		Duration:         req.Duration,
 	})
 	if err != nil {
 		slog.Error("failed to create session", "user_id", userID, "error", err)
