@@ -145,6 +145,10 @@ type RepDataRequest struct {
 	// TrainingItemID is the prescription item this rep was played from, absent
 	// for a rep recorded outside a training.
 	TrainingItemID *string `json:"training_item_id,omitempty"`
+	// TargetUnmeasured says the step prescribed a load nothing measured, which
+	// is a sensor that dropped mid run. The rep then carries no target, the same
+	// as a step nothing was meant to measure, and this is what tells them apart.
+	TargetUnmeasured bool `json:"target_unmeasured,omitempty"`
 }
 
 type AssessmentRequest struct {
@@ -288,23 +292,29 @@ type RepDataResponse struct {
 	// be read block by block. Absent on a rep played outside a training, and on
 	// sessions recorded before the app sent it.
 	TrainingItemID *string `json:"training_item_id,omitempty"`
-	UpdatedAt      string  `json:"updated_at"`
+	// TargetUnmeasured marks a rep the run was supposed to grade and could not,
+	// because the sensor delivered nothing while the step was running. It has no
+	// target for that reason, so a client counting on-target reps leaves it out
+	// of the ratio rather than reading it as a miss.
+	TargetUnmeasured bool   `json:"target_unmeasured"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 func repDataToResponse(r db.RepData) RepDataResponse {
 	return RepDataResponse{
-		ID:             r.ID.String(),
-		SessionID:      r.SessionID.String(),
-		AverageWeight:  r.AverageWeight,
-		TargetWeight:   r.TargetWeight,
-		Duration:       r.Duration,
-		Index:          r.Index,
-		IsRest:         r.IsRest,
-		RightHand:      r.RightHand,
-		GripPosition:   r.GripPosition,
-		EdgeSizeMm:     optionalInt32(r.EdgeSizeMm),
-		TrainingItemID: optionalUUIDString(r.TrainingItemID),
-		UpdatedAt:      r.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:               r.ID.String(),
+		SessionID:        r.SessionID.String(),
+		AverageWeight:    r.AverageWeight,
+		TargetWeight:     r.TargetWeight,
+		Duration:         r.Duration,
+		Index:            r.Index,
+		IsRest:           r.IsRest,
+		RightHand:        r.RightHand,
+		GripPosition:     r.GripPosition,
+		EdgeSizeMm:       optionalInt32(r.EdgeSizeMm),
+		TrainingItemID:   optionalUUIDString(r.TrainingItemID),
+		TargetUnmeasured: r.TargetUnmeasured,
+		UpdatedAt:        r.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 }
 
@@ -573,7 +583,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -720,17 +730,18 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		}
 
 		_, err = qtx.CreateRepData(c.Context(), db.CreateRepDataParams{
-			UserID:         userUUID,
-			AverageWeight:  rd.AverageWeight,
-			SessionID:      session.ID,
-			IsRest:         rd.IsRest,
-			RightHand:      rd.RightHand,
-			Duration:       rd.Duration,
-			TargetWeight:   rd.TargetWeight,
-			Index:          rd.Index,
-			GripPosition:   rd.GripPosition,
-			EdgeSizeMm:     edgeSizeMm,
-			TrainingItemID: repItemIDs[i],
+			UserID:           userUUID,
+			AverageWeight:    rd.AverageWeight,
+			SessionID:        session.ID,
+			IsRest:           rd.IsRest,
+			RightHand:        rd.RightHand,
+			Duration:         rd.Duration,
+			TargetWeight:     rd.TargetWeight,
+			Index:            rd.Index,
+			GripPosition:     rd.GripPosition,
+			EdgeSizeMm:       edgeSizeMm,
+			TrainingItemID:   repItemIDs[i],
+			TargetUnmeasured: rd.TargetUnmeasured,
 		})
 		if err != nil {
 			slog.Error("failed to create rep data", "user_id", userID, "session_id", session.ID, "error", err)

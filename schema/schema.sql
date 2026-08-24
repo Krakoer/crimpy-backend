@@ -123,6 +123,14 @@ CREATE TABLE "rep_datas" (
   -- itself when the coach deletes the item, losing the grouping the snapshot can
   -- still describe.
   "training_item_id" UUID,
+  -- Whether the step prescribed a load nothing measured, which is a sensor that
+  -- dropped while a hang it was meant to read was running. Such a rep stores no
+  -- target, exactly as a step nothing was ever going to measure does (a both
+  -- hands hang, a run started without a sensor), so this flag is what tells the
+  -- two apart: a rep flagged here was performed but could not be graded, so an
+  -- on-target ratio leaves it out of both sides, while a step that never had a
+  -- target still counts as part of the run it was played in.
+  "target_unmeasured" BOOLEAN NOT NULL DEFAULT FALSE,
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );

@@ -369,6 +369,12 @@ definitions:
         type: boolean
       right_hand:
         type: boolean
+      target_unmeasured:
+        description: |-
+          TargetUnmeasured says the step prescribed a load nothing measured, which
+          is a sensor that dropped mid run. The rep then carries no target, the same
+          as a step nothing was meant to measure, and this is what tells them apart.
+        type: boolean
       target_weight:
         type: number
       training_item_id:
@@ -397,6 +403,13 @@ definitions:
         type: boolean
       session_id:
         type: string
+      target_unmeasured:
+        description: |-
+          TargetUnmeasured marks a rep the run was supposed to grade and could not,
+          because the sensor delivered nothing while the step was running. It has no
+          target for that reason, so a client counting on-target reps leaves it out
+          of the ratio rather than reading it as a miss.
+        type: boolean
       target_weight:
         type: number
       training_item_id:
@@ -3085,7 +3098,9 @@ paths:
         A logged session may carry the link as well, so a coach slot with nothing
         to step through can be completed by hand; only a played one locks the coach's
         week. A rep may name the prescription item it was played from through training_item_id,
-        which must be one of the items the session was prescribed.
+        which must be one of the items the session was prescribed. A rep whose step
+        prescribed a load the run failed to measure sends target_unmeasured, so a
+        client can tell it from a rep no target was ever expected for.
       parameters:
       - description: Session details
         in: body
