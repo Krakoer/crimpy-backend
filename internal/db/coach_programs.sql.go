@@ -175,6 +175,42 @@ func (q *Queries) GetMyPrograms(ctx context.Context, userID pgtype.UUID) ([]Coac
 	return items, nil
 }
 
+const getProgramsSchedulingTraining = `-- name: GetProgramsSchedulingTraining :many
+SELECT p.id, p.name, COUNT(*) AS session_count
+FROM coach_program_week_sessions s
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE s.training_id = $1
+GROUP BY p.id, p.name
+ORDER BY p.name
+`
+
+type GetProgramsSchedulingTrainingRow struct {
+	ID           pgtype.UUID
+	Name         string
+	SessionCount int64
+}
+
+func (q *Queries) GetProgramsSchedulingTraining(ctx context.Context, trainingID pgtype.UUID) ([]GetProgramsSchedulingTrainingRow, error) {
+	rows, err := q.db.Query(ctx, getProgramsSchedulingTraining, trainingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProgramsSchedulingTrainingRow
+	for rows.Next() {
+		var i GetProgramsSchedulingTrainingRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.SessionCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateCoachProgram = `-- name: UpdateCoachProgram :one
 UPDATE coach_programs
 SET name = $1, objective = $2, start_date = $3,

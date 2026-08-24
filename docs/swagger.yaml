@@ -532,6 +532,15 @@ definitions:
       updated_at:
         type: string
     type: object
+  handler.TrainingInUseResponse:
+    properties:
+      error:
+        type: string
+      programs:
+        items:
+          $ref: '#/definitions/handler.TrainingProgramUsage'
+        type: array
+    type: object
   handler.TrainingItemRequest:
     properties:
       comment:
@@ -686,6 +695,15 @@ definitions:
         type: string
       user_id:
         type: string
+    type: object
+  handler.TrainingProgramUsage:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      session_count:
+        type: integer
     type: object
   handler.TrainingResponse:
     properties:
@@ -3311,7 +3329,8 @@ paths:
   /api/trainings/{id}:
     delete:
       description: Delete a training template and all its items. Only the owner can
-        delete.
+        delete. A training still scheduled by a program cannot be deleted, and the
+        409 body names the programs holding it.
       parameters:
       - description: Training ID
         in: path
@@ -3345,6 +3364,10 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "409":
+          description: Training still scheduled by a program
+          schema:
+            $ref: '#/definitions/handler.TrainingInUseResponse'
       security:
       - BearerAuth: []
       summary: Delete a training template

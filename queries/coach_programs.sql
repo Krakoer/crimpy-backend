@@ -30,3 +30,11 @@ JOIN coach_program_weeks w ON w.id = s.week_id
 JOIN coach_programs p ON p.id = w.program_id
 WHERE p.id = @program_id AND p.user_id = @user_id AND s.training_id = @training_id;
 
+-- name: GetProgramsSchedulingTraining :many
+SELECT p.id, p.name, COUNT(*) AS session_count
+FROM coach_program_week_sessions s
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE s.training_id = @training_id
+GROUP BY p.id, p.name
+ORDER BY p.name;
