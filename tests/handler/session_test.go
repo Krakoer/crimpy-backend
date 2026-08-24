@@ -1279,3 +1279,77 @@ func repItemLinkPayload(links map[string]interface{}, itemID string) []byte {
 	body, _ := json.Marshal(payload)
 	return body
 }
+
+func TestSessionHandler_CreateSession_KeepsTargetUnmeasuredOnReps(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session-rep-unmeasured@test.com")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: handler.NewSessionHandler(queries, pool),
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Dropped Sensor Session",
+		"notes":    "",
+		"activity": 0,
+		"origin":   "played",
+		"duration": 300,
+		"rep_datas": []map[string]interface{}{
+			{
+				"average_weight": 30.0,
+				"is_rest":        false,
+				"right_hand":     true,
+				"duration":       7,
+				"target_weight":  32.0,
+				"index":          0,
+				"grip_position":  0,
+			},
+			{
+				"average_weight":    0.0,
+				"is_rest":           false,
+				"right_hand":        true,
+				"duration":          7,
+				"target_weight":     0.0,
+				"index":             1,
+				"grip_position":     0,
+				"target_unmeasured": true,
+			},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+
+	req := testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", created["id"].(string)), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to read session: %v", err)
+	}
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	repDatas, ok := response["rep_datas"].([]interface{})
+	if !ok || len(repDatas) != 2 {
+		t.Fatalf("Expected 2 rep datas, got %v", response["rep_datas"])
+	}
+	// A measured rep sends nothing, so the flag has to read false rather than be
+	// missing: the clients grade on it.
+	for i, wanted := range []interface{}{false, true} {
+		got := repDatas[i].(map[string]interface{})["target_unmeasured"]
+		if got != wanted {
+			t.Errorf("Expected rep %d target_unmeasured %v, got %v", i, wanted, got)
+		}
+	}
+}
