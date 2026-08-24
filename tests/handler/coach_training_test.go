@@ -428,3 +428,109 @@ func TestCoachTrainingHandler_Delete_ScheduledByProgram(t *testing.T) {
 		t.Errorf("Expected the training to survive the refused delete, got %d", resp.StatusCode)
 	}
 }
+
+func TestCoachTrainingHandler_Delete_ScheduledBySeveralPrograms(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining9coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "ctraining9user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	trainingID := createTestCoachTraining(t, coachToken, app)
+	autumnID := createNamedTestProgram(t, coachToken, userID, "Autumn Block", app)
+	winterID := createNamedTestProgram(t, coachToken, userID, "Winter Block", app)
+
+	scheduleSessions(t, coachToken, userID, autumnID, app, []map[string]interface{}{
+		{"training_id": trainingID, "day_of_week": 0},
+		{"training_id": trainingID, "times_per_week": 2},
+	})
+	scheduleSessions(t, coachToken, userID, winterID, app, []map[string]interface{}{
+		{"training_id": trainingID, "day_of_week": 3},
+	})
+
+	req := testutil.NewRequestWithAuth(http.MethodDelete, fmt.Sprintf("/api/trainings/%s", trainingID), nil, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Delete request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Fatalf("Expected %d deleting a scheduled training, got %d", fiber.StatusConflict, resp.StatusCode)
+	}
+
+	var conflict map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&conflict)
+
+	message, _ := conflict["error"].(string)
+	if !strings.Contains(message, "programs") {
+		t.Errorf("Expected the plural wording for two programs, got %q", message)
+	}
+	for _, name := range []string{"Autumn Block", "Winter Block"} {
+		if !strings.Contains(message, name) {
+			t.Errorf("Expected the error to name %q, got %q", name, message)
+		}
+	}
+
+	programs, ok := conflict["programs"].([]interface{})
+	if !ok || len(programs) != 2 {
+		t.Fatalf("Expected 2 programs in the conflict body, got %v", conflict["programs"])
+	}
+
+	counts := map[string]float64{}
+	ids := map[string]string{}
+	for _, entry := range programs {
+		program := entry.(map[string]interface{})
+		name := program["name"].(string)
+		counts[name] = program["session_count"].(float64)
+		ids[name] = program["id"].(string)
+	}
+
+	if counts["Autumn Block"] != 2 {
+		t.Errorf("Expected 2 sessions counted for Autumn Block, got %v", counts["Autumn Block"])
+	}
+	if counts["Winter Block"] != 1 {
+		t.Errorf("Expected 1 session counted for Winter Block, got %v", counts["Winter Block"])
+	}
+	if ids["Autumn Block"] != autumnID || ids["Winter Block"] != winterID {
+		t.Errorf("Expected the program ids to match, got %v", ids)
+	}
+}
+
+func createNamedTestProgram(t *testing.T, coachToken, userID, name string, app *fiber.App) string {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":       name,
+		"start_date": "2026-06-01",
+	})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPost, fmt.Sprintf("/api/coach/clients/%s/programs", userID), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create program %s: %v", name, err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating program %s, got %d", name, resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result["id"].(string)
+}
+
+func scheduleSessions(t *testing.T, coachToken, userID, programID string, app *fiber.App, sessions []map[string]interface{}) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{"sessions": sessions})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to schedule sessions: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 scheduling sessions, got %d", resp.StatusCode)
+	}
+}

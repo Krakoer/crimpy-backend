@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -792,6 +791,12 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
 }
 
+// scheduledTrainingConstraint is the foreign key that holds a training down
+// while a program week still schedules it. Matching it by name keeps the 409
+// honest: any other foreign key refusing the delete is not a program, and has
+// no business claiming one holds the training.
+const scheduledTrainingConstraint = "coach_program_week_sessions_training_id_fkey"
+
 // TrainingProgramUsage names a program that still schedules a training, so a
 // client can send the coach straight to the program holding it.
 type TrainingProgramUsage struct {
@@ -827,7 +832,7 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	}
 
 	if err := h.queries.DeleteTraining(c.Context(), trainingUUID); err != nil {
-		if _, isFK := foreignKeyViolation(err); isFK {
+		if constraint, isFK := foreignKeyViolation(err); isFK && constraint == scheduledTrainingConstraint {
 			slog.Warn("refused to delete a training a program still schedules", "training_id", trainingUUID.String())
 			return h.trainingInUse(c, trainingUUID)
 		}
@@ -870,7 +875,7 @@ func trainingInUseMessage(programs []TrainingProgramUsage) string {
 
 	quoted := make([]string, 0, len(programs))
 	for _, p := range programs {
-		quoted = append(quoted, strconv.Quote(p.Name))
+		quoted = append(quoted, `"`+p.Name+`"`)
 	}
 	if len(quoted) == 1 {
 		return fmt.Sprintf("This training is scheduled by program %s and cannot be deleted", quoted[0])
