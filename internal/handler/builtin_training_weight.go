@@ -3,12 +3,10 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
-	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -69,16 +67,6 @@ func builtinTrainingWeightsToResponses(rows []db.BuiltinTrainingWeight) []Builti
 		items = append(items, builtinTrainingWeightToResponse(w))
 	}
 	return items
-}
-
-// uniqueViolation reports whether err is the database refusing a duplicate row,
-// along with the constraint that rejected it, so callers can tell which one it was.
-func uniqueViolation(err error) (string, bool) {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return pgErr.ConstraintName, true
-	}
-	return "", false
 }
 
 // CreateBuiltinTrainingWeight godoc
