@@ -71,16 +71,17 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 		t.Logf("Warning: Failed to clean up sessions: %v", err)
 	}
 
+	// Delete programs (weeks and sessions cascade). Runs before trainings, since
+	// a week session holds a training down with ON DELETE RESTRICT.
+	_, err = pool.Exec(ctx, "DELETE FROM coach_programs WHERE coach_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
+	if err != nil {
+		t.Logf("Warning: Failed to clean up coach_programs: %v", err)
+	}
+
 	// Delete trainings (items cascade)
 	_, err = pool.Exec(ctx, "DELETE FROM trainings WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
 	if err != nil {
 		t.Logf("Warning: Failed to clean up trainings: %v", err)
-	}
-
-	// Delete programs (slots cascade)
-	_, err = pool.Exec(ctx, "DELETE FROM coach_programs WHERE coach_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
-	if err != nil {
-		t.Logf("Warning: Failed to clean up coach_programs: %v", err)
 	}
 
 	// Delete test users

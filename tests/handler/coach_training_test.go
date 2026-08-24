@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -354,5 +355,76 @@ func TestCoachTrainingHandler_Delete(t *testing.T) {
 
 	if resp.StatusCode != fiber.StatusNotFound {
 		t.Errorf("Expected %d after delete, got %d", fiber.StatusNotFound, resp.StatusCode)
+	}
+}
+
+func TestCoachTrainingHandler_Delete_ScheduledByProgram(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "ctraining8coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "ctraining8user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID := createTestCoachTraining(t, coachToken, app)
+
+	weekBody, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": trainingID, "day_of_week": 0},
+		},
+	})
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), weekBody, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to schedule the training: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 scheduling the training, got %d", resp.StatusCode)
+	}
+
+	req = testutil.NewRequestWithAuth(http.MethodDelete, fmt.Sprintf("/api/trainings/%s", trainingID), nil, coachToken)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Delete request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Fatalf("Expected %d deleting a scheduled training, got %d", fiber.StatusConflict, resp.StatusCode)
+	}
+
+	var conflict map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&conflict)
+
+	message, _ := conflict["error"].(string)
+	if !strings.Contains(message, "Test Program") {
+		t.Errorf("Expected the error to name the program, got %q", message)
+	}
+
+	programs, ok := conflict["programs"].([]interface{})
+	if !ok || len(programs) != 1 {
+		t.Fatalf("Expected 1 program in the conflict body, got %v", conflict["programs"])
+	}
+	program := programs[0].(map[string]interface{})
+	if program["id"] != programID {
+		t.Errorf("Expected program id %s, got %v", programID, program["id"])
+	}
+	if program["name"] != "Test Program" {
+		t.Errorf("Expected program name 'Test Program', got %v", program["name"])
+	}
+	if program["session_count"] != float64(1) {
+		t.Errorf("Expected session_count 1, got %v", program["session_count"])
+	}
+
+	req = testutil.NewRequestWithAuth(http.MethodGet, fmt.Sprintf("/api/trainings/%s", trainingID), nil, coachToken)
+	resp, _ = app.Test(req)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected the training to survive the refused delete, got %d", resp.StatusCode)
 	}
 }
