@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -790,9 +792,24 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
 }
 
+// TrainingProgramUsage names a program that still schedules a training, so a
+// client can send the coach straight to the program holding it.
+type TrainingProgramUsage struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	SessionCount int64  `json:"session_count"`
+}
+
+// TrainingInUseResponse is the 409 body returned when a training cannot be
+// deleted because programs still schedule it.
+type TrainingInUseResponse struct {
+	Error    string                 `json:"error"`
+	Programs []TrainingProgramUsage `json:"programs"`
+}
+
 // DeleteCoachTraining godoc
 // @Summary Delete a training template
-// @Description Delete a training template and all its items. Only the owner can delete.
+// @Description Delete a training template and all its items. Only the owner can delete. A training still scheduled by a program cannot be deleted, and the 409 body names the programs holding it.
 // @Tags Trainings
 // @Produce json
 // @Security BearerAuth
@@ -801,6 +818,7 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Invalid training ID"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Training not found"
+// @Failure 409 {object} TrainingInUseResponse "Training still scheduled by a program"
 // @Router /api/trainings/{id} [delete]
 func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	_, trainingUUID, ok := h.ownedTraining().require(c)
@@ -809,11 +827,55 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	}
 
 	if err := h.queries.DeleteTraining(c.Context(), trainingUUID); err != nil {
+		if _, isFK := foreignKeyViolation(err); isFK {
+			slog.Warn("refused to delete a training a program still schedules", "training_id", trainingUUID.String())
+			return h.trainingInUse(c, trainingUUID)
+		}
 		slog.Error("failed to delete coach training", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete training"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Training deleted successfully"})
+}
+
+// trainingInUse answers the refused delete, naming the programs that still
+// schedule the training. The lookup runs only on the refusal, so the common
+// delete stays a single statement.
+func (h *TrainingHandler) trainingInUse(c fiber.Ctx, trainingUUID pgtype.UUID) error {
+	rows, err := h.queries.GetProgramsSchedulingTraining(c.Context(), trainingUUID)
+	if err != nil {
+		slog.Error("failed to list programs scheduling training", "training_id", trainingUUID.String(), "error", err)
+		rows = nil
+	}
+
+	programs := make([]TrainingProgramUsage, 0, len(rows))
+	for _, row := range rows {
+		programs = append(programs, TrainingProgramUsage{
+			ID:           row.ID.String(),
+			Name:         row.Name,
+			SessionCount: row.SessionCount,
+		})
+	}
+
+	return c.Status(fiber.StatusConflict).JSON(TrainingInUseResponse{
+		Error:    trainingInUseMessage(programs),
+		Programs: programs,
+	})
+}
+
+func trainingInUseMessage(programs []TrainingProgramUsage) string {
+	if len(programs) == 0 {
+		return "This training is still scheduled by a program and cannot be deleted"
+	}
+
+	quoted := make([]string, 0, len(programs))
+	for _, p := range programs {
+		quoted = append(quoted, strconv.Quote(p.Name))
+	}
+	if len(quoted) == 1 {
+		return fmt.Sprintf("This training is scheduled by program %s and cannot be deleted", quoted[0])
+	}
+	return fmt.Sprintf("This training is scheduled by programs %s and cannot be deleted", strings.Join(quoted, ", "))
 }
 
 func buildTrainingResponse(training db.Training, items []TrainingItemResponse) TrainingResponse {

@@ -3768,7 +3768,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a training template and all its items. Only the owner can delete.",
+                "description": "Delete a training template and all its items. Only the owner can delete. A training still scheduled by a program cannot be deleted, and the 409 body names the programs holding it.",
                 "produces": [
                     "application/json"
                 ],
@@ -3820,6 +3820,12 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "409": {
+                        "description": "Training still scheduled by a program",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingInUseResponse"
                         }
                     }
                 }
@@ -5387,6 +5393,20 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.TrainingInUseResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "programs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingProgramUsage"
+                    }
+                }
+            }
+        },
         "handler.TrainingItemRequest": {
             "type": "object",
             "properties": {
@@ -5612,6 +5632,20 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.TrainingProgramUsage": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "session_count": {
+                    "type": "integer"
                 }
             }
         },
