@@ -174,6 +174,17 @@ type Session struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
+type SessionItemResult struct {
+	ID             pgtype.UUID
+	SessionID      pgtype.UUID
+	UserID         pgtype.UUID
+	TrainingItemID pgtype.UUID
+	Occurrence     int32
+	Field          string
+	Value          int32
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Tag struct {
 	ID        pgtype.UUID
 	CoachID   pgtype.UUID
@@ -205,7 +216,9 @@ type TrainingItem struct {
 	Position         int32
 	Cycles           pgtype.Int4
 	CycleRestSeconds pgtype.Int4
+	IntervalSeconds  pgtype.Int4
 	Reps             pgtype.Int4
+	RepsIsMax        bool
 	Duration         pgtype.Int4
 	RestSeconds      pgtype.Int4
 	ExerciseID       pgtype.UUID

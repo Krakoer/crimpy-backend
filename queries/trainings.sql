@@ -33,8 +33,8 @@ DELETE FROM trainings WHERE id = @id;
 -- name: CreateTrainingItem :one
 INSERT INTO training_items (
   training_id, parent_id, type, position,
-  cycles, cycle_rest_seconds,
-  reps, duration, rest_seconds,
+  cycles, cycle_rest_seconds, interval_seconds,
+  reps, reps_is_max, duration, rest_seconds,
   exercise_id,
   worktime_seconds, hand, granularity,
   free_text, comment, load_is_max,
@@ -43,8 +43,8 @@ INSERT INTO training_items (
   group_title
 ) VALUES (
   @training_id, @parent_id, @type, @position,
-  @cycles, @cycle_rest_seconds,
-  @reps, @duration, @rest_seconds,
+  @cycles, @cycle_rest_seconds, @interval_seconds,
+  @reps, @reps_is_max, @duration, @rest_seconds,
   @exercise_id,
   @worktime_seconds, @hand, @granularity,
   @free_text, @comment, @load_is_max,
