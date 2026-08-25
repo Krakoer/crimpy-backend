@@ -432,7 +432,7 @@ func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingI
 // layout no client could read: resizing the grid without resending the
 // configuration arrays it invalidates, or shipping arrays that disagree with
 // the granularity in force once the override is applied.
-func validateItemOverride(base TrainingItemRequest, raw json.RawMessage) error {
+func validateItemOverride(base TrainingItemRequest, raw json.RawMessage, units assessmentUnits) error {
 	if err := validateOverrideHangboardRepRepeatFields(base, raw); err != nil {
 		return err
 	}
@@ -440,21 +440,21 @@ func validateItemOverride(base TrainingItemRequest, raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	return validateItemConfiguration(merged)
+	return validateItemConfiguration(merged, units)
 }
 
 // validateItemConfiguration checks everything about a single item that has to
 // hold however the item was written, whether directly on the training or
 // through a session override merged onto it.
-func validateItemConfiguration(item TrainingItemRequest) error {
+func validateItemConfiguration(item TrainingItemRequest, units assessmentUnits) error {
 	if err := validateItemArrays(item); err != nil {
 		return err
 	}
-	if err := validateVariableTargets(item.VariableTargets); err != nil {
+	if err := validateVariableTargets(item.VariableTargets, units); err != nil {
 		return err
 	}
 	for _, loads := range []json.RawMessage{item.Loads, item.LeftLoads} {
-		if err := validateLoads(loads); err != nil {
+		if err := validateLoads(loads, units); err != nil {
 			return err
 		}
 	}

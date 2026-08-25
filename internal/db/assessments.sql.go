@@ -11,15 +11,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAssessmentsForDefinition = `-- name: CountAssessmentsForDefinition :one
+SELECT COUNT(*) FROM assessments WHERE assessment_id = $1
+`
+
+// How many results were measured against a definition, so an edit that would
+// change what those numbers mean can be refused rather than silently applied.
+func (q *Queries) CountAssessmentsForDefinition(ctx context.Context, assessmentID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAssessmentsForDefinition, assessmentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAssessment = `-- name: CreateAssessment :one
-INSERT INTO assessments (user_id, type, right_value, left_value, session_id, grip_position)
+INSERT INTO assessments (user_id, assessment_id, right_value, left_value, session_id, grip_position)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, type, right_value, left_value, session_id, grip_position, updated_at
+RETURNING id, user_id, assessment_id, right_value, left_value, session_id, grip_position, updated_at
 `
 
 type CreateAssessmentParams struct {
 	UserID       pgtype.UUID
-	Type         int32
+	AssessmentID pgtype.UUID
 	RightValue   pgtype.Float4
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
@@ -29,7 +42,7 @@ type CreateAssessmentParams struct {
 func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentParams) (Assessment, error) {
 	row := q.db.QueryRow(ctx, createAssessment,
 		arg.UserID,
-		arg.Type,
+		arg.AssessmentID,
 		arg.RightValue,
 		arg.LeftValue,
 		arg.SessionID,
@@ -39,7 +52,7 @@ func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentPara
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Type,
+		&i.AssessmentID,
 		&i.RightValue,
 		&i.LeftValue,
 		&i.SessionID,
@@ -59,7 +72,7 @@ func (q *Queries) DeleteAssessment(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getAssessment = `-- name: GetAssessment :one
-SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at FROM assessments WHERE id = $1
+SELECT id, user_id, assessment_id, right_value, left_value, session_id, grip_position, updated_at FROM assessments WHERE id = $1
 `
 
 func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment, error) {
@@ -68,7 +81,7 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Type,
+		&i.AssessmentID,
 		&i.RightValue,
 		&i.LeftValue,
 		&i.SessionID,
@@ -79,27 +92,51 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 }
 
 const getSessionAssessments = `-- name: GetSessionAssessments :many
-SELECT id, user_id, type, right_value, left_value, session_id, grip_position, updated_at FROM assessments WHERE session_id = $1
+SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, d.label, d.unit, d.per_hand, d.training_id
+FROM assessments a
+JOIN assessment_definitions d ON d.id = a.assessment_id
+WHERE a.session_id = $1
 `
 
-func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UUID) ([]Assessment, error) {
+type GetSessionAssessmentsRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	AssessmentID pgtype.UUID
+	RightValue   pgtype.Float4
+	LeftValue    pgtype.Float4
+	SessionID    pgtype.UUID
+	GripPosition pgtype.Int4
+	UpdatedAt    pgtype.Timestamptz
+	Label        string
+	Unit         string
+	PerHand      bool
+	TrainingID   pgtype.UUID
+}
+
+// The results measured in one session, each with the assessment that defines it,
+// so a caller can name and format the number without a second query.
+func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionAssessmentsRow, error) {
 	rows, err := q.db.Query(ctx, getSessionAssessments, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Assessment
+	var items []GetSessionAssessmentsRow
 	for rows.Next() {
-		var i Assessment
+		var i GetSessionAssessmentsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Type,
+			&i.AssessmentID,
 			&i.RightValue,
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
 			&i.UpdatedAt,
+			&i.Label,
+			&i.Unit,
+			&i.PerHand,
+			&i.TrainingID,
 		); err != nil {
 			return nil, err
 		}
@@ -112,8 +149,10 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 }
 
 const getUserAssessments = `-- name: GetUserAssessments :many
-SELECT a.id, a.user_id, a.type, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date FROM assessments a
+SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date, d.label, d.unit, d.per_hand, d.training_id
+FROM assessments a
 JOIN sessions s ON a.session_id = s.id
+JOIN assessment_definitions d ON d.id = a.assessment_id
 WHERE s.user_id = $1
 ORDER BY s.date DESC
 `
@@ -121,13 +160,17 @@ ORDER BY s.date DESC
 type GetUserAssessmentsRow struct {
 	ID           pgtype.UUID
 	UserID       pgtype.UUID
-	Type         int32
+	AssessmentID pgtype.UUID
 	RightValue   pgtype.Float4
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
 	UpdatedAt    pgtype.Timestamptz
 	SessionDate  pgtype.Timestamptz
+	Label        string
+	Unit         string
+	PerHand      bool
+	TrainingID   pgtype.UUID
 }
 
 func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([]GetUserAssessmentsRow, error) {
@@ -142,13 +185,17 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Type,
+			&i.AssessmentID,
 			&i.RightValue,
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
 			&i.UpdatedAt,
 			&i.SessionDate,
+			&i.Label,
+			&i.Unit,
+			&i.PerHand,
+			&i.TrainingID,
 		); err != nil {
 			return nil, err
 		}
@@ -162,34 +209,34 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 
 const getUserLatestAssessmentValues = `-- name: GetUserLatestAssessmentValues :many
 WITH measured AS (
-  SELECT a.type, a.right_value, a.left_value, s.date
+  SELECT a.assessment_id, a.right_value, a.left_value, s.date
   FROM assessments a
   JOIN sessions s ON s.id = a.session_id
   WHERE a.user_id = $1
 ),
 last_right AS (
-  SELECT DISTINCT ON (type) type, right_value
+  SELECT DISTINCT ON (assessment_id) assessment_id, right_value
   FROM measured WHERE right_value IS NOT NULL
-  ORDER BY type, date DESC
+  ORDER BY assessment_id, date DESC
 ),
 last_left AS (
-  SELECT DISTINCT ON (type) type, left_value
+  SELECT DISTINCT ON (assessment_id) assessment_id, left_value
   FROM measured WHERE left_value IS NOT NULL
-  ORDER BY type, date DESC
+  ORDER BY assessment_id, date DESC
 )
 SELECT
-  COALESCE(last_right.type, last_left.type)::int AS type,
+  COALESCE(last_right.assessment_id, last_left.assessment_id) AS assessment_id,
   last_right.right_value,
   last_left.left_value
 FROM last_right
-FULL OUTER JOIN last_left ON last_left.type = last_right.type
+FULL OUTER JOIN last_left ON last_left.assessment_id = last_right.assessment_id
 ORDER BY 1
 `
 
 type GetUserLatestAssessmentValuesRow struct {
-	Type       int32
-	RightValue pgtype.Float4
-	LeftValue  pgtype.Float4
+	AssessmentID pgtype.UUID
+	RightValue   pgtype.Float4
+	LeftValue    pgtype.Float4
 }
 
 // The athlete's assessment results as they stand: the last value measured for
@@ -206,7 +253,7 @@ func (q *Queries) GetUserLatestAssessmentValues(ctx context.Context, userID pgty
 	var items []GetUserLatestAssessmentValuesRow
 	for rows.Next() {
 		var i GetUserLatestAssessmentValuesRow
-		if err := rows.Scan(&i.Type, &i.RightValue, &i.LeftValue); err != nil {
+		if err := rows.Scan(&i.AssessmentID, &i.RightValue, &i.LeftValue); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

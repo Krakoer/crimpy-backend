@@ -50,13 +50,13 @@ func TestTrainingVariableTargets_RoundTrip(t *testing.T) {
 			"duration": 60,
 			"variable_targets": map[string]interface{}{
 				"duration": map[string]interface{}{
-					"assessment_type": 2,
-					"percent":         75,
-					"fallback":        60,
+					"assessment_id": testutil.BuiltinEndurance60ID,
+					"percent":       75,
+					"fallback":      60,
 				},
 			},
 			"loads": []map[string]interface{}{
-				{"value": 80, "unit": "percent_assessment", "assessment_type": 1, "fallback": 30},
+				{"value": 80, "unit": "percent_assessment", "assessment_id": testutil.BuiltinMaxForceID, "fallback": 30},
 			},
 		},
 	})
@@ -73,8 +73,8 @@ func TestTrainingVariableTargets_RoundTrip(t *testing.T) {
 		t.Fatalf("Expected variable_targets on the item, got %v", item["variable_targets"])
 	}
 	duration := targets["duration"].(map[string]interface{})
-	if duration["assessment_type"] != float64(2) {
-		t.Errorf("Expected assessment_type 2, got %v", duration["assessment_type"])
+	if duration["assessment_id"] != testutil.BuiltinEndurance60ID {
+		t.Errorf("Expected assessment_id %s, got %v", testutil.BuiltinEndurance60ID, duration["assessment_id"])
 	}
 	if duration["percent"] != float64(75) {
 		t.Errorf("Expected percent 75, got %v", duration["percent"])
@@ -88,8 +88,8 @@ func TestTrainingVariableTargets_RoundTrip(t *testing.T) {
 	if load["unit"] != "percent_assessment" {
 		t.Errorf("Expected unit percent_assessment, got %v", load["unit"])
 	}
-	if load["assessment_type"] != float64(1) {
-		t.Errorf("Expected load assessment_type 1, got %v", load["assessment_type"])
+	if load["assessment_id"] != testutil.BuiltinMaxForceID {
+		t.Errorf("Expected load assessment_id %s, got %v", testutil.BuiltinMaxForceID, load["assessment_id"])
 	}
 	if load["fallback"] != float64(30) {
 		t.Errorf("Expected load fallback 30, got %v", load["fallback"])
@@ -102,7 +102,7 @@ func TestTrainingVariableTargets_RejectsUnknownField(t *testing.T) {
 			"type": "exercise",
 			"variable_targets": map[string]interface{}{
 				"rest_seconds": map[string]interface{}{
-					"assessment_type": 1, "percent": 50, "fallback": 10,
+					"assessment_id": testutil.BuiltinMaxForceID, "percent": 50, "fallback": 10,
 				},
 			},
 		},
@@ -113,20 +113,20 @@ func TestTrainingVariableTargets_RejectsUnknownField(t *testing.T) {
 	}
 }
 
-func TestTrainingVariableTargets_RejectsUnknownAssessmentType(t *testing.T) {
+func TestTrainingVariableTargets_RejectsUnknownAssessment(t *testing.T) {
 	status, _ := createTrainingWithItems(t, "vartarget3@test.com", []map[string]interface{}{
 		{
 			"type": "exercise",
 			"variable_targets": map[string]interface{}{
 				"reps": map[string]interface{}{
-					"assessment_type": 9, "percent": 50, "fallback": 10,
+					"assessment_id": "00000000-0000-0000-0000-000000000009", "percent": 50, "fallback": 10,
 				},
 			},
 		},
 	})
 
 	if status != fiber.StatusBadRequest {
-		t.Errorf("Expected %d for an unknown assessment type, got %d", fiber.StatusBadRequest, status)
+		t.Errorf("Expected %d for an unknown assessment, got %d", fiber.StatusBadRequest, status)
 	}
 }
 
@@ -150,7 +150,7 @@ func TestTrainingVariableTargets_RejectsDurationDrivenByForceAssessment(t *testi
 			"duration": 60,
 			"variable_targets": map[string]interface{}{
 				"duration": map[string]interface{}{
-					"assessment_type": 1, "percent": 75, "fallback": 60,
+					"assessment_id": testutil.BuiltinMaxForceID, "percent": 75, "fallback": 60,
 				},
 			},
 		},
@@ -165,7 +165,7 @@ func TestTrainingVariableTargets_RejectsLoadDrivenByDurationAssessment(t *testin
 	status, _ := createTrainingWithItems(t, "vartarget7@test.com", []map[string]interface{}{
 		{
 			"type":  "hangboard_rep",
-			"loads": []map[string]interface{}{{"value": 80, "unit": "percent_assessment", "assessment_type": 2, "fallback": 30}},
+			"loads": []map[string]interface{}{{"value": 80, "unit": "percent_assessment", "assessment_id": testutil.BuiltinEndurance60ID, "fallback": 30}},
 		},
 	})
 
@@ -181,7 +181,7 @@ func TestTrainingVariableTargets_RejectsRepsTarget(t *testing.T) {
 			"reps": 10,
 			"variable_targets": map[string]interface{}{
 				"reps": map[string]interface{}{
-					"assessment_type": 2, "percent": 50, "fallback": 10,
+					"assessment_id": testutil.BuiltinEndurance60ID, "percent": 50, "fallback": 10,
 				},
 			},
 		},
@@ -200,11 +200,11 @@ func TestTrainingVariableTargets_AcceptsSplitHandPerHandLoads(t *testing.T) {
 			"reps":        2,
 			"granularity": "rep",
 			"loads": []map[string]interface{}{
-				{"value": 80, "unit": "percent_assessment", "assessment_type": 1, "fallback": 30},
+				{"value": 80, "unit": "percent_assessment", "assessment_id": testutil.BuiltinMaxForceID, "fallback": 30},
 				{"value": 0, "unit": "bw"},
 			},
 			"left_loads": []map[string]interface{}{
-				{"value": 70, "unit": "percent_assessment", "assessment_type": 1, "fallback": 25},
+				{"value": 70, "unit": "percent_assessment", "assessment_id": testutil.BuiltinMaxForceID, "fallback": 25},
 				{"value": 0, "unit": "bw"},
 			},
 		},

@@ -451,7 +451,7 @@ func TestSessionHandler_GetUserSessions_OmitsPrescription(t *testing.T) {
 
 // recordAssessment logs a session carrying one assessment result, which is how
 // the athlete's results get on file.
-func recordAssessment(t *testing.T, app *fiber.App, userToken string, assessmentType int, right, left float64, date string) {
+func recordAssessment(t *testing.T, app *fiber.App, userToken string, assessmentID string, right, left float64, date string) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":          "Max hang test",
@@ -462,7 +462,7 @@ func recordAssessment(t *testing.T, app *fiber.App, userToken string, assessment
 		"is_assessment": true,
 		"date":          date,
 		"assessments": []map[string]interface{}{
-			{"type": assessmentType, "right_value": right, "left_value": left},
+			{"assessment_id": assessmentID, "right_value": right, "left_value": left},
 		},
 	})
 	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
@@ -495,7 +495,7 @@ func TestSessionHandler_CreateSession_FreezesAssessmentResults(t *testing.T) {
 	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "preassess")
 	trainingID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
 
-	recordAssessment(t, app, userToken, 0, 50, 48, "2026-01-10T10:00:00Z")
+	recordAssessment(t, app, userToken, testutil.BuiltinCriticalForceID, 50, 48, "2026-01-10T10:00:00Z")
 
 	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, nil)
 	created := playSession(t, app, userToken, map[string]interface{}{
@@ -512,7 +512,7 @@ func TestSessionHandler_CreateSession_FreezesAssessmentResults(t *testing.T) {
 	}
 
 	// The athlete gets stronger. What they were asked to do does not change.
-	recordAssessment(t, app, userToken, 0, 60, 58, "2026-02-10T10:00:00Z")
+	recordAssessment(t, app, userToken, testutil.BuiltinCriticalForceID, 60, 58, "2026-02-10T10:00:00Z")
 
 	reread := prescriptionAssessments(t, sessionPrescription(t, getSessionJSON(t, app, userToken, created["id"].(string))))
 	stillFrozen := reread[0].(map[string]interface{})

@@ -87,6 +87,7 @@ func main() {
 	adminHandler := handler.NewAdminHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries, pool)
 	assessmentHandler := handler.NewAssessmentHandler(queries)
+	assessmentDefinitionHandler := handler.NewAssessmentDefinitionHandler(queries, pool)
 	sensorConfigHandler := handler.NewSensorConfigHandler(queries)
 	builtinWeightHandler := handler.NewBuiltinTrainingWeightHandler(queries)
 	pinnedHandler := handler.NewPinnedBuiltinTrainingHandler(queries)
@@ -177,6 +178,10 @@ func main() {
 	api.Post("/assessments", assessmentHandler.CreateAssessment)
 	api.Get("/assessments", assessmentHandler.GetAssessments)
 	api.Delete("/assessments/:id", assessmentHandler.DeleteAssessment)
+	api.Get("/assessment-definitions", assessmentDefinitionHandler.GetAssessmentDefinitions)
+	api.Post("/assessment-definitions", assessmentDefinitionHandler.CreateAssessmentDefinition)
+	api.Put("/assessment-definitions/:id", assessmentDefinitionHandler.UpdateAssessmentDefinition)
+	api.Delete("/assessment-definitions/:id", assessmentDefinitionHandler.DeleteAssessmentDefinition)
 
 	// Session routes
 	api.Post("/sessions", sessionHandler.CreateSession)

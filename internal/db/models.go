@@ -11,12 +11,24 @@ import (
 type Assessment struct {
 	ID           pgtype.UUID
 	UserID       pgtype.UUID
-	Type         int32
+	AssessmentID pgtype.UUID
 	RightValue   pgtype.Float4
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
 	UpdatedAt    pgtype.Timestamptz
+}
+
+type AssessmentDefinition struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	TrainingID pgtype.UUID
+	Label      string
+	Prompt     pgtype.Text
+	Unit       string
+	PerHand    bool
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type BuiltinTrainingWeight struct {

@@ -163,7 +163,7 @@ type RepDataRequest struct {
 }
 
 type AssessmentRequest struct {
-	Type         int32    `json:"type"`
+	AssessmentID string   `json:"assessment_id"`
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
@@ -347,26 +347,54 @@ type SessionDetailResponse struct {
 	Assessments []AssessmentResponse `json:"assessments"`
 }
 
-// AssessmentResponse is an assessment result as the endpoints return it.
+// AssessmentResponse is an assessment result as the endpoints return it, with
+// the assessment that defines it, so a client can name and format the number
+// without a second request. The definition reads as it stands now, not as it did
+// when the result was measured: the profile section is the assessment, not the
+// run that produced one of its rows.
 type AssessmentResponse struct {
-	ID           string   `json:"id"`
-	UserID       string   `json:"user_id"`
-	SessionID    string   `json:"session_id"`
-	Type         int32    `json:"type"`
+	ID           string `json:"id"`
+	UserID       string `json:"user_id"`
+	SessionID    string `json:"session_id"`
+	AssessmentID string `json:"assessment_id"`
+	Label        string `json:"label"`
+	Unit         string `json:"unit" enums:"kilograms,seconds,repetitions"`
+	PerHand      bool   `json:"per_hand"`
+	// The training the assessment is run from, absent for the ones Crimpy ships.
+	TrainingID   *string  `json:"training_id,omitempty"`
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
 	UpdatedAt    string   `json:"updated_at"`
 }
 
-func assessmentToResponse(a db.Assessment) AssessmentResponse {
+// assessmentResult is the shape every assessment read path produces: the result
+// row joined to its definition. The generated row types differ per query, so the
+// callers fill this in and share one mapper.
+type assessmentResult struct {
+	Assessment db.Assessment
+	Label      string
+	Unit       string
+	PerHand    bool
+	TrainingID pgtype.UUID
+}
+
+func assessmentToResponse(r assessmentResult) AssessmentResponse {
+	a := r.Assessment
 	resp := AssessmentResponse{
 		ID:           a.ID.String(),
 		UserID:       a.UserID.String(),
 		SessionID:    a.SessionID.String(),
-		Type:         a.Type,
+		AssessmentID: a.AssessmentID.String(),
+		Label:        r.Label,
+		Unit:         r.Unit,
+		PerHand:      r.PerHand,
 		GripPosition: optionalInt32(a.GripPosition),
 		UpdatedAt:    a.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if r.TrainingID.Valid {
+		trainingID := r.TrainingID.String()
+		resp.TrainingID = &trainingID
 	}
 	if a.RightValue.Valid {
 		resp.RightValue = &a.RightValue.Float32
@@ -388,15 +416,21 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 	items := make([]AssessmentListItem, 0, len(rows))
 	for _, r := range rows {
 		items = append(items, AssessmentListItem{
-			AssessmentResponse: assessmentToResponse(db.Assessment{
-				ID:           r.ID,
-				UserID:       r.UserID,
-				Type:         r.Type,
-				RightValue:   r.RightValue,
-				LeftValue:    r.LeftValue,
-				SessionID:    r.SessionID,
-				GripPosition: r.GripPosition,
-				UpdatedAt:    r.UpdatedAt,
+			AssessmentResponse: assessmentToResponse(assessmentResult{
+				Assessment: db.Assessment{
+					ID:           r.ID,
+					UserID:       r.UserID,
+					AssessmentID: r.AssessmentID,
+					RightValue:   r.RightValue,
+					LeftValue:    r.LeftValue,
+					SessionID:    r.SessionID,
+					GripPosition: r.GripPosition,
+					UpdatedAt:    r.UpdatedAt,
+				},
+				Label:      r.Label,
+				Unit:       r.Unit,
+				PerHand:    r.PerHand,
+				TrainingID: r.TrainingID,
 			}),
 			SessionDate: r.SessionDate.Time.UTC().Format(time.RFC3339),
 		})
@@ -404,10 +438,25 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 	return items
 }
 
-func assessmentsToResponses(rows []db.Assessment) []AssessmentResponse {
+func assessmentsToResponses(rows []db.GetSessionAssessmentsRow) []AssessmentResponse {
 	items := make([]AssessmentResponse, 0, len(rows))
-	for _, a := range rows {
-		items = append(items, assessmentToResponse(a))
+	for _, r := range rows {
+		items = append(items, assessmentToResponse(assessmentResult{
+			Assessment: db.Assessment{
+				ID:           r.ID,
+				UserID:       r.UserID,
+				AssessmentID: r.AssessmentID,
+				RightValue:   r.RightValue,
+				LeftValue:    r.LeftValue,
+				SessionID:    r.SessionID,
+				GripPosition: r.GripPosition,
+				UpdatedAt:    r.UpdatedAt,
+			},
+			Label:      r.Label,
+			Unit:       r.Unit,
+			PerHand:    r.PerHand,
+			TrainingID: r.TrainingID,
+		}))
 	}
 	return items
 }
@@ -451,21 +500,84 @@ type PrescriptionInputs struct {
 	// Empty when the athlete had done no assessment, which is the case where
 	// the clients fall back to the value the coach set.
 	Assessments []AssessmentResultSnapshot `json:"assessments"`
+	// The assessments the prescription references, as they read when the session
+	// was created, including the ones the athlete has never done. A reference
+	// with no result still has to be named on screen and unit checked before it
+	// resolves, and the definition stays editable afterwards.
+	Definitions []AssessmentDefinitionSnapshot `json:"definitions,omitempty"`
 }
 
 // AssessmentResultSnapshot is the last value the athlete had measured for one
 // assessment, per hand. A hand that has never been measured is absent rather
 // than zero, since the clients take the coach fallback for it.
 type AssessmentResultSnapshot struct {
-	Type       int32    `json:"type"`
-	RightValue *float32 `json:"right_value,omitempty"`
-	LeftValue  *float32 `json:"left_value,omitempty"`
+	AssessmentID string   `json:"assessment_id"`
+	RightValue   *float32 `json:"right_value,omitempty"`
+	LeftValue    *float32 `json:"left_value,omitempty"`
+}
+
+// AssessmentDefinitionSnapshot names an assessment a prescription references and
+// says what its result means, which is what lets a client unit check the
+// reference and label it without reading a definition it may not own.
+type AssessmentDefinitionSnapshot struct {
+	ID      string  `json:"id"`
+	Label   string  `json:"label"`
+	Prompt  *string `json:"prompt,omitempty"`
+	Unit    string  `json:"unit" enums:"kilograms,seconds,repetitions"`
+	PerHand bool    `json:"per_hand"`
+	// The training the assessment is run from, absent on the ones Crimpy ships.
+	TrainingID *string `json:"training_id,omitempty"`
+	// Set once the unit and the hands can no longer move, because results were
+	// measured against them or a training reads a number against them. An editor
+	// shows the two controls as fixed rather than letting a coach try and be
+	// refused.
+	UnitLocked bool `json:"unit_locked"`
+}
+
+func assessmentDefinitionToSnapshot(d db.AssessmentDefinition) AssessmentDefinitionSnapshot {
+	snapshot := AssessmentDefinitionSnapshot{
+		ID:      d.ID.String(),
+		Label:   d.Label,
+		Unit:    d.Unit,
+		PerHand: d.PerHand,
+	}
+	if d.Prompt.Valid {
+		snapshot.Prompt = &d.Prompt.String
+	}
+	if d.TrainingID.Valid {
+		trainingID := d.TrainingID.String()
+		snapshot.TrainingID = &trainingID
+	}
+	return snapshot
+}
+
+// lockedAssessmentUnits answers, for each named assessment, whether its unit and
+// hands are still free to change. Read once for a whole tree rather than per
+// definition.
+func lockedAssessmentUnits(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map[string]bool, error) {
+	locked := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		measured, err := q.CountAssessmentsForDefinition(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if measured > 0 {
+			locked[id.String()] = true
+			continue
+		}
+		referenced, err := q.CountReferencesToAssessment(ctx, id.String())
+		if err != nil {
+			return nil, err
+		}
+		locked[id.String()] = referenced > 0
+	}
+	return locked, nil
 }
 
 func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []AssessmentResultSnapshot {
 	results := make([]AssessmentResultSnapshot, 0, len(rows))
 	for _, r := range rows {
-		result := AssessmentResultSnapshot{Type: r.Type}
+		result := AssessmentResultSnapshot{AssessmentID: r.AssessmentID.String()}
 		if r.RightValue.Valid {
 			result.RightValue = &r.RightValue.Float32
 		}
@@ -537,7 +649,43 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 		}
 	}
 
+	// After the overrides are merged: one of them may reference an assessment the
+	// training itself does not, and the snapshot has to name every reference it
+	// actually carries.
+	definitions, err := freezeAssessmentDefinitions(ctx, qtx, snapshot.Items)
+	if err != nil {
+		return PrescriptionSnapshot{}, err
+	}
+	snapshot.ResolvedAgainst.Definitions = definitions
+
 	return snapshot, nil
+}
+
+// freezeAssessmentDefinitions names every assessment the items reference, so the
+// prescription can be labelled and unit checked later without reading a
+// definition the reader may not own, and without a rename restating what a past
+// session was asked for.
+func freezeAssessmentDefinitions(ctx context.Context, qtx *db.Queries, items []TrainingItemResponse) ([]AssessmentDefinitionSnapshot, error) {
+	refs := collectAssessmentRefs(responseRefSources(items))
+	ids := make([]pgtype.UUID, 0, len(refs))
+	for _, ref := range refs {
+		var id pgtype.UUID
+		if err := id.Scan(ref); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := qtx.GetAssessmentDefinitionsForPrescription(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	definitions := make([]AssessmentDefinitionSnapshot, 0, len(rows))
+	for _, row := range rows {
+		definitions = append(definitions, assessmentDefinitionToSnapshot(row))
+	}
+	return definitions, nil
 }
 
 // resolveRepItemLinks turns each rep's training item link into the value to
@@ -735,6 +883,17 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		})
 	}
 
+	// Checked here for the same reason, so an assessment the athlete may not
+	// record against is refused before the session and its reps are inserted.
+	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
+	for i, a := range req.Assessments {
+		id, ok := requireRecordableAssessment(c, h.queries, a.AssessmentID, userUUID)
+		if !ok {
+			return nil
+		}
+		assessmentUUIDs[i] = id
+	}
+
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
 		UserID:           userUUID,
 		Name:             req.Name,
@@ -780,7 +939,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		}
 	}
 
-	for _, a := range req.Assessments {
+	for i, a := range req.Assessments {
 		var rightValue, leftValue pgtype.Float4
 		var gripPosition pgtype.Int4
 
@@ -799,7 +958,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 
 		_, err := qtx.CreateAssessment(c.Context(), db.CreateAssessmentParams{
 			UserID:       userUUID,
-			Type:         a.Type,
+			AssessmentID: assessmentUUIDs[i],
 			RightValue:   rightValue,
 			LeftValue:    leftValue,
 			SessionID:    session.ID,

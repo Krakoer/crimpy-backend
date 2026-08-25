@@ -266,7 +266,7 @@ func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, 
 		if err != nil {
 			return err
 		}
-		if err := h.syncSessionOverrides(ctx, qtx, session, i, s.Overrides); err != nil {
+		if err := h.syncSessionOverrides(ctx, qtx, coachID, session, i, s.Overrides); err != nil {
 			return err
 		}
 	}
@@ -337,7 +337,7 @@ func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries,
 // syncSessionOverrides resolves every override against the session's own
 // training, so an item id belonging to another training, and therefore possibly
 // to another coach, is rejected rather than stored.
-func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, session db.CoachProgramWeekSession, index int, overrides []SessionOverrideRequest) error {
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, coachID pgtype.UUID, session db.CoachProgramWeekSession, index int, overrides []SessionOverrideRequest) error {
 	itemIDs := make([]pgtype.UUID, len(overrides))
 	for i, o := range overrides {
 		if err := itemIDs[i].Scan(o.ItemID); err != nil {
@@ -352,6 +352,8 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 		return err
 	}
 
+	bases := make([]TrainingItemRequest, len(overrides))
+	merged := make([]TrainingItemRequest, len(overrides))
 	for i, o := range overrides {
 		item, err := qtx.GetTrainingItemInTraining(ctx, db.GetTrainingItemInTrainingParams{
 			ID:         itemIDs[i],
@@ -363,7 +365,25 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 		if err != nil {
 			return err
 		}
-		if err := validateItemOverride(itemToRequest(item), o.Overrides); err != nil {
+		bases[i] = itemToRequest(item)
+		// An override replaces the loads and the targets wholesale, so the
+		// assessments to resolve are the ones the merged item references, not the
+		// ones the training already held. Reading the base instead would let an
+		// override name a definition the coach cannot reference.
+		if applied, err := applyItemOverride(bases[i], o.Overrides); err == nil {
+			merged[i] = applied
+		} else {
+			merged[i] = bases[i]
+		}
+	}
+
+	units, err := resolveAssessmentUnits(ctx, qtx, coachID, merged)
+	if err != nil {
+		return err
+	}
+
+	for i, o := range overrides {
+		if err := validateItemOverride(bases[i], o.Overrides, units); err != nil {
 			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, err)
 		}
 		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{

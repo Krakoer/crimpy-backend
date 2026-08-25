@@ -1,21 +1,97 @@
 basePath: /
 definitions:
+  handler.AssessmentDefinitionResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      is_builtin:
+        type: boolean
+      label:
+        type: string
+      per_hand:
+        type: boolean
+      prompt:
+        description: |-
+          Prompt and TrainingID are set on a coach written assessment and absent on
+          the ones Crimpy ships, which the app runs from a sensor protocol instead of
+          a training ending on a question.
+        type: string
+      training_id:
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
+      unit_locked:
+        description: |-
+          Set once the unit and the hands can no longer move: results were measured
+          against them, or a training reads a number against them.
+        type: boolean
+      updated_at:
+        type: string
+    type: object
+  handler.AssessmentDefinitionSnapshot:
+    properties:
+      id:
+        type: string
+      label:
+        type: string
+      per_hand:
+        type: boolean
+      prompt:
+        type: string
+      training_id:
+        description: The training the assessment is run from, absent on the ones Crimpy
+          ships.
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
+      unit_locked:
+        description: |-
+          Set once the unit and the hands can no longer move, because results were
+          measured against them or a training reads a number against them. An editor
+          shows the two controls as fixed rather than letting a coach try and be
+          refused.
+        type: boolean
+    type: object
   handler.AssessmentListItem:
     properties:
+      assessment_id:
+        type: string
       grip_position:
         type: integer
       id:
         type: string
+      label:
+        type: string
       left_value:
         type: number
+      per_hand:
+        type: boolean
       right_value:
         type: number
       session_date:
         type: string
       session_id:
         type: string
-      type:
-        type: integer
+      training_id:
+        description: The training the assessment is run from, absent for the ones
+          Crimpy ships.
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
       updated_at:
         type: string
       user_id:
@@ -23,29 +99,43 @@ definitions:
     type: object
   handler.AssessmentRequest:
     properties:
+      assessment_id:
+        type: string
       grip_position:
         type: integer
       left_value:
         type: number
       right_value:
         type: number
-      type:
-        type: integer
     type: object
   handler.AssessmentResponse:
     properties:
+      assessment_id:
+        type: string
       grip_position:
         type: integer
       id:
         type: string
+      label:
+        type: string
       left_value:
         type: number
+      per_hand:
+        type: boolean
       right_value:
         type: number
       session_id:
         type: string
-      type:
-        type: integer
+      training_id:
+        description: The training the assessment is run from, absent for the ones
+          Crimpy ships.
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
       updated_at:
         type: string
       user_id:
@@ -94,8 +184,27 @@ definitions:
       lastname:
         type: string
     type: object
+  handler.CreateAssessmentDefinitionRequest:
+    properties:
+      label:
+        type: string
+      per_hand:
+        type: boolean
+      prompt:
+        type: string
+      training_id:
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
+    type: object
   handler.CreateAssessmentRequest:
     properties:
+      assessment_id:
+        type: string
       grip_position:
         type: integer
       left_value:
@@ -104,8 +213,6 @@ definitions:
         type: number
       session_id:
         type: string
-      type:
-        type: integer
     type: object
   handler.CreateBuiltinTrainingWeightRequest:
     properties:
@@ -692,6 +799,12 @@ definitions:
     type: object
   handler.TrainingListItem:
     properties:
+      assessment:
+        allOf:
+        - $ref: '#/definitions/handler.AssessmentDefinitionSnapshot'
+        description: |-
+          Set when the training is a custom assessment, so a list can mark it and a
+          picker can offer it as something to measure rather than to train.
       comment:
         type: string
       created_at:
@@ -724,6 +837,12 @@ definitions:
     type: object
   handler.TrainingResponse:
     properties:
+      assessment:
+        allOf:
+        - $ref: '#/definitions/handler.AssessmentDefinitionSnapshot'
+        description: |-
+          Set when the training is a custom assessment: it ends on the question the
+          prompt asks, and the answer is recorded against this assessment.
       comment:
         type: string
       created_at:
@@ -740,6 +859,14 @@ definitions:
         items:
           $ref: '#/definitions/handler.TrainingItemResponse'
         type: array
+      referenced_assessments:
+        description: |-
+          The assessments the items reference, so a client can name and unit check a
+          percentage without reading a definition it may not own, which is the case
+          for an athlete running a training their coach wrote.
+        items:
+          $ref: '#/definitions/handler.AssessmentDefinitionSnapshot'
+        type: array
       title:
         type: string
       training_type:
@@ -747,6 +874,21 @@ definitions:
       updated_at:
         type: string
       user_id:
+        type: string
+    type: object
+  handler.UpdateAssessmentDefinitionRequest:
+    properties:
+      label:
+        type: string
+      per_hand:
+        type: boolean
+      prompt:
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
         type: string
     type: object
   handler.UpdateBuiltinTrainingWeightRequest:
@@ -1184,6 +1326,167 @@ paths:
       summary: Delete a user
       tags:
       - Admin
+  /api/assessment-definitions:
+    get:
+      description: The assessments Crimpy ships plus the caller's own, builtins first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Assessments
+          schema:
+            items:
+              $ref: '#/definitions/handler.AssessmentDefinitionResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List the assessments the caller may reference
+      tags:
+      - Assessments
+    post:
+      consumes:
+      - application/json
+      description: 'Turn one of the caller''s trainings into an assessment: it is
+        run like any training and ends on the question the prompt asks.'
+      parameters:
+      - description: Assessment details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateAssessmentDefinitionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created assessment
+          schema:
+            $ref: '#/definitions/handler.AssessmentDefinitionResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Training is already an assessment
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a custom assessment
+      tags:
+      - Assessments
+  /api/assessment-definitions/{id}:
+    delete:
+      description: Refused while results have been measured against it, so a history
+        can never be silently erased.
+      parameters:
+      - description: Assessment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Assessment deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Assessment has results or is referenced
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a custom assessment
+      tags:
+      - Assessments
+    put:
+      consumes:
+      - application/json
+      description: Rename an assessment or reword its question. The unit and the per
+        hand flag are frozen once results have been measured, since changing them
+        would restate what those numbers mean.
+      parameters:
+      - description: Assessment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated assessment
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateAssessmentDefinitionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated assessment
+          schema:
+            $ref: '#/definitions/handler.AssessmentDefinitionResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Unit or hands frozen by results or references
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a custom assessment
+      tags:
+      - Assessments
   /api/assessments:
     get:
       description: Retrieve all assessment results for the authenticated user, ordered
@@ -1232,8 +1535,7 @@ paths:
         "201":
           description: Assessment created
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/handler.AssessmentResponse'
         "400":
           description: Invalid request
           schema:
@@ -3298,6 +3600,12 @@ paths:
     get:
       description: Get all training templates for the authenticated user (without
         items).
+      parameters:
+      - description: Only the custom assessments when true, only the trainings that
+          are not one when false, the whole library when omitted
+        in: query
+        name: is_assessment
+        type: boolean
       produces:
       - application/json
       responses:
