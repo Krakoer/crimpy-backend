@@ -1,0 +1,44 @@
+info:
+  name: Create Coach Training
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/trainings"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Coach Max Hang 20mm",
+        "description": "The coach-owned training a program week schedules",
+        "training_type": "hangboard",
+        "items": [
+          {
+            "type": "repeater",
+            "cycles": 3,
+            "cycle_rest_seconds": 180,
+            "reps": 5,
+            "worktime_seconds": 7,
+            "rest_seconds": 3,
+            "hand": "both",
+            "granularity": "uniform",
+            "loads": [{"value": 30, "unit": "kg"}],
+            "hand_positions": [["HC"]],
+            "edge_sizes_mm": [20]
+          }
+        ]
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("coachTrainingId", res.body.id);
+          bru.setEnvVar("coachTrainingItemId", res.body.items[0].id);
+        }
