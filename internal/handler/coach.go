@@ -470,7 +470,7 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 
 // GetClientSession godoc
 // @Summary Get a client's session details
-// @Description Retrieve a specific session with its rep data and assessments for a user enrolled with the authenticated coach.
+// @Description Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -503,6 +503,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 
 	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
 	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
+	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
 
 	if repDatas == nil {
 		repDatas = []db.RepData{}
@@ -515,6 +516,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		Session:     sessionToResponse(session),
 		RepDatas:    repDatasToResponses(repDatas),
 		Assessments: assessmentsToResponses(assessments),
+		ItemResults: sessionItemResultsToResponses(itemResults),
 	})
 }
 

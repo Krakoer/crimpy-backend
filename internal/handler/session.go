@@ -31,6 +31,13 @@ const (
 	handBoth  = "both"
 )
 
+// Which open field a session item result answers, mirroring the
+// session_item_results_field_check constraint.
+const (
+	itemResultFieldReps   = "reps"
+	itemResultFieldCycles = "cycles"
+)
+
 // activityCount bounds the activity label shared with the app: 0 hangboard,
 // 1 climbing, 2 stretching, 3 workout, 4 other. It mirrors the
 // sessions_activity_check constraint in schema/schema.sql.
@@ -140,6 +147,20 @@ type CreateSessionRequest struct {
 	Duration         int32               `json:"duration"`
 	RepDatas         []RepDataRequest    `json:"rep_datas,omitempty"`
 	Assessments      []AssessmentRequest `json:"assessments,omitempty"`
+	// ItemResults are the counts the run resolved for items the prescription
+	// left open: an AMRAP the athlete measured by doing it, and the rounds an
+	// emom was carried through.
+	ItemResults []SessionItemResultRequest `json:"item_results,omitempty"`
+}
+
+// SessionItemResultRequest is one count a run answered an open item with. The
+// item is named by its id in the frozen prescription, and Occurrence tells the
+// passes apart when the item sits inside a block that repeats.
+type SessionItemResultRequest struct {
+	TrainingItemID string `json:"training_item_id"`
+	Occurrence     int32  `json:"occurrence"`
+	Field          string `json:"field" enums:"reps,cycles"`
+	Value          int32  `json:"value"`
 }
 
 type RepDataRequest struct {
@@ -338,6 +359,40 @@ func repDatasToResponses(rows []db.RepData) []RepDataResponse {
 	return items
 }
 
+// SessionItemResultResponse is a count the run recorded for an item the
+// prescription left open, as the endpoints return it.
+type SessionItemResultResponse struct {
+	ID        string `json:"id"`
+	SessionID string `json:"session_id"`
+	// TrainingItemID keys into the session prescription items, the same way a
+	// rep does, so the count can be shown against what was asked for.
+	TrainingItemID string `json:"training_item_id"`
+	Occurrence     int32  `json:"occurrence"`
+	Field          string `json:"field" enums:"reps,cycles"`
+	Value          int32  `json:"value"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+func sessionItemResultToResponse(r db.SessionItemResult) SessionItemResultResponse {
+	return SessionItemResultResponse{
+		ID:             r.ID.String(),
+		SessionID:      r.SessionID.String(),
+		TrainingItemID: r.TrainingItemID.String(),
+		Occurrence:     r.Occurrence,
+		Field:          r.Field,
+		Value:          r.Value,
+		UpdatedAt:      r.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+}
+
+func sessionItemResultsToResponses(rows []db.SessionItemResult) []SessionItemResultResponse {
+	items := make([]SessionItemResultResponse, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, sessionItemResultToResponse(r))
+	}
+	return items
+}
+
 // SessionDetailResponse is the envelope both session-read endpoints return: the
 // session with the reps and assessments recorded against it. Typed so the
 // clients reading training_item_id off a rep have a generated contract for it.
@@ -345,6 +400,9 @@ type SessionDetailResponse struct {
 	Session     SessionResponse      `json:"session"`
 	RepDatas    []RepDataResponse    `json:"rep_datas"`
 	Assessments []AssessmentResponse `json:"assessments"`
+	// ItemResults are the counts the run recorded for the items the
+	// prescription left open, empty for a session that had none.
+	ItemResults []SessionItemResultResponse `json:"item_results"`
 }
 
 // AssessmentResponse is an assessment result as the endpoints return it, with
@@ -716,6 +774,49 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 	return resolved, -1
 }
 
+// resolveItemResultLinks turns each open-count result into the item id to store
+// against it. It drops a result naming an item the frozen prescription does not
+// hold, for the reason resolveRepItemLinks drops a rep link: the ids rotate
+// whenever the coach edits the training mid run, and a count keyed to an item
+// nothing can resolve is unreadable anyway, so refusing would trade an
+// unreadable number for a lost session. A malformed id is a client bug rather
+// than a race and still fails the request, as does a second result claiming a
+// field of an item pass that is already answered, which the unique index would
+// otherwise refuse mid transaction. The returned index names the offending
+// result, or -1 when they all resolved; kept says which ones to write.
+func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemIDs map[string]struct{}, userID string) (ids []pgtype.UUID, kept []bool, errIndex int) {
+	ids = make([]pgtype.UUID, len(results))
+	kept = make([]bool, len(results))
+	seen := map[string]struct{}{}
+	for i, r := range results {
+		switch r.Field {
+		case itemResultFieldReps, itemResultFieldCycles:
+		default:
+			return nil, nil, i
+		}
+		if r.Value < 0 || r.Occurrence < 0 {
+			return nil, nil, i
+		}
+		var itemID pgtype.UUID
+		if err := itemID.Scan(r.TrainingItemID); err != nil {
+			return nil, nil, i
+		}
+		key := fmt.Sprintf("%s/%d/%s", itemID.String(), r.Occurrence, r.Field)
+		if _, dup := seen[key]; dup {
+			return nil, nil, i
+		}
+		seen[key] = struct{}{}
+		if _, ok := prescribedItemIDs[itemID.String()]; !ok {
+			slog.Warn("dropping item result naming an item the prescription does not hold",
+				"user_id", userID, "result_index", i, "training_item_id", itemID.String())
+			continue
+		}
+		ids[i] = itemID
+		kept[i] = true
+	}
+	return ids, kept, -1
+}
+
 // firstInvalidRepHand names the first rep carrying a hand the schema will not
 // take, or -1 when every rep is valid. Checked before the insert so a bad value
 // costs a 400 rather than the check constraint failing mid transaction.
@@ -757,7 +858,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, the counts it resolved for items the prescription left open: the reps an AMRAP turned out to be, and the rounds an emom was carried through. Each names one of the prescribed items, an occurrence telling repeated passes apart, and the field it answers.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -883,6 +984,13 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		})
 	}
 
+	itemResultIDs, keepItemResult, errIndex := resolveItemResultLinks(req.ItemResults, prescribedItemIDs, userID)
+	if errIndex >= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Invalid item result %d", errIndex),
+		})
+	}
+
 	// Checked here for the same reason, so an assessment the athlete may not
 	// record against is refused before the session and its reps are inserted.
 	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
@@ -936,6 +1044,24 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		if err != nil {
 			slog.Error("failed to create rep data", "user_id", userID, "session_id", session.ID, "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create rep data"})
+		}
+	}
+
+	for i, r := range req.ItemResults {
+		if !keepItemResult[i] {
+			continue
+		}
+		_, err = qtx.CreateSessionItemResult(c.Context(), db.CreateSessionItemResultParams{
+			SessionID:      session.ID,
+			UserID:         userUUID,
+			TrainingItemID: itemResultIDs[i],
+			Occurrence:     r.Occurrence,
+			Field:          r.Field,
+			Value:          r.Value,
+		})
+		if err != nil {
+			slog.Error("failed to create session item result", "user_id", userID, "session_id", session.ID, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create item result"})
 		}
 	}
 
@@ -1011,7 +1137,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 
 // GetSession godoc
 // @Summary Get a session by ID
-// @Description Retrieve a specific session by ID with all related rep data and assessments. User must own the session unless they are an admin.
+// @Description Retrieve a specific session by ID with all related rep data, assessments and the counts the run recorded for the items the prescription left open. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1030,11 +1156,13 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 
 	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
 	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
+	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
 
 	return c.JSON(SessionDetailResponse{
 		Session:     sessionToResponse(session),
 		RepDatas:    repDatasToResponses(repDatas),
 		Assessments: assessmentsToResponses(assessments),
+		ItemResults: sessionItemResultsToResponses(itemResults),
 	})
 }
 
