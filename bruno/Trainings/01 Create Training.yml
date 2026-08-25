@@ -13,36 +13,46 @@ http:
     type: json
     data: |-
       {
-        "name": "Max Hang 20mm",
+        "title": "Max Hang 20mm",
+        "description": "Heavy hangs on the 20mm edge",
+        "training_type": "hangboard",
         "is_favorite": false,
-        "is_assessment": false,
-        "rep_templates": [
+        "items": [
           {
-            "is_rest": false,
-            "right_hand": true,
-            "duration": 7000,
-            "target_weight": 10.0,
-            "index": 0,
-            "grip_position": 0
+            "type": "repeater",
+            "cycles": 2,
+            "cycle_rest_seconds": 180,
+            "reps": 3,
+            "worktime_seconds": 7,
+            "rest_seconds": 3,
+            "hand": "both",
+            "granularity": "rep",
+            "loads": [
+              {"value": 10, "unit": "kg"},
+              {"value": 12, "unit": "kg"},
+              {"value": 14, "unit": "kg"}
+            ],
+            "hand_positions": [["HC", "HC", "HC"]],
+            "edge_sizes_mm": [20, 20, 20]
           },
           {
-            "is_rest": true,
-            "right_hand": true,
-            "duration": 3000,
-            "target_weight": 0.0,
-            "index": 1,
-            "grip_position": 0
+            "type": "hangboard_rep",
+            "worktime_seconds": 10,
+            "rest_seconds": 0,
+            "hand": "both",
+            "granularity": "uniform",
+            "loads": [{"value": 100, "unit": "percent_bw"}],
+            "hand_positions": [["HC"]],
+            "edge_sizes_mm": [20]
           }
         ]
       }
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit
 
 runtime:
   scripts:
     - type: after-response
       code: |-
         if (res.status === 201) {
-          bru.setEnvVar("trainingId", res.body.ID);
+          bru.setEnvVar("trainingId", res.body.id);
         }
