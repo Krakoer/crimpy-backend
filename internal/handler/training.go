@@ -224,6 +224,13 @@ func collectAssessmentRefs(sources []assessmentRefSource) []string {
 				continue
 			}
 			for _, load := range loads {
+				// Only a percent_assessment load reads against an assessment, and
+				// only those are validated. Collecting an id from any other unit
+				// would resolve a reference nothing ever checked the caller may
+				// name, which is how a definition they do not own leaks back.
+				if load.Unit != percentAssessmentUnit {
+					continue
+				}
 				addAssessmentRef(seen, load.AssessmentID)
 			}
 		}

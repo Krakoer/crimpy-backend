@@ -42,6 +42,29 @@ func (q *Queries) CountRecordableAssessment(ctx context.Context, arg CountRecord
 	return count, err
 }
 
+const countReferencesToAssessment = `-- name: CountReferencesToAssessment :one
+SELECT (
+  SELECT COUNT(*) FROM training_items i
+  WHERE i.variable_targets::text LIKE '%' || $1::text || '%'
+     OR i.loads::text LIKE '%' || $1::text || '%'
+     OR i.left_loads::text LIKE '%' || $1::text || '%'
+) + (
+  SELECT COUNT(*) FROM coach_program_session_overrides o
+  WHERE o.overrides::text LIKE '%' || $1::text || '%'
+) AS total
+`
+
+// How many training items read a number against this assessment, counting both
+// the items themselves and the per-item overrides a coach set on a program week.
+// The reference lives inside opaque JSON, so it is matched by looking for the id
+// rather than by a foreign key.
+func (q *Queries) CountReferencesToAssessment(ctx context.Context, assessmentID string) (int32, error) {
+	row := q.db.QueryRow(ctx, countReferencesToAssessment, assessmentID)
+	var total int32
+	err := row.Scan(&total)
+	return total, err
+}
+
 const createAssessmentDefinition = `-- name: CreateAssessmentDefinition :one
 INSERT INTO assessment_definitions (user_id, training_id, label, prompt, unit, per_hand)
 VALUES ($1, $2, $3, $4, $5, $6)

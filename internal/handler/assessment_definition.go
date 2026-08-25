@@ -20,6 +20,10 @@ func NewAssessmentDefinitionHandler(queries *db.Queries, pool *pgxpool.Pool) *As
 	return &AssessmentDefinitionHandler{queries: queries, pool: pool}
 }
 
+// assessmentPerTrainingConstraint is the unique index that keeps a training from
+// being declared an assessment twice.
+const assessmentPerTrainingConstraint = "assessment_definitions_training_id_idx"
+
 type CreateAssessmentDefinitionRequest struct {
 	TrainingID string `json:"training_id"`
 	Label      string `json:"label"`
@@ -117,6 +121,7 @@ func (h *AssessmentDefinitionHandler) GetAssessmentDefinitions(c fiber.Ctx) erro
 // @Success 201 {object} AssessmentDefinitionResponse "Created assessment"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 403 {object} map[string]string "Access denied"
+// @Failure 409 {object} map[string]string "Training is already an assessment"
 // @Router /api/assessment-definitions [post]
 func (h *AssessmentDefinitionHandler) CreateAssessmentDefinition(c fiber.Ctx) error {
 	var userUUID pgtype.UUID
@@ -162,6 +167,14 @@ func (h *AssessmentDefinitionHandler) CreateAssessmentDefinition(c fiber.Ctx) er
 		PerHand:    req.PerHand,
 	})
 	if err != nil {
+		// One assessment per training, enforced by a unique index: a retry or a
+		// double tap is a refusal, not a server fault.
+		if constraint, isUnique := uniqueViolation(err); isUnique && constraint == assessmentPerTrainingConstraint {
+			slog.Warn("training is already an assessment", "training_id", req.TrainingID)
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "This training is already an assessment",
+			})
+		}
 		slog.Error("failed to create assessment definition", "training_id", req.TrainingID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 	}
@@ -182,6 +195,7 @@ func (h *AssessmentDefinitionHandler) CreateAssessmentDefinition(c fiber.Ctx) er
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Assessment not found"
+// @Failure 409 {object} map[string]string "Unit or hands frozen by results or references"
 // @Router /api/assessment-definitions/{id} [put]
 func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) error {
 	definition, definitionUUID, ok := h.ownedAssessmentDefinition().require(c)
@@ -211,8 +225,23 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update assessment"})
 		}
 		if measured > 0 {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 				"error": "Cannot change the unit or the hands of an assessment that has results",
+			})
+		}
+		// A target may only reference an assessment measured in the unit of the
+		// field it drives, checked when the target is written. Moving the unit
+		// afterwards would leave that reference standing but no longer resolving,
+		// so the coach would read a live prescription that quietly uses its
+		// fallback.
+		referenced, err := h.queries.CountReferencesToAssessment(c.Context(), definitionUUID.String())
+		if err != nil {
+			slog.Error("failed to count assessment references", "assessment_id", definitionUUID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update assessment"})
+		}
+		if referenced > 0 {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "Cannot change the unit or the hands of an assessment a training reads a number against",
 			})
 		}
 	}
@@ -239,10 +268,10 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Assessment ID"
-// @Success 204 "Deleted"
-// @Failure 400 {object} map[string]string "Assessment has results"
+// @Success 200 {object} map[string]string "Assessment deleted"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Assessment not found"
+// @Failure 409 {object} map[string]string "Assessment has results or is referenced"
 // @Router /api/assessment-definitions/{id} [delete]
 func (h *AssessmentDefinitionHandler) DeleteAssessmentDefinition(c fiber.Ctx) error {
 	_, definitionUUID, ok := h.ownedAssessmentDefinition().require(c)
@@ -256,8 +285,21 @@ func (h *AssessmentDefinitionHandler) DeleteAssessmentDefinition(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete assessment"})
 	}
 	if measured > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
 			"error": "Cannot delete an assessment that has results",
+		})
+	}
+
+	// A training reading a number against it would be left holding a reference
+	// nothing answers, which refuses its next save rather than degrading.
+	referenced, err := h.queries.CountReferencesToAssessment(c.Context(), definitionUUID.String())
+	if err != nil {
+		slog.Error("failed to count assessment references", "assessment_id", definitionUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete assessment"})
+	}
+	if referenced > 0 {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "Cannot delete an assessment a training reads a number against",
 		})
 	}
 
@@ -266,5 +308,5 @@ func (h *AssessmentDefinitionHandler) DeleteAssessmentDefinition(c fiber.Ctx) er
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete assessment"})
 	}
 
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Assessment deleted successfully"})
 }

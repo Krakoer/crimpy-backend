@@ -225,8 +225,8 @@ func TestAssessmentDefinitions_FreezesUnitOnceMeasured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Errorf("Expected %d changing the unit of a measured assessment, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Errorf("Expected %d changing the unit of a measured assessment, got %d", fiber.StatusConflict, resp.StatusCode)
 	}
 
 	body, _ = json.Marshal(map[string]interface{}{
@@ -267,8 +267,8 @@ func TestAssessmentDefinitions_RefusesDeleteWithResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Errorf("Expected %d deleting a measured assessment, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Errorf("Expected %d deleting a measured assessment, got %d", fiber.StatusConflict, resp.StatusCode)
 	}
 
 	// The training it is run from cannot go either: that would leave the
@@ -279,5 +279,205 @@ func TestAssessmentDefinitions_RefusesDeleteWithResults(t *testing.T) {
 	}
 	if resp.StatusCode != fiber.StatusConflict {
 		t.Errorf("Expected %d deleting the training an assessment measures, got %d", fiber.StatusConflict, resp.StatusCode)
+	}
+}
+
+// A load that is not a percentage of anything has no business naming an
+// assessment. Collecting an id from one anyway resolved a reference nothing had
+// checked the caller may name, which handed back another user's definition.
+func TestAssessmentReference_IgnoresAnIdOnANonPercentLoad(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, ownerToken := testutil.CreateTestUser(t, queries, "assessleak1@test.com")
+	_, otherToken := testutil.CreateTestUser(t, queries, "assessleak2@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	_, assessmentID := createAssessmentTraining(t, app, ownerToken, "Private test", "seconds", true)
+
+	status, training := postJSON(t, app, "/api/trainings", otherToken, map[string]interface{}{
+		"title": "Probe",
+		"items": []map[string]interface{}{
+			{
+				"type": "exercise",
+				"reps": 5,
+				// A plain kilogram load, so nothing validates the id beside it.
+				"loads": []map[string]interface{}{
+					{"unit": "kg", "value": 10, "assessment_id": assessmentID},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected the training to be accepted, got %d: %v", status, training)
+	}
+
+	// The stray id resolves to nothing, so no definition is named back.
+	if referenced, present := training["referenced_assessments"]; present && referenced != nil {
+		t.Errorf("Expected no assessment named from a non percent load, got %v", referenced)
+	}
+}
+
+// A target may only reference an assessment measured in the unit of the field it
+// drives. Moving the unit afterwards would leave the reference standing but no
+// longer resolving, so the coach would read a prescription that quietly uses its
+// fallback.
+func TestAssessmentDefinitions_FreezesUnitWhileReferenced(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "assessfreeze@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	_, assessmentID := createAssessmentTraining(t, app, token, "Lock off", "seconds", false)
+
+	status, _ := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title": "Lock off work",
+		"items": []map[string]interface{}{
+			{
+				"type":     "exercise",
+				"duration": 10,
+				"variable_targets": map[string]interface{}{
+					"duration": map[string]interface{}{
+						"assessment_id": assessmentID, "percent": 50, "fallback": 10,
+					},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the referencing training, got %d", status)
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"label": "Lock off", "prompt": "How long?", "unit": "repetitions",
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, "/api/assessment-definitions/"+assessmentID, body, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Errorf("Expected %d changing the unit of a referenced assessment, got %d", fiber.StatusConflict, resp.StatusCode)
+	}
+
+	// A rename is still fine: it names the assessment, it does not say what its
+	// numbers mean.
+	body, _ = json.Marshal(map[string]interface{}{
+		"label": "One arm lock off", "prompt": "How long?", "unit": "seconds",
+	})
+	resp, err = app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, "/api/assessment-definitions/"+assessmentID, body, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected a rename to be allowed, got %d", resp.StatusCode)
+	}
+}
+
+// Deleting a definition a training reads against would leave that training
+// holding a reference nothing answers, refusing its next save.
+func TestAssessmentDefinitions_RefusesDeleteWhileReferenced(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "assessrefdel@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	_, assessmentID := createAssessmentTraining(t, app, token, "Pull up pyramid", "repetitions", false)
+
+	status, _ := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title": "Volume day",
+		"items": []map[string]interface{}{
+			{
+				"type": "exercise",
+				"reps": 8,
+				"variable_targets": map[string]interface{}{
+					"reps": map[string]interface{}{
+						"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+					},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201, got %d", status)
+	}
+
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodDelete, "/api/assessment-definitions/"+assessmentID, nil, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Errorf("Expected %d deleting a referenced assessment, got %d", fiber.StatusConflict, resp.StatusCode)
+	}
+}
+
+// One assessment per training, so a retry or a double tap is a refusal rather
+// than a server fault.
+func TestAssessmentDefinitions_RefusesASecondDeclaration(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "assessdup@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	trainingID, _ := createAssessmentTraining(t, app, token, "Pull up pyramid", "repetitions", false)
+
+	status, _ := postJSON(t, app, "/api/assessment-definitions", token, map[string]interface{}{
+		"training_id": trainingID,
+		"label":       "Pull up pyramid again",
+		"prompt":      "How many?",
+		"unit":        "repetitions",
+	})
+	if status != fiber.StatusConflict {
+		t.Errorf("Expected %d declaring the same training twice, got %d", fiber.StatusConflict, status)
+	}
+}
+
+// The filter is a three state bool, so each state is worth pinning.
+func TestTrainings_FilterOnIsAssessment(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "assessfilter@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	createAssessmentTraining(t, app, token, "Pull up pyramid", "repetitions", false)
+	if status, _ := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title": "Plain training",
+	}); status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the plain training, got %d", status)
+	}
+
+	titles := func(query string) []string {
+		resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/trainings"+query, nil, token))
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		var list []map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&list)
+		found := make([]string, 0, len(list))
+		for _, item := range list {
+			found = append(found, item["title"].(string))
+		}
+		return found
+	}
+
+	if got := titles(""); len(got) != 2 {
+		t.Errorf("Expected the whole library without the filter, got %v", got)
+	}
+	if got := titles("?is_assessment=true"); len(got) != 1 || got[0] != "Pull up pyramid" {
+		t.Errorf("Expected only the assessment, got %v", got)
+	}
+	if got := titles("?is_assessment=false"); len(got) != 1 || got[0] != "Plain training" {
+		t.Errorf("Expected only the plain training, got %v", got)
+	}
+
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/trainings?is_assessment=maybe", nil, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected %d for an unreadable filter, got %d", fiber.StatusBadRequest, resp.StatusCode)
 	}
 }

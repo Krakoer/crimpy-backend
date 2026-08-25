@@ -57,3 +57,18 @@ WHERE d.id = @assessment_id
       WHERE s.training_id = d.training_id AND p.user_id = @user_id
     )
   );
+
+-- name: CountReferencesToAssessment :one
+-- How many training items read a number against this assessment, counting both
+-- the items themselves and the per-item overrides a coach set on a program week.
+-- The reference lives inside opaque JSON, so it is matched by looking for the id
+-- rather than by a foreign key.
+SELECT (
+  SELECT COUNT(*) FROM training_items i
+  WHERE i.variable_targets::text LIKE '%' || @assessment_id::text || '%'
+     OR i.loads::text LIKE '%' || @assessment_id::text || '%'
+     OR i.left_loads::text LIKE '%' || @assessment_id::text || '%'
+) + (
+  SELECT COUNT(*) FROM coach_program_session_overrides o
+  WHERE o.overrides::text LIKE '%' || @assessment_id::text || '%'
+) AS total;

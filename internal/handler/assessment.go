@@ -41,7 +41,7 @@ func (h *AssessmentHandler) ownedAssessment() ownedResource[db.Assessment] {
 // @Produce json
 // @Security BearerAuth
 // @Param request body CreateAssessmentRequest true "Assessment details"
-// @Success 201 {object} map[string]interface{} "Assessment created"
+// @Success 201 {object} AssessmentResponse "Assessment created"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 403 {object} map[string]string "Access denied"
@@ -117,7 +117,22 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(assessment)
+	// The definition is loaded rather than echoed from the request, so the
+	// response carries the same shape as every other assessment read path
+	// instead of the raw row, whose Go field names would leak as PascalCase.
+	definition, err := h.queries.GetAssessmentDefinition(c.Context(), assessmentUUID)
+	if err != nil {
+		slog.Error("failed to retrieve assessment definition", "assessment_id", assessmentUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(assessmentToResponse(assessmentResult{
+		Assessment: assessment,
+		Label:      definition.Label,
+		Unit:       definition.Unit,
+		PerHand:    definition.PerHand,
+		TrainingID: definition.TrainingID,
+	}))
 }
 
 // GetAssessments godoc

@@ -849,6 +849,17 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		})
 	}
 
+	// Checked here for the same reason, so an assessment the athlete may not
+	// record against is refused before the session and its reps are inserted.
+	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
+	for i, a := range req.Assessments {
+		id, ok := requireRecordableAssessment(c, h.queries, a.AssessmentID, userUUID)
+		if !ok {
+			return nil
+		}
+		assessmentUUIDs[i] = id
+	}
+
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
 		UserID:           userUUID,
 		Name:             req.Name,
@@ -894,7 +905,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		}
 	}
 
-	for _, a := range req.Assessments {
+	for i, a := range req.Assessments {
 		var rightValue, leftValue pgtype.Float4
 		var gripPosition pgtype.Int4
 
@@ -911,14 +922,9 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			gripPosition.Valid = true
 		}
 
-		assessmentUUID, ok := requireRecordableAssessment(c, h.queries, a.AssessmentID, userUUID)
-		if !ok {
-			return nil
-		}
-
 		_, err := qtx.CreateAssessment(c.Context(), db.CreateAssessmentParams{
 			UserID:       userUUID,
-			AssessmentID: assessmentUUID,
+			AssessmentID: assessmentUUIDs[i],
 			RightValue:   rightValue,
 			LeftValue:    leftValue,
 			SessionID:    session.ID,

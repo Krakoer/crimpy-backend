@@ -433,6 +433,15 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    },
+                    "409": {
+                        "description": "Training is already an assessment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
@@ -506,6 +515,15 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    },
+                    "409": {
+                        "description": "Unit or hands frozen by results or references",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             },
@@ -533,11 +551,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Deleted"
-                    },
-                    "400": {
-                        "description": "Assessment has results",
+                    "200": {
+                        "description": "Assessment deleted",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -556,6 +571,15 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Assessment has results or is referenced",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -643,8 +667,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Assessment created",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handler.AssessmentResponse"
                         }
                     },
                     "400": {

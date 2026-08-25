@@ -1364,6 +1364,12 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "409":
+          description: Training is already an assessment
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Create a custom assessment
@@ -1382,10 +1388,8 @@ paths:
       produces:
       - application/json
       responses:
-        "204":
-          description: Deleted
-        "400":
-          description: Assessment has results
+        "200":
+          description: Assessment deleted
           schema:
             additionalProperties:
               type: string
@@ -1398,6 +1402,12 @@ paths:
             type: object
         "404":
           description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Assessment has results or is referenced
           schema:
             additionalProperties:
               type: string
@@ -1446,6 +1456,12 @@ paths:
             type: object
         "404":
           description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Unit or hands frozen by results or references
           schema:
             additionalProperties:
               type: string
@@ -1503,8 +1519,7 @@ paths:
         "201":
           description: Assessment created
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/handler.AssessmentResponse'
         "400":
           description: Invalid request
           schema:
