@@ -13,11 +13,29 @@ http:
     type: json
     data: |-
       {
-        "email": "jane@example.com",
+        "email": "{{registeredEmail}}",
         "password": "secret123",
         "firstname": "Jane",
         "lastname": "Doe",
-        "is_coach": false
+        "is_coach": true
       }
   auth:
     type: none
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setEnvVar("registeredEmail", bru.interpolate("{{$randomEmail}}"));
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("registeredUserId", res.body.user.id);
+        }
+
+docs:
+  content: |-
+    Registers a throwaway coach on a random email, so the account is a pending
+    coach the Admin folder can validate, reject and delete in the same run. The
+    email and the new user id are stored in registeredEmail and registeredUserId.
+  type: text/markdown

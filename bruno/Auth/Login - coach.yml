@@ -16,6 +16,8 @@ http:
         "email": "{{coachUsername}}",
         "password": "{{coachPwd}}"
       }
+  auth:
+    type: none
 
 runtime:
   scripts:

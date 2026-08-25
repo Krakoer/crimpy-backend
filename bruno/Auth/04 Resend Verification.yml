@@ -1,7 +1,7 @@
 info:
   name: Resend Verification
   type: http
-  seq: 5
+  seq: 6
 
 http:
   method: POST
@@ -13,11 +13,22 @@ http:
     type: json
     data: |-
       {
-        "email": "jane@example.com"
+        "email": "{{registeredEmail}}"
       }
+  auth:
+    type: none
 
 settings:
   encodeUrl: true
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs:
+  content: |-
+    Answers 429 in a full run. Registering already sent a verification email,
+    and a resend is refused for 10 minutes after the last one, so the address
+    Register just created is always inside its own cooldown. Point
+    registeredEmail at an unverified address whose last email is older than that
+    to see the 200.
+  type: text/markdown

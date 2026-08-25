@@ -1,0 +1,19 @@
+info:
+  name: Delete Session
+  type: http
+  seq: 9
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/sessions/{{sessionId}}"
+  body:
+    type: none
+  auth:
+    type: bearer
+    token: "{{authTokenUser}}"
+
+docs:
+  content: |-
+    Removes the assessment session Sessions left behind, which the Assessments
+    and Clients requests both read on the way here.
+  type: text/markdown

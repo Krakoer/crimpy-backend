@@ -1,7 +1,7 @@
 info:
   name: Leave Coach
   type: http
-  seq: 7
+  seq: 5
 
 http:
   method: DELETE
@@ -10,4 +10,4 @@ http:
     type: none
   auth:
     type: bearer
-    token: "{{authToken}}"
+    token: "{{authTokenUser}}"

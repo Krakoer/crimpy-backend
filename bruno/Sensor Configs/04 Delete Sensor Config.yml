@@ -8,3 +8,4 @@ http:
   url: "{{baseUrl}}/api/sensor-configs/{{sensorConfigId}}"
   body:
     type: none
+  auth: inherit

@@ -18,3 +18,4 @@ http:
         "tare": 0.15,
         "coef": 1.041
       }
+  auth: inherit

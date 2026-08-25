@@ -1,0 +1,11 @@
+info:
+  name: Get My Program Training
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/user/programs/{{programId}}/trainings/{{coachTrainingId}}"
+  body:
+    type: none
+  auth: inherit

@@ -1,11 +1,11 @@
 info:
-  name: Login - user
+  name: Refresh Token
   type: http
-  seq: 2
+  seq: 8
 
 http:
   method: POST
-  url: "{{baseUrl}}/auth/login"
+  url: "{{baseUrl}}/auth/refresh"
   headers:
     - name: Content-Type
       value: application/json
@@ -13,8 +13,7 @@ http:
     type: json
     data: |-
       {
-        "email": "{{user}}",
-        "password": "{{userPwd}}"
+        "refresh_token": "{{refreshToken}}"
       }
   auth:
     type: none
@@ -28,8 +27,8 @@ runtime:
           bru.setEnvVar("refreshToken", res.body.refresh_token);
         }
 
-settings:
-  encodeUrl: true
-  timeout: 0
-  followRedirects: true
-  maxRedirects: 5
+docs:
+  content: |-
+    The refresh token is rotated: the one sent is revoked and the response
+    carries its replacement, which is stored back into refreshToken.
+  type: text/markdown

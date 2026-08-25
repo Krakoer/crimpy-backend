@@ -18,6 +18,4 @@ http:
         "date": "2026-05-29T08:15:00Z",
         "duration": 3700
       }
-  auth:
-    type: bearer
-    token: "{{authTokenUser}}"
+  auth: inherit

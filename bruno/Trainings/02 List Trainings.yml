@@ -8,6 +8,4 @@ http:
   url: "{{baseUrl}}/api/trainings"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

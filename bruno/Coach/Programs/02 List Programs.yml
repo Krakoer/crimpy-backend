@@ -8,6 +8,4 @@ http:
   url: "{{baseUrl}}/api/coach/clients/{{clientUserId}}/programs"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authTokenCoach}}"
+  auth: inherit

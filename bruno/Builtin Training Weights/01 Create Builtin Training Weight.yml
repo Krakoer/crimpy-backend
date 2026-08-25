@@ -18,11 +18,12 @@ http:
         "custom_weight_left": 5.0,
         "custom_weight_right": 7.5
       }
+  auth: inherit
 
 runtime:
   scripts:
     - type: after-response
       code: |-
         if (res.status === 201) {
-          bru.setEnvVar("builtinTrainingWeightId", res.body.ID);
+          bru.setEnvVar("builtinTrainingWeightId", res.body.id);
         }

@@ -8,6 +8,4 @@ http:
   url: "{{baseUrl}}/api/user/programs"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authTokenUser}}"
+  auth: inherit

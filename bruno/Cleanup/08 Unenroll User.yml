@@ -1,13 +1,11 @@
 info:
   name: Unenroll User
   type: http
-  seq: 6
+  seq: 8
 
 http:
   method: DELETE
   url: "{{baseUrl}}/api/coach/enrollments/{{clientUserId}}"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

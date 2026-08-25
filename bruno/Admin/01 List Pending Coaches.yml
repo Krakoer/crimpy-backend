@@ -8,6 +8,4 @@ http:
   url: "{{baseUrl}}/api/admin/coaches/pending"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

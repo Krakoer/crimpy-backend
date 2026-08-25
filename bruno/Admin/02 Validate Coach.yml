@@ -5,9 +5,15 @@ info:
 
 http:
   method: PUT
-  url: "{{baseUrl}}/api/admin/coaches/{{userId}}/validate"
+  url: "{{baseUrl}}/api/admin/coaches/{{registeredUserId}}/validate"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit
+
+docs:
+  content: |-
+    Answers 400 with "Coach must verify their email before admin validation"
+    against the coach Register created, since verifying needs the token that is
+    only mailed out. Fill registeredUserId with an already verified pending coach
+    to see the 200. Reject Coach below takes no such step and works as it is.
+  type: text/markdown

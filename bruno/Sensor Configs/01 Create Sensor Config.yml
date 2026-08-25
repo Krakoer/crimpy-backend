@@ -19,6 +19,7 @@ http:
         "tare": 0.12,
         "coef": 1.034
       }
+  auth: inherit
 
 runtime:
   scripts:

@@ -38,14 +38,12 @@ http:
           }
         ]
       }
-  auth:
-    type: bearer
-    token: "{{authTokenUser}}"
+  auth: inherit
 
 runtime:
   scripts:
     - type: after-response
       code: |-
         if (res.status === 201) {
-          bru.setEnvVar("sessionId", res.body.ID);
+          bru.setEnvVar("sessionId", res.body.id);
         }
