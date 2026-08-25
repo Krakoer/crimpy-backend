@@ -533,7 +533,7 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 			{
 				"average_weight": 30.0,
 				"is_rest":        false,
-				"right_hand":     true,
+				"hand":           "right",
 				"duration":       7,
 				"target_weight":  35.0,
 				"index":          0,
@@ -543,7 +543,7 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 			{
 				"average_weight": 0.0,
 				"is_rest":        true,
-				"right_hand":     true,
+				"hand":           "right",
 				"duration":       3,
 				"target_weight":  0.0,
 				"index":          1,
@@ -589,6 +589,134 @@ func TestSessionHandler_CreateSession_RepDataEdgeSize(t *testing.T) {
 	rest := repDatas[1].(map[string]interface{})
 	if rest["edge_size_mm"] != nil {
 		t.Errorf("Expected no edge size on the rest rep, got %v", rest["edge_size_mm"])
+	}
+}
+
+func TestSessionHandler_CreateSession_RepDataHand(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session13@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Hand Session",
+		"notes":    "",
+		"activity": 0,
+		"duration": 60,
+		"rep_datas": []map[string]interface{}{
+			{
+				"average_weight": 30.0,
+				"is_rest":        false,
+				"hand":           "right",
+				"duration":       7,
+				"target_weight":  35.0,
+				"index":          0,
+				"grip_position":  0,
+			},
+			{
+				"average_weight": 28.0,
+				"is_rest":        false,
+				"hand":           "left",
+				"duration":       7,
+				"target_weight":  35.0,
+				"index":          1,
+				"grip_position":  0,
+			},
+			{
+				"average_weight": 0.0,
+				"is_rest":        false,
+				"hand":           "both",
+				"duration":       10,
+				"target_weight":  0.0,
+				"index":          2,
+				"grip_position":  0,
+			},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusCreated, resp.StatusCode)
+	}
+
+	var createdSession map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&createdSession)
+	sessionID := createdSession["id"].(string)
+
+	req = testutil.NewRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	repDatas, ok := response["rep_datas"].([]interface{})
+	if !ok || len(repDatas) != 3 {
+		t.Fatalf("Expected 3 rep datas, got %v", response["rep_datas"])
+	}
+
+	for i, want := range []string{"right", "left", "both"} {
+		rep := repDatas[i].(map[string]interface{})
+		if rep["hand"] != want {
+			t.Errorf("Expected hand %q on rep %d, got %v", want, i, rep["hand"])
+		}
+	}
+}
+
+func TestSessionHandler_CreateSession_RejectsUnknownRepHand(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, token := testutil.CreateTestUser(t, queries, "session14@test.com")
+
+	sessionHandler := handler.NewSessionHandler(queries, pool)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler: sessionHandler,
+	})
+
+	reqBody := map[string]interface{}{
+		"name":     "Bad Hand Session",
+		"notes":    "",
+		"activity": 0,
+		"duration": 60,
+		"rep_datas": []map[string]interface{}{
+			{
+				"average_weight": 30.0,
+				"is_rest":        false,
+				"hand":           "either",
+				"duration":       7,
+				"target_weight":  35.0,
+				"index":          0,
+				"grip_position":  0,
+			},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
 	}
 }
 
@@ -1088,7 +1216,7 @@ func TestSessionHandler_CreateSession_LinksRepsToPrescriptionItems(t *testing.T)
 			{
 				"average_weight":   30.0,
 				"is_rest":          false,
-				"right_hand":       true,
+				"hand":             "right",
 				"duration":         7,
 				"target_weight":    35.0,
 				"index":            0,
@@ -1099,7 +1227,7 @@ func TestSessionHandler_CreateSession_LinksRepsToPrescriptionItems(t *testing.T)
 			{
 				"average_weight":   22.0,
 				"is_rest":          false,
-				"right_hand":       true,
+				"hand":             "right",
 				"duration":         7,
 				"target_weight":    25.0,
 				"index":            1,
@@ -1110,7 +1238,7 @@ func TestSessionHandler_CreateSession_LinksRepsToPrescriptionItems(t *testing.T)
 			{
 				"average_weight": 0.0,
 				"is_rest":        true,
-				"right_hand":     true,
+				"hand":           "right",
 				"duration":       3,
 				"target_weight":  0.0,
 				"index":          2,
@@ -1264,7 +1392,7 @@ func repItemLinkPayload(links map[string]interface{}, itemID string) []byte {
 			{
 				"average_weight":   30.0,
 				"is_rest":          false,
-				"right_hand":       true,
+				"hand":             "right",
 				"duration":         7,
 				"target_weight":    35.0,
 				"index":            0,
@@ -1302,7 +1430,7 @@ func TestSessionHandler_CreateSession_KeepsTargetUnmeasuredOnReps(t *testing.T) 
 			{
 				"average_weight": 30.0,
 				"is_rest":        false,
-				"right_hand":     true,
+				"hand":           "right",
 				"duration":       7,
 				"target_weight":  32.0,
 				"index":          0,
@@ -1311,7 +1439,7 @@ func TestSessionHandler_CreateSession_KeepsTargetUnmeasuredOnReps(t *testing.T) 
 			{
 				"average_weight":    0.0,
 				"is_rest":           false,
-				"right_hand":        true,
+				"hand":              "right",
 				"duration":          7,
 				"target_weight":     0.0,
 				"index":             1,

@@ -5156,13 +5156,14 @@ const docTemplate = `{
                 "grip_position": {
                     "type": "integer"
                 },
+                "hand": {
+                    "description": "Hand is which hand pulled the rep: \"left\", \"right\" or \"both\". A two handed\nhang is a state of its own, not one of the single hands.",
+                    "type": "string"
+                },
                 "index": {
                     "type": "integer"
                 },
                 "is_rest": {
-                    "type": "boolean"
-                },
-                "right_hand": {
                     "type": "boolean"
                 },
                 "target_unmeasured": {
@@ -5193,6 +5194,10 @@ const docTemplate = `{
                 "grip_position": {
                     "type": "integer"
                 },
+                "hand": {
+                    "description": "Hand is which hand pulled the rep: \"left\", \"right\" or \"both\".",
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -5200,9 +5205,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "is_rest": {
-                    "type": "boolean"
-                },
-                "right_hand": {
                     "type": "boolean"
                 },
                 "session_id": {

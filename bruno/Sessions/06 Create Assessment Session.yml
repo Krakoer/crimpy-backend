@@ -20,8 +20,8 @@ http:
         "activity": 0,
         "duration": 1800,
         "rep_datas": [
-          { "average_weight": 24.3, "is_rest": false, "right_hand": true,  "duration": 7000, "target_weight": 25.0, "index": 0, "grip_position": 0 },
-          { "average_weight": 22.1, "is_rest": false, "right_hand": false, "duration": 7000, "target_weight": 25.0, "index": 1, "grip_position": 0 }
+          { "average_weight": 24.3, "is_rest": false, "hand": "right",  "duration": 7000, "target_weight": 25.0, "index": 0, "grip_position": 0 },
+          { "average_weight": 22.1, "is_rest": false, "hand": "left", "duration": 7000, "target_weight": 25.0, "index": 1, "grip_position": 0 }
         ],
         "assessments": [
           {
