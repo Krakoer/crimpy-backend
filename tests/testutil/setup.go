@@ -71,6 +71,13 @@ func CleanupTestDB(t *testing.T, pool *pgxpool.Pool) {
 		t.Logf("Warning: Failed to clean up sessions: %v", err)
 	}
 
+	// Delete custom assessments. Runs before trainings, since a definition holds
+	// the training it is run from down with ON DELETE RESTRICT.
+	_, err = pool.Exec(ctx, "DELETE FROM assessment_definitions WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
+	if err != nil {
+		t.Logf("Warning: Failed to clean up assessment_definitions: %v", err)
+	}
+
 	// Delete programs (weeks and sessions cascade). Runs before trainings, since
 	// a week session holds a training down with ON DELETE RESTRICT.
 	_, err = pool.Exec(ctx, "DELETE FROM coach_programs WHERE coach_id IN (SELECT id FROM users WHERE email LIKE '%test%')")
@@ -107,6 +114,17 @@ type HandlerConfig struct {
 		GetPendingCoaches(fiber.Ctx) error
 		ValidateCoach(fiber.Ctx) error
 		RejectCoach(fiber.Ctx) error
+	}
+	AssessmentHandler interface {
+		CreateAssessment(fiber.Ctx) error
+		GetAssessments(fiber.Ctx) error
+		DeleteAssessment(fiber.Ctx) error
+	}
+	AssessmentDefinitionHandler interface {
+		GetAssessmentDefinitions(fiber.Ctx) error
+		CreateAssessmentDefinition(fiber.Ctx) error
+		UpdateAssessmentDefinition(fiber.Ctx) error
+		DeleteAssessmentDefinition(fiber.Ctx) error
 	}
 	SessionHandler interface {
 		CreateSession(fiber.Ctx) error
@@ -190,6 +208,19 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	if config.AuthHandler != nil {
 		api.Get("/user", config.AuthHandler.GetCurrentUser)
 		api.Put("/auth/change-password", config.AuthHandler.ChangePassword)
+	}
+
+	if config.AssessmentHandler != nil {
+		api.Post("/assessments", config.AssessmentHandler.CreateAssessment)
+		api.Get("/assessments", config.AssessmentHandler.GetAssessments)
+		api.Delete("/assessments/:id", config.AssessmentHandler.DeleteAssessment)
+	}
+
+	if config.AssessmentDefinitionHandler != nil {
+		api.Get("/assessment-definitions", config.AssessmentDefinitionHandler.GetAssessmentDefinitions)
+		api.Post("/assessment-definitions", config.AssessmentDefinitionHandler.CreateAssessmentDefinition)
+		api.Put("/assessment-definitions/:id", config.AssessmentDefinitionHandler.UpdateAssessmentDefinition)
+		api.Delete("/assessment-definitions/:id", config.AssessmentDefinitionHandler.DeleteAssessmentDefinition)
 	}
 
 	if config.SessionHandler != nil {
@@ -410,3 +441,11 @@ func NewJSONRequestWithAuth(method, url string, body []byte, token string) *http
 	req.Header.Set("Authorization", GetAuthHeader(token))
 	return req
 }
+
+// The assessments Crimpy ships, seeded by the custom_assessments migration. The
+// ids are fixed, so a test can reference one without creating it.
+const (
+	BuiltinCriticalForceID = "55970ac0-4544-4945-80cd-4841f7c58fe5"
+	BuiltinMaxForceID      = "f7954158-63ba-4f0b-a125-6ef195fa6442"
+	BuiltinEndurance60ID   = "493acbdd-6fe7-4f25-987c-575ccf433293"
+)

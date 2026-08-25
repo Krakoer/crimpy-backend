@@ -15,7 +15,7 @@ type AssessmentHandler struct {
 
 type CreateAssessmentRequest struct {
 	SessionID    string   `json:"session_id"`
-	Type         int32    `json:"type"`
+	AssessmentID string   `json:"assessment_id"`
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
@@ -99,9 +99,14 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		gripPosition.Valid = true
 	}
 
+	assessmentUUID, ok := requireRecordableAssessment(c, h.queries, req.AssessmentID, userUUID)
+	if !ok {
+		return nil
+	}
+
 	assessment, err := h.queries.CreateAssessment(c.Context(), db.CreateAssessmentParams{
 		UserID:       userUUID,
-		Type:         req.Type,
+		AssessmentID: assessmentUUID,
 		RightValue:   rightValue,
 		LeftValue:    leftValue,
 		SessionID:    session.ID,
@@ -172,4 +177,35 @@ func (h *AssessmentHandler) DeleteAssessment(c fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Assessment deleted successfully"})
+}
+
+// requireRecordableAssessment resolves the assessment a result names and refuses
+// it unless the caller may record against it: one Crimpy ships, their own, or a
+// coach's prescribed to them by a program. An unknown id and a foreign one are
+// refused alike, so the endpoint does not report which assessments exist.
+func requireRecordableAssessment(c fiber.Ctx, queries *db.Queries, assessmentID string, userID pgtype.UUID) (pgtype.UUID, bool) {
+	var assessmentUUID pgtype.UUID
+	if assessmentID == "" {
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "assessment_id is required"})
+		return assessmentUUID, false
+	}
+	if err := assessmentUUID.Scan(assessmentID); err != nil {
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment_id"})
+		return assessmentUUID, false
+	}
+	count, err := queries.CountRecordableAssessment(c.Context(), db.CountRecordableAssessmentParams{
+		AssessmentID: assessmentUUID,
+		UserID:       userID,
+	})
+	if err != nil {
+		slog.Error("failed to check assessment", "assessment_id", assessmentID, "error", err)
+		c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
+		return assessmentUUID, false
+	}
+	if count == 0 {
+		slog.Warn("assessment not recordable", "user_id", userID.String(), "assessment_id", assessmentID)
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Unknown assessment_id"})
+		return assessmentUUID, false
+	}
+	return assessmentUUID, true
 }

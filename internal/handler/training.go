@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,18 +46,16 @@ const (
 	unitRepetitions assessmentUnit = "repetitions"
 )
 
-// assessmentUnits maps the assessment type discriminator shared with the app to
-// the unit that assessment is measured in: 0 critical force, 1 max force,
-// 2 sixty percent endurance.
-var assessmentUnits = [...]assessmentUnit{unitKilograms, unitKilograms, unitSeconds}
-
-// assessmentTypeCount bounds the assessment type discriminator.
-const assessmentTypeCount = int32(len(assessmentUnits))
+// validAssessmentUnits mirrors the assessment_definitions_unit_check constraint
+// in schema/schema.sql.
+var validAssessmentUnits = map[assessmentUnit]bool{
+	unitKilograms:   true,
+	unitSeconds:     true,
+	unitRepetitions: true,
+}
 
 // variableTargetFields maps each scalar item field that may be expressed as a
 // percentage of an assessment result to the unit its assessment must carry.
-// Nothing is measured in repetitions today, so a reps target has no assessment
-// it can validly reference.
 var variableTargetFields = map[string]assessmentUnit{
 	"duration": unitSeconds,
 	"reps":     unitRepetitions,
@@ -66,28 +65,44 @@ var variableTargetFields = map[string]assessmentUnit{
 // result. The load value carries the percentage, as it does for percent_bw.
 const percentAssessmentUnit = "percent_assessment"
 
+// assessmentUnits answers the unit of every assessment an item may reference. It
+// holds the definitions loaded for one request, so the validators stay pure: a
+// reference absent from the map is refused, which is also how a definition
+// belonging to somebody else is refused, since the query that fills the map only
+// ever loads the ones the writer may reference.
+type assessmentUnits map[string]assessmentUnit
+
+func (u assessmentUnits) unitOf(id string) (assessmentUnit, bool) {
+	unit, ok := u[id]
+	return unit, ok
+}
+
 // variableTarget references the athlete last result for an assessment. Percent
 // applies to that result; fallback is used when the assessment was never done.
 type variableTarget struct {
-	AssessmentType *int32   `json:"assessment_type"`
-	Percent        *float64 `json:"percent"`
-	Fallback       *float64 `json:"fallback"`
+	AssessmentID *string  `json:"assessment_id"`
+	Percent      *float64 `json:"percent"`
+	Fallback     *float64 `json:"fallback"`
 }
 
-// checkAssessment validates the reference itself: a known assessment type,
-// measured in the unit the field it drives is expressed in.
-func (t variableTarget) checkAssessment(field string, want assessmentUnit) error {
-	if t.AssessmentType == nil || *t.AssessmentType < 0 || *t.AssessmentType >= assessmentTypeCount {
-		return fmt.Errorf("%s: invalid assessment_type", field)
+// checkAssessment validates the reference itself: a known assessment, measured
+// in the unit the field it drives is expressed in.
+func (t variableTarget) checkAssessment(field string, want assessmentUnit, units assessmentUnits) error {
+	if t.AssessmentID == nil || *t.AssessmentID == "" {
+		return fmt.Errorf("%s: missing assessment_id", field)
 	}
-	if got := assessmentUnits[*t.AssessmentType]; got != want {
-		return fmt.Errorf("%s: assessment_type %d is measured in %s, not %s", field, *t.AssessmentType, got, want)
+	got, ok := units.unitOf(*t.AssessmentID)
+	if !ok {
+		return fmt.Errorf("%s: unknown assessment_id", field)
+	}
+	if got != want {
+		return fmt.Errorf("%s: assessment is measured in %s, not %s", field, got, want)
 	}
 	return nil
 }
 
-func (t variableTarget) validate(field string, want assessmentUnit) error {
-	if err := t.checkAssessment(field, want); err != nil {
+func (t variableTarget) validate(field string, want assessmentUnit, units assessmentUnits) error {
+	if err := t.checkAssessment(field, want, units); err != nil {
 		return err
 	}
 	if t.Percent == nil || *t.Percent <= 0 {
@@ -101,7 +116,7 @@ func (t variableTarget) validate(field string, want assessmentUnit) error {
 
 // validateVariableTargets rejects unknown fields and malformed references so a
 // client cannot store a target the app would silently drop when resolving it.
-func validateVariableTargets(raw json.RawMessage) error {
+func validateVariableTargets(raw json.RawMessage, units assessmentUnits) error {
 	if !hasJSONValue(raw) {
 		return nil
 	}
@@ -114,7 +129,7 @@ func validateVariableTargets(raw json.RawMessage) error {
 		if !ok {
 			return fmt.Errorf("invalid variable target field %q", field)
 		}
-		if err := target.validate(field, want); err != nil {
+		if err := target.validate(field, want, units); err != nil {
 			return err
 		}
 	}
@@ -130,7 +145,7 @@ type loadWithTarget struct {
 
 // validateLoads checks the assessment reference of every percent_assessment
 // load. Each hand carries its own flat array, one entry per row.
-func validateLoads(raw json.RawMessage) error {
+func validateLoads(raw json.RawMessage, units assessmentUnits) error {
 	if !hasJSONValue(raw) {
 		return nil
 	}
@@ -146,7 +161,7 @@ func validateLoads(raw json.RawMessage) error {
 		if load.Unit != percentAssessmentUnit {
 			continue
 		}
-		if err := load.checkAssessment("load", unitKilograms); err != nil {
+		if err := load.checkAssessment("load", unitKilograms, units); err != nil {
 			return err
 		}
 		if load.Fallback == nil || *load.Fallback < 0 {
@@ -154,6 +169,110 @@ func validateLoads(raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// assessmentRefSource is the part of an item that can carry an assessment
+// reference, so the request tree and the frozen response tree share one
+// collector instead of drifting apart.
+type assessmentRefSource struct {
+	VariableTargets json.RawMessage
+	Loads           json.RawMessage
+	LeftLoads       json.RawMessage
+}
+
+func requestRefSources(items []TrainingItemRequest) []assessmentRefSource {
+	sources := make([]assessmentRefSource, 0, len(items))
+	for _, item := range items {
+		sources = append(sources, assessmentRefSource{item.VariableTargets, item.Loads, item.LeftLoads})
+		sources = append(sources, requestRefSources(item.Items)...)
+	}
+	return sources
+}
+
+func responseRefSources(items []TrainingItemResponse) []assessmentRefSource {
+	sources := make([]assessmentRefSource, 0, len(items))
+	for _, item := range items {
+		sources = append(sources, assessmentRefSource{item.VariableTargets, item.Loads, item.LeftLoads})
+		sources = append(sources, responseRefSources(item.Items)...)
+	}
+	return sources
+}
+
+// collectAssessmentRefs returns every assessment id the sources reference,
+// deduplicated and ordered, so one query answers a whole training instead of one
+// per item. Malformed JSON is ignored here and reported by the validators.
+func collectAssessmentRefs(sources []assessmentRefSource) []string {
+	seen := map[string]bool{}
+	for _, source := range sources {
+		if hasJSONValue(source.VariableTargets) {
+			var targets map[string]variableTarget
+			if json.Unmarshal(source.VariableTargets, &targets) == nil {
+				for _, target := range targets {
+					addAssessmentRef(seen, target.AssessmentID)
+				}
+			}
+		}
+		for _, raw := range []json.RawMessage{source.Loads, source.LeftLoads} {
+			if !hasJSONValue(raw) {
+				continue
+			}
+			var loads []loadWithTarget
+			if json.Unmarshal(raw, &loads) != nil {
+				continue
+			}
+			for _, load := range loads {
+				addAssessmentRef(seen, load.AssessmentID)
+			}
+		}
+	}
+	return sortedKeys(seen)
+}
+
+func addAssessmentRef(seen map[string]bool, id *string) {
+	if id != nil && *id != "" {
+		seen[*id] = true
+	}
+}
+
+func sortedKeys(set map[string]bool) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// resolveAssessmentUnits loads the unit of every assessment the items reference,
+// restricted to the ones ownerID may reference. An id absent from the result
+// stays absent from the map, so the validators refuse it as unknown whether it
+// does not exist or belongs to somebody else.
+func resolveAssessmentUnits(ctx context.Context, q *db.Queries, ownerID pgtype.UUID, items []TrainingItemRequest) (assessmentUnits, error) {
+	refs := collectAssessmentRefs(requestRefSources(items))
+	ids := make([]pgtype.UUID, 0, len(refs))
+	for _, ref := range refs {
+		var id pgtype.UUID
+		// Not a uuid, so it names no definition. Left out of the map and refused
+		// as unknown, with the field named, by the validators.
+		if err := id.Scan(ref); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return assessmentUnits{}, nil
+	}
+	rows, err := q.GetAssessmentDefinitionsByIDs(ctx, db.GetAssessmentDefinitionsByIDsParams{
+		Ids:    ids,
+		UserID: ownerID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	units := make(assessmentUnits, len(rows))
+	for _, row := range rows {
+		units[row.ID.String()] = assessmentUnit(row.Unit)
+	}
+	return units, nil
 }
 
 // hasJSONValue reports whether raw holds something other than an absent or null
@@ -186,7 +305,7 @@ func normalizeTrainingType(trainingType string) (string, error) {
 // validateTrainingItems rejects unknown item types, over-deep trees, rep counts
 // on a type that does not repeat and malformed configuration arrays before any
 // row is written.
-func validateTrainingItems(items []TrainingItemRequest, depth int) error {
+func validateTrainingItems(items []TrainingItemRequest, depth int, units assessmentUnits) error {
 	if len(items) > 0 && depth > maxItemDepth {
 		return fmt.Errorf("items nested more than %d levels deep", maxItemDepth)
 	}
@@ -197,10 +316,10 @@ func validateTrainingItems(items []TrainingItemRequest, depth int) error {
 		if err := validateHangboardRepRepeatFields(item); err != nil {
 			return err
 		}
-		if err := validateItemConfiguration(item); err != nil {
+		if err := validateItemConfiguration(item, units); err != nil {
 			return err
 		}
-		if err := validateTrainingItems(item.Items, depth+1); err != nil {
+		if err := validateTrainingItems(item.Items, depth+1, units); err != nil {
 			return err
 		}
 	}
@@ -588,7 +707,13 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Title is required"})
 	}
 
-	if err := validateTrainingItems(req.Items, 1); err != nil {
+	units, err := resolveAssessmentUnits(c.Context(), h.queries, userUUID, req.Items)
+	if err != nil {
+		slog.Error("failed to resolve assessment references", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
+	}
+
+	if err := validateTrainingItems(req.Items, 1, units); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
@@ -717,7 +842,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 // @Failure 404 {object} map[string]string "Training not found"
 // @Router /api/trainings/{id} [put]
 func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
-	_, trainingUUID, ok := h.ownedTraining().require(c)
+	existing, trainingUUID, ok := h.ownedTraining().require(c)
 	if !ok {
 		return nil
 	}
@@ -731,7 +856,13 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Title is required"})
 	}
 
-	if err := validateTrainingItems(req.Items, 1); err != nil {
+	units, err := resolveAssessmentUnits(c.Context(), h.queries, existing.UserID, req.Items)
+	if err != nil {
+		slog.Error("failed to resolve assessment references", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
+	}
+
+	if err := validateTrainingItems(req.Items, 1, units); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 

@@ -87,7 +87,9 @@ CREATE TABLE "sessions" (
 CREATE TABLE "assessments" (
   "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
   "user_id"       UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "type"          INTEGER     NOT NULL,
+  -- Which assessment was measured. The definition is declared further down this
+  -- file, so the foreign key is added at the bottom.
+  "assessment_id" UUID        NOT NULL,
   "right_value"   REAL,
   "left_value"    REAL,
   "session_id"    UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
@@ -228,6 +230,37 @@ CREATE TABLE "trainings" (
 
 CREATE INDEX "trainings_user_id_idx" ON "trainings"("user_id");
 
+-- Stores every assessment that can be measured, the ones Crimpy ships and the
+-- ones a coach writes. There is no builtin/custom split anywhere above this
+-- table: a result and a percentage reference both name a row here by id.
+--
+-- A builtin has no owner, no training and asks no question: the app runs it from
+-- a sensor protocol keyed by the row id. A custom one carries all three, and is
+-- run like any other training, ending on the question its prompt asks.
+CREATE TABLE "assessment_definitions" (
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"     UUID        REFERENCES "users"("id") ON DELETE CASCADE,
+  "training_id" UUID        REFERENCES "trainings"("id") ON DELETE RESTRICT,
+  "label"       TEXT        NOT NULL,
+  "prompt"      TEXT,
+  -- What the result is measured in, which decides the item fields a percentage
+  -- of it may drive: kilograms a load, seconds a duration, repetitions reps.
+  "unit"        TEXT        NOT NULL,
+  -- Whether the two hands are measured apart, as a one arm test is.
+  "per_hand"    BOOLEAN     NOT NULL DEFAULT FALSE,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY ("id"),
+  CONSTRAINT "assessment_definitions_unit_check"
+    CHECK (unit IN ('kilograms', 'seconds', 'repetitions')),
+  CONSTRAINT "assessment_definitions_builtin_check"
+    CHECK (num_nonnulls(user_id, training_id, prompt) IN (0, 3))
+);
+
+CREATE INDEX "assessment_definitions_user_id_idx" ON "assessment_definitions"("user_id");
+CREATE UNIQUE INDEX "assessment_definitions_training_id_idx"
+  ON "assessment_definitions"("training_id") WHERE training_id IS NOT NULL;
+
 -- Stores individual items within a training (repeaters, hangboard reps, free notes,
 -- exercises, circuits, groups). Items are stored flat; nesting is via parent_id.
 --
@@ -291,8 +324,10 @@ CREATE TABLE "training_items" (
   "load_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
   -- Scalar fields expressed as a percentage of the athlete last assessment
   -- instead of a fixed number, keyed by field name ('duration', 'reps'):
-  -- {"duration": {"assessment_type": 2, "percent": 75, "fallback": 60}}
-  -- Loads carry the same reference inline, as a 'percent_assessment' unit.
+  -- {"duration": {"assessment_id": "<uuid>", "percent": 75, "fallback": 60}}
+  -- The id names a row in "assessment_definitions", whose unit must match the
+  -- field: seconds a duration, repetitions reps, kilograms a load. Loads carry
+  -- the same reference inline, as a 'percent_assessment' unit.
   "variable_targets"     JSONB,
   -- Group-specific
   "group_title"          TEXT,
@@ -418,12 +453,19 @@ ALTER TABLE "sessions"
   ADD CONSTRAINT "sessions_program_session_id_fkey"
   FOREIGN KEY ("program_session_id") REFERENCES "coach_program_week_sessions"("id") ON DELETE SET NULL;
 
+-- RESTRICT: deleting a definition must never silently erase the history measured
+-- against it. The handler refuses the delete with a count instead.
+ALTER TABLE "assessments"
+  ADD CONSTRAINT "assessments_assessment_id_fkey"
+  FOREIGN KEY ("assessment_id") REFERENCES "assessment_definitions"("id") ON DELETE RESTRICT;
+
 -- Indexes for foreign keys to improve query performance
 CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
 CREATE INDEX "sessions_training_id_idx" ON "sessions"("training_id");
 CREATE INDEX "sessions_program_session_id_idx" ON "sessions"("program_session_id");
 CREATE INDEX "assessments_session_id_idx" ON "assessments"("session_id");
 CREATE INDEX "assessments_user_id_idx" ON "assessments"("user_id");
+CREATE INDEX "assessments_assessment_id_idx" ON "assessments"("assessment_id");
 CREATE INDEX "rep_datas_session_id_idx" ON "rep_datas"("session_id");
 CREATE INDEX "rep_datas_user_id_idx" ON "rep_datas"("user_id");
 CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings"("user_id");

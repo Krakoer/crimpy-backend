@@ -508,7 +508,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		repDatas = []db.RepData{}
 	}
 	if assessments == nil {
-		assessments = []db.Assessment{}
+		assessments = []db.GetSessionAssessmentsRow{}
 	}
 
 	return c.Status(fiber.StatusOK).JSON(SessionDetailResponse{
