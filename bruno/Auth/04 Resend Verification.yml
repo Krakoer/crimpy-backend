@@ -26,6 +26,9 @@ settings:
 
 docs:
   content: |-
-    Rate limited with the other /auth routes, 20 requests a minute per address,
-    so a third full run inside the same minute answers 429 here rather than 200.
+    Answers 429 in a full run. Registering already sent a verification email,
+    and a resend is refused for 10 minutes after the last one, so the address
+    Register just created is always inside its own cooldown. Point
+    registeredEmail at an unverified address whose last email is older than that
+    to see the 200.
   type: text/markdown
