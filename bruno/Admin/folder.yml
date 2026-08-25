@@ -1,3 +1,9 @@
 info:
   name: Admin
   type: folder
+  seq: 11
+
+request:
+  auth:
+    type: bearer
+    token: "{{authTokenAdmin}}"

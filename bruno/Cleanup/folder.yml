@@ -1,0 +1,24 @@
+info:
+  name: Cleanup
+  type: folder
+  seq: 10
+
+request:
+  auth:
+    type: bearer
+    token: "{{authTokenCoach}}"
+
+docs:
+  content: |-
+    Undoes what the run created, so a full pass leaves the database as it found
+    it. These deletes live here rather than in the folders that created the
+    resources, because the Clients, Programs and User Programs requests all read
+    them and would answer 404 against a torn-down one.
+
+    Order matters: a training still scheduled by a program cannot be deleted, so
+    the week goes first, then the program, then the training.
+
+    The enrollment is removed twice over: the user leaves the coach, the coach
+    invites them again, and the coach then unenrolls them. Both removal paths are
+    endpoints of their own, and one enrollment can only be removed once.
+  type: text/markdown

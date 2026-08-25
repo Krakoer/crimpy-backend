@@ -18,6 +18,4 @@ http:
         "comment": "Use a dip belt for loading",
         "video_link": "https://example.com/weighted-pullup"
       }
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

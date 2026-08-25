@@ -1,7 +1,7 @@
 info:
   name: Resend Verification
   type: http
-  seq: 5
+  seq: 6
 
 http:
   method: POST
@@ -13,11 +13,19 @@ http:
     type: json
     data: |-
       {
-        "email": "jane@example.com"
+        "email": "{{registeredEmail}}"
       }
+  auth:
+    type: none
 
 settings:
   encodeUrl: true
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs:
+  content: |-
+    Rate limited with the other /auth routes, 20 requests a minute per address,
+    so a third full run inside the same minute answers 429 here rather than 200.
+  type: text/markdown

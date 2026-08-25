@@ -6,7 +6,24 @@ info:
 http:
   method: GET
   url: "{{baseUrl}}/api/coach/enrollments"
+  body:
+    type: none
   auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 200 && res.body.length > 0) {
+          bru.setEnvVar("clientUserId", res.body[0].user_id);
+        }
+
+docs:
+  content: |-
+    Stores the first enrolled client in clientUserId, which every request under
+    Clients and Programs addresses. Run this before them rather than filling the
+    id in by hand.
+  type: text/markdown
 
 settings:
   encodeUrl: true

@@ -5,9 +5,7 @@ info:
 
 http:
   method: PUT
-  url: "{{baseUrl}}/api/admin/coaches/{{userId}}/reject"
+  url: "{{baseUrl}}/api/admin/coaches/{{registeredUserId}}/reject"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

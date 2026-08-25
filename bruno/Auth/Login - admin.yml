@@ -1,0 +1,35 @@
+info:
+  name: Login - admin
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/login"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "email": "{{adminUsername}}",
+        "password": "{{adminPwd}}"
+      }
+  auth:
+    type: none
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 200) {
+          bru.setEnvVar("authTokenAdmin", res.body.token);
+        }
+
+docs:
+  content: |-
+    The admin account is bootstrapped by the API itself, on the email 'admin'.
+    Its password is 'admin' in development and generated once, then logged, in
+    preproduction and production.
+  type: text/markdown

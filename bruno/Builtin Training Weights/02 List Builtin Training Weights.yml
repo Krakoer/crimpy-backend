@@ -8,3 +8,4 @@ http:
   url: "{{baseUrl}}/api/builtin-training-weights"
   body:
     type: none
+  auth: inherit

@@ -8,3 +8,4 @@ http:
   url: "{{baseUrl}}/api/pinned-builtin-trainings"
   body:
     type: none
+  auth: inherit

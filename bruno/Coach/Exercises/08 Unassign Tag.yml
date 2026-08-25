@@ -1,13 +1,11 @@
 info:
-  name: Assign Tag
+  name: Unassign Tag
   type: http
   seq: 8
 
 http:
-  method: POST
+  method: DELETE
   url: "{{baseUrl}}/api/coach/exercises/{{exerciseId}}/tags/{{tagId}}"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

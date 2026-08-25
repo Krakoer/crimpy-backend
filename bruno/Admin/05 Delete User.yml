@@ -5,9 +5,7 @@ info:
 
 http:
   method: DELETE
-  url: "{{baseUrl}}/api/admin/users/{{userId}}"
+  url: "{{baseUrl}}/api/admin/users/{{registeredUserId}}"
   body:
     type: none
-  auth:
-    type: bearer
-    token: "{{authToken}}"
+  auth: inherit

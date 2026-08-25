@@ -1,7 +1,7 @@
 info:
   name: Upsert Week
   type: http
-  seq: 6
+  seq: 5
 
 http:
   method: PUT
@@ -36,9 +36,7 @@ http:
           }
         ]
       }
-  auth:
-    type: bearer
-    token: "{{authTokenCoach}}"
+  auth: inherit
 
 runtime:
   scripts:

@@ -1,7 +1,7 @@
 info:
   name: Verify Email
   type: http
-  seq: 4
+  seq: 5
 
 http:
   method: POST
@@ -13,8 +13,17 @@ http:
     type: json
     data: |-
       {
-        "token": "the-verification-token-from-email"
+        "token": "{{verificationToken}}"
       }
+  auth:
+    type: none
+
+docs:
+  content: |-
+    The token is mailed to the address that registered and is readable nowhere
+    else, so this request answers 400 until verificationToken is filled in by
+    hand from that email. Nothing else in the collection depends on it.
+  type: text/markdown
 
 settings:
   encodeUrl: true

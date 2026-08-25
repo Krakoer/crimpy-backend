@@ -19,6 +19,7 @@ http:
         "left_value": 44.2,
         "grip_position": 0
       }
+  auth: inherit
 
 runtime:
   scripts:

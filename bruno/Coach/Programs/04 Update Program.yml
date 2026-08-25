@@ -18,6 +18,4 @@ http:
         "start_date": "2026-06-01",
         "duration_weeks": 6
       }
-  auth:
-    type: bearer
-    token: "{{authTokenCoach}}"
+  auth: inherit

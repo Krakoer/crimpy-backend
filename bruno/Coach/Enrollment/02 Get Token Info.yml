@@ -5,8 +5,9 @@ info:
 
 http:
   method: GET
-  url: "{{baseUrl}}/enrollment/{{enrollmentToken}}"
+  url: "{{baseUrl}}/api/enrollment/{{enrollmentToken}}"
   body:
     type: none
   auth:
-    type: none
+    type: bearer
+    token: "{{authTokenUser}}"

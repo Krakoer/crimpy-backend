@@ -16,3 +16,4 @@ http:
         "custom_weight_left": 6.0,
         "custom_weight_right": 8.0
       }
+  auth: inherit
