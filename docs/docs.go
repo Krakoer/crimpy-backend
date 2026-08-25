@@ -1867,7 +1867,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session with its rep data and assessments for a user enrolled with the authenticated coach.",
+                "description": "Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.",
                 "produces": [
                     "application/json"
                 ],
@@ -3506,7 +3506,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, the counts it resolved for items the prescription left open: the reps an AMRAP turned out to be, and the rounds an emom was carried through. Each names one of the prescribed items, an occurrence telling repeated passes apart, and the field it answers.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3581,7 +3581,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session by ID with all related rep data and assessments. User must own the session unless they are an admin.",
+                "description": "Retrieve a specific session by ID with all related rep data, assessments and the counts the run recorded for the items the prescription left open. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5243,6 +5243,13 @@ const docTemplate = `{
                 "is_assessment": {
                     "type": "boolean"
                 },
+                "item_results": {
+                    "description": "ItemResults are the counts the run resolved for items the prescription\nleft open: an AMRAP the athlete measured by doing it, and the rounds an\nemom was carried through.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemResultRequest"
+                    }
+                },
                 "name": {
                     "type": "string"
                 },
@@ -5631,6 +5638,13 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.AssessmentResponse"
                     }
                 },
+                "item_results": {
+                    "description": "ItemResults are the counts the run recorded for the items the\nprescription left open, empty for a session that had none.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionItemResultResponse"
+                    }
+                },
                 "rep_datas": {
                     "type": "array",
                     "items": {
@@ -5639,6 +5653,58 @@ const docTemplate = `{
                 },
                 "session": {
                     "$ref": "#/definitions/handler.SessionResponse"
+                }
+            }
+        },
+        "handler.SessionItemResultRequest": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "enum": [
+                        "reps",
+                        "cycles"
+                    ]
+                },
+                "occurrence": {
+                    "type": "integer"
+                },
+                "training_item_id": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.SessionItemResultResponse": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "enum": [
+                        "reps",
+                        "cycles"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "occurrence": {
+                    "type": "integer"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "training_item_id": {
+                    "description": "TrainingItemID keys into the session prescription items, the same way a\nrep does, so the count can be shown against what was asked for.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
                 }
             }
         },
@@ -5859,6 +5925,9 @@ const docTemplate = `{
                         "type": "object"
                     }
                 },
+                "interval_seconds": {
+                    "type": "integer"
+                },
                 "items": {
                     "type": "array",
                     "items": {
@@ -5882,6 +5951,9 @@ const docTemplate = `{
                 },
                 "reps": {
                     "type": "integer"
+                },
+                "reps_is_max": {
+                    "type": "boolean"
                 },
                 "rest_seconds": {
                     "type": "integer"
@@ -5957,6 +6029,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "interval_seconds": {
+                    "type": "integer"
+                },
                 "items": {
                     "type": "array",
                     "items": {
@@ -5983,6 +6058,9 @@ const docTemplate = `{
                 },
                 "reps": {
                     "type": "integer"
+                },
+                "reps_is_max": {
+                    "type": "boolean"
                 },
                 "rest_seconds": {
                     "type": "integer"
