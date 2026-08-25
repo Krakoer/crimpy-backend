@@ -296,3 +296,49 @@ runtime:
 - Converting from Postman/Insomnia
 
 When working with Bruno, prioritize the YAML file format (OpenCollection spec), proper directory structure, and Git-collaborative workflow.
+
+## The Crimpy collection
+
+Conventions the `bruno/` collection follows. Read them before adding a request,
+since the collection is meant to run top to bottom against a fresh database.
+
+### Tokens
+
+There are three, one per caller, each set by its own login request in `Auth`:
+
+    authTokenUser    Login - user     the athlete, for /api/* owned by a user
+    authTokenCoach   Login - coach    the coach, for everything under /api/coach
+    authTokenAdmin   Login - admin    the bootstrapped admin, for /api/admin
+
+There is no `authToken`. The generic name is the one used by the upstream Bruno
+examples above, and a request that reaches for it authenticates with an empty
+bearer token and answers 401.
+
+Each folder declares its caller once in `folder.yml`, and its requests carry
+`auth: inherit`. Name a token explicitly only where a request speaks as someone
+other than its folder, as accepting an enrollment does under `Coach/Enrollment`.
+Public routes under `/auth` declare `auth: type: none` instead, so the folder
+default does not put a stale bearer on a login.
+
+### Ids
+
+Ids are captured from responses, never pasted in. Every id an environment holds
+starts empty and is filled by the request that creates the resource, which is
+why the collection runs in order.
+
+A run writes every captured value back into the environment file it ran against,
+tokens included. Reset those fields to empty before committing: the values are
+one run's state, not collection content.
+
+Mind the key: most handlers map their rows to a response struct with snake_case
+json tags, so the id reads `res.body.id`. A few still serialize a `db.*` row
+straight to JSON, which leaks the Go field names, and there the id reads
+`res.body.ID`. Check the handler before writing the script.
+
+### Bodies
+
+A request body is only useful if it matches the handler's request struct, so
+check the fields against it rather than against an older request. In particular
+a training carries `title` and an `items` tree, and its hangboard items must
+carry exactly as many load, grip and edge entries as their `granularity`
+declares, or the API refuses the write.

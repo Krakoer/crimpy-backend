@@ -2,42 +2,6 @@ name: Local
 variables:
   - name: baseUrl
     value: http://localhost:3000
-  - name: authTokenUser
-    value: ""
-  - name: exerciseId
-    value: f337c68c-a7db-4489-8ccf-461afcc98c96
-  - name: tagId
-    value: ""
-  - name: trainingId
-    value: ""
-  - name: sessionId
-    value: ""
-  - name: repeaterId
-    value: ""
-  - name: sensorConfigId
-    value: ""
-  - name: builtinTrainingId
-    value: ""
-  - name: builtinTrainingWeightId
-    value: ""
-  - name: assessmentId
-    value: ""
-  - name: coachTrainingId
-    value: ""
-  - name: programId
-    value: ""
-  - name: weekNumber
-    value: "1"
-  - name: weekId
-    value: ""
-  - name: coachTrainingItemId
-    value: ""
-  - name: enrollmentToken
-    value: ""
-  - name: clientUserId
-    value: dd4d4657-35b8-4df1-ae01-b391fe235d8e
-  - name: userId
-    value: ""
   - name: user
     value: local@local.com
   - name: userPwd
@@ -46,5 +10,57 @@ variables:
     value: coach@local.com
   - name: coachPwd
     value: coucou
+  - name: adminUsername
+    value: admin
+  - name: adminPwd
+    value: admin
+  - name: authTokenUser
+    value: ""
   - name: authTokenCoach
+    value: ""
+  - name: authTokenAdmin
+    value: ""
+  - name: refreshToken
+    value: ""
+  - name: userId
+    value: ""
+  - name: registeredEmail
+    value: ""
+  - name: registeredUserId
+    value: ""
+  - name: verificationToken
+    value: ""
+  - name: enrollmentToken
+    value: ""
+  - name: clientUserId
+    value: ""
+  - name: exerciseId
+    value: ""
+  - name: tagId
+    value: ""
+  - name: trainingId
+    value: ""
+  - name: coachTrainingId
+    value: ""
+  - name: coachTrainingItemId
+    value: ""
+  - name: sessionId
+    value: ""
+  - name: assessmentId
+    value: ""
+  - name: sensorConfigId
+    value: ""
+  - name: builtinTrainingId
+    value: c14dc18b-5575-46e4-8758-158a08d32d9e
+  - name: builtinTrainingWeightId
+    value: ""
+  - name: programId
+    value: ""
+  - name: weekNumber
+    value: "1"
+  - name: weekId
+    value: ""
+  - name: weekSessionId
+    value: ""
+  - name: weekSessionId2
     value: ""
