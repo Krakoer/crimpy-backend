@@ -481,3 +481,73 @@ func TestTrainings_FilterOnIsAssessment(t *testing.T) {
 		t.Errorf("Expected %d for an unreadable filter, got %d", fiber.StatusBadRequest, resp.StatusCode)
 	}
 }
+
+// The editor asks whether the unit and the hands are still free before offering
+// them, so the flag has to follow both reasons they lock.
+func TestAssessmentDefinitions_ReportsWhenTheUnitIsLocked(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "assesslock@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	trainingID, assessmentID := createAssessmentTraining(t, app, token, "Pyramid", "repetitions", false)
+
+	lockedFor := func(id string) bool {
+		resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/assessment-definitions", nil, token))
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		var list []map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&list)
+		for _, d := range list {
+			if d["id"] == id {
+				return d["unit_locked"] == true
+			}
+		}
+		t.Fatalf("Expected %s in the list", id)
+		return false
+	}
+
+	if lockedFor(assessmentID) {
+		t.Errorf("Expected a fresh assessment to be free to re-unit")
+	}
+
+	// A training reading a number against it locks the unit.
+	status, _ := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title": "Volume day",
+		"items": []map[string]interface{}{
+			{
+				"type": "exercise",
+				"reps": 8,
+				"variable_targets": map[string]interface{}{
+					"reps": map[string]interface{}{
+						"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+					},
+				},
+			},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201, got %d", status)
+	}
+
+	if !lockedFor(assessmentID) {
+		t.Errorf("Expected a referenced assessment to report its unit locked")
+	}
+
+	// The training the assessment is run from carries the same answer.
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/trainings/"+trainingID, nil, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	var training map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&training)
+	definition := training["assessment"].(map[string]interface{})
+	if definition["unit_locked"] != true {
+		t.Errorf("Expected the training's assessment to report its unit locked, got %v", definition)
+	}
+	if definition["training_id"] != trainingID {
+		t.Errorf("Expected the assessment to name the training it is run from, got %v", definition["training_id"])
+	}
+}

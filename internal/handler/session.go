@@ -525,6 +525,13 @@ type AssessmentDefinitionSnapshot struct {
 	Prompt  *string `json:"prompt,omitempty"`
 	Unit    string  `json:"unit" enums:"kilograms,seconds,repetitions"`
 	PerHand bool    `json:"per_hand"`
+	// The training the assessment is run from, absent on the ones Crimpy ships.
+	TrainingID *string `json:"training_id,omitempty"`
+	// Set once the unit and the hands can no longer move, because results were
+	// measured against them or a training reads a number against them. An editor
+	// shows the two controls as fixed rather than letting a coach try and be
+	// refused.
+	UnitLocked bool `json:"unit_locked"`
 }
 
 func assessmentDefinitionToSnapshot(d db.AssessmentDefinition) AssessmentDefinitionSnapshot {
@@ -537,7 +544,34 @@ func assessmentDefinitionToSnapshot(d db.AssessmentDefinition) AssessmentDefinit
 	if d.Prompt.Valid {
 		snapshot.Prompt = &d.Prompt.String
 	}
+	if d.TrainingID.Valid {
+		trainingID := d.TrainingID.String()
+		snapshot.TrainingID = &trainingID
+	}
 	return snapshot
+}
+
+// lockedAssessmentUnits answers, for each named assessment, whether its unit and
+// hands are still free to change. Read once for a whole tree rather than per
+// definition.
+func lockedAssessmentUnits(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map[string]bool, error) {
+	locked := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		measured, err := q.CountAssessmentsForDefinition(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if measured > 0 {
+			locked[id.String()] = true
+			continue
+		}
+		referenced, err := q.CountReferencesToAssessment(ctx, id.String())
+		if err != nil {
+			return nil, err
+		}
+		locked[id.String()] = referenced > 0
+	}
+	return locked, nil
 }
 
 func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []AssessmentResultSnapshot {

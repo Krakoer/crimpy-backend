@@ -1114,6 +1114,13 @@ func buildTrainingDetail(ctx context.Context, q *db.Queries, training db.Trainin
 	definition, err := q.GetAssessmentDefinitionByTraining(ctx, training.ID)
 	if err == nil {
 		snapshot := assessmentDefinitionToSnapshot(definition)
+		// The editor needs to know whether the unit and the hands are still free
+		// before it offers them, not after the save is refused.
+		locked, err := lockedAssessmentUnits(ctx, q, []pgtype.UUID{definition.ID})
+		if err != nil {
+			return resp, err
+		}
+		snapshot.UnitLocked = locked[definition.ID.String()]
 		resp.Assessment = &snapshot
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return resp, err

@@ -26,6 +26,11 @@ definitions:
         - seconds
         - repetitions
         type: string
+      unit_locked:
+        description: |-
+          Set once the unit and the hands can no longer move: results were measured
+          against them, or a training reads a number against them.
+        type: boolean
       updated_at:
         type: string
     type: object
@@ -39,12 +44,23 @@ definitions:
         type: boolean
       prompt:
         type: string
+      training_id:
+        description: The training the assessment is run from, absent on the ones Crimpy
+          ships.
+        type: string
       unit:
         enum:
         - kilograms
         - seconds
         - repetitions
         type: string
+      unit_locked:
+        description: |-
+          Set once the unit and the hands can no longer move, because results were
+          measured against them or a training reads a number against them. An editor
+          shows the two controls as fixed rather than letting a coach try and be
+          refused.
+        type: boolean
     type: object
   handler.AssessmentListItem:
     properties:

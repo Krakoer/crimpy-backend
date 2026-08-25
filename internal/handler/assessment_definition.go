@@ -50,8 +50,11 @@ type AssessmentDefinitionResponse struct {
 	TrainingID *string `json:"training_id,omitempty"`
 	PerHand    bool    `json:"per_hand"`
 	IsBuiltin  bool    `json:"is_builtin"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
+	// Set once the unit and the hands can no longer move: results were measured
+	// against them, or a training reads a number against them.
+	UnitLocked bool   `json:"unit_locked"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
 }
 
 func assessmentDefinitionToResponse(d db.AssessmentDefinition) AssessmentDefinitionResponse {
@@ -103,9 +106,21 @@ func (h *AssessmentDefinitionHandler) GetAssessmentDefinitions(c fiber.Ctx) erro
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
 	}
 
+	ids := make([]pgtype.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	locked, err := lockedAssessmentUnits(c.Context(), h.queries, ids)
+	if err != nil {
+		slog.Error("failed to check assessment locks", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
+	}
+
 	responses := make([]AssessmentDefinitionResponse, 0, len(rows))
 	for _, row := range rows {
-		responses = append(responses, assessmentDefinitionToResponse(row))
+		response := assessmentDefinitionToResponse(row)
+		response.UnitLocked = locked[row.ID.String()]
+		responses = append(responses, response)
 	}
 	return c.Status(fiber.StatusOK).JSON(responses)
 }

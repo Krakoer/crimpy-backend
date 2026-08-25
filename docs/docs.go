@@ -4884,6 +4884,10 @@ const docTemplate = `{
                         "repetitions"
                     ]
                 },
+                "unit_locked": {
+                    "description": "Set once the unit and the hands can no longer move: results were measured\nagainst them, or a training reads a number against them.",
+                    "type": "boolean"
+                },
                 "updated_at": {
                     "type": "string"
                 }
@@ -4904,6 +4908,10 @@ const docTemplate = `{
                 "prompt": {
                     "type": "string"
                 },
+                "training_id": {
+                    "description": "The training the assessment is run from, absent on the ones Crimpy ships.",
+                    "type": "string"
+                },
                 "unit": {
                     "type": "string",
                     "enum": [
@@ -4911,6 +4919,10 @@ const docTemplate = `{
                         "seconds",
                         "repetitions"
                     ]
+                },
+                "unit_locked": {
+                    "description": "Set once the unit and the hands can no longer move, because results were\nmeasured against them or a training reads a number against them. An editor\nshows the two controls as fixed rather than letting a coach try and be\nrefused.",
+                    "type": "boolean"
                 }
             }
         },
