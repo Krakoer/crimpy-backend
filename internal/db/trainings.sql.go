@@ -342,18 +342,49 @@ func (q *Queries) GetTrainingOwnedBy(ctx context.Context, arg GetTrainingOwnedBy
 }
 
 const getTrainings = `-- name: GetTrainings :many
-SELECT id, user_id, title, description, training_type, goal, comment, is_favorite, created_at, updated_at FROM trainings WHERE user_id = $1 ORDER BY title
+SELECT t.id, t.user_id, t.title, t.description, t.training_type, t.goal, t.comment, t.is_favorite, t.created_at, t.updated_at, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand
+FROM trainings t
+LEFT JOIN assessment_definitions d ON d.training_id = t.id
+WHERE t.user_id = $1
+  AND ($2::bool IS NULL
+       OR (d.id IS NOT NULL) = $2::bool)
+ORDER BY t.title
 `
 
-func (q *Queries) GetTrainings(ctx context.Context, userID pgtype.UUID) ([]Training, error) {
-	rows, err := q.db.Query(ctx, getTrainings, userID)
+type GetTrainingsParams struct {
+	UserID       pgtype.UUID
+	IsAssessment pgtype.Bool
+}
+
+type GetTrainingsRow struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Title        string
+	Description  pgtype.Text
+	TrainingType string
+	Goal         pgtype.Text
+	Comment      pgtype.Text
+	IsFavorite   bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	AssessmentID pgtype.UUID
+	Label        pgtype.Text
+	Prompt       pgtype.Text
+	Unit         pgtype.Text
+	PerHand      pgtype.Bool
+}
+
+// @is_assessment is null for the whole library, true for the assessments alone
+// and false for the trainings that are not one.
+func (q *Queries) GetTrainings(ctx context.Context, arg GetTrainingsParams) ([]GetTrainingsRow, error) {
+	rows, err := q.db.Query(ctx, getTrainings, arg.UserID, arg.IsAssessment)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Training
+	var items []GetTrainingsRow
 	for rows.Next() {
-		var i Training
+		var i GetTrainingsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -365,6 +396,11 @@ func (q *Queries) GetTrainings(ctx context.Context, userID pgtype.UUID) ([]Train
 			&i.IsFavorite,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AssessmentID,
+			&i.Label,
+			&i.Prompt,
+			&i.Unit,
+			&i.PerHand,
 		); err != nil {
 			return nil, err
 		}

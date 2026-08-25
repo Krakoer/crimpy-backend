@@ -5,13 +5,16 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -434,8 +437,15 @@ type TrainingResponse struct {
 	Comment      *string                `json:"comment"`
 	IsFavorite   bool                   `json:"is_favorite"`
 	Items        []TrainingItemResponse `json:"items"`
-	CreatedAt    string                 `json:"created_at"`
-	UpdatedAt    string                 `json:"updated_at"`
+	// Set when the training is a custom assessment: it ends on the question the
+	// prompt asks, and the answer is recorded against this assessment.
+	Assessment *AssessmentDefinitionSnapshot `json:"assessment,omitempty"`
+	// The assessments the items reference, so a client can name and unit check a
+	// percentage without reading a definition it may not own, which is the case
+	// for an athlete running a training their coach wrote.
+	ReferencedAssessments []AssessmentDefinitionSnapshot `json:"referenced_assessments,omitempty"`
+	CreatedAt             string                         `json:"created_at"`
+	UpdatedAt             string                         `json:"updated_at"`
 }
 
 type TrainingListItem struct {
@@ -447,8 +457,11 @@ type TrainingListItem struct {
 	Goal         *string `json:"goal"`
 	Comment      *string `json:"comment"`
 	IsFavorite   bool    `json:"is_favorite"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	// Set when the training is a custom assessment, so a list can mark it and a
+	// picker can offer it as something to measure rather than to train.
+	Assessment *AssessmentDefinitionSnapshot `json:"assessment,omitempty"`
+	CreatedAt  string                        `json:"created_at"`
+	UpdatedAt  string                        `json:"updated_at"`
 }
 
 func trainingToListItem(s db.Training) TrainingListItem {
@@ -469,6 +482,33 @@ func trainingToListItem(s db.Training) TrainingListItem {
 	}
 	if s.Comment.Valid {
 		item.Comment = &s.Comment.String
+	}
+	return item
+}
+
+func trainingRowToListItem(r db.GetTrainingsRow) TrainingListItem {
+	item := trainingToListItem(db.Training{
+		ID:           r.ID,
+		UserID:       r.UserID,
+		Title:        r.Title,
+		Description:  r.Description,
+		TrainingType: r.TrainingType,
+		Goal:         r.Goal,
+		Comment:      r.Comment,
+		IsFavorite:   r.IsFavorite,
+		CreatedAt:    r.CreatedAt,
+		UpdatedAt:    r.UpdatedAt,
+	})
+	if r.AssessmentID.Valid {
+		item.Assessment = &AssessmentDefinitionSnapshot{
+			ID:      r.AssessmentID.String(),
+			Label:   r.Label.String,
+			Unit:    r.Unit.String,
+			PerHand: r.PerHand.Bool,
+		}
+		if r.Prompt.Valid {
+			item.Assessment.Prompt = &r.Prompt.String
+		}
 	}
 	return item
 }
@@ -765,7 +805,13 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize training"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(buildTrainingResponse(training, items))
+	detail, err := buildTrainingDetail(c.Context(), h.queries, training, items)
+	if err != nil {
+		slog.Error("failed to resolve training assessments", "training_id", training.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(detail)
 }
 
 // GetCoachTrainings godoc
@@ -774,6 +820,7 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 // @Tags Trainings
 // @Produce json
 // @Security BearerAuth
+// @Param is_assessment query bool false "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted"
 // @Success 200 {array} TrainingListItem "List of trainings"
 // @Router /api/trainings [get]
 func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
@@ -783,7 +830,19 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	trainings, err := h.queries.GetTrainings(c.Context(), userUUID)
+	var isAssessment pgtype.Bool
+	if raw := c.Query("is_assessment"); raw != "" {
+		wanted, err := strconv.ParseBool(raw)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid is_assessment"})
+		}
+		isAssessment = pgtype.Bool{Bool: wanted, Valid: true}
+	}
+
+	trainings, err := h.queries.GetTrainings(c.Context(), db.GetTrainingsParams{
+		UserID:       userUUID,
+		IsAssessment: isAssessment,
+	})
 	if err != nil {
 		slog.Error("failed to retrieve trainings", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})
@@ -791,7 +850,7 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 
 	result := make([]TrainingListItem, 0, len(trainings))
 	for _, s := range trainings {
-		result = append(result, trainingToListItem(s))
+		result = append(result, trainingRowToListItem(s))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
@@ -824,7 +883,13 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 	var zeroParent pgtype.UUID
 	items := buildTrainingItemTree(rows, zeroParent)
 
-	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
+	detail, err := buildTrainingDetail(c.Context(), h.queries, training, items)
+	if err != nil {
+		slog.Error("failed to resolve training assessments", "training_id", training.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(detail)
 }
 
 // UpdateCoachTraining godoc
@@ -919,7 +984,13 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to finalize update"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
+	detail, err := buildTrainingDetail(c.Context(), h.queries, training, items)
+	if err != nil {
+		slog.Error("failed to resolve training assessments", "training_id", training.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(detail)
 }
 
 // scheduledTrainingConstraint is the foreign key that holds a training down
@@ -927,6 +998,11 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 // honest: any other foreign key refusing the delete is not a program, and has
 // no business claiming one holds the training.
 const scheduledTrainingConstraint = "coach_program_week_sessions_training_id_fkey"
+
+// assessmentTrainingConstraint is the foreign key that holds a training down
+// while it is what a custom assessment is run from. Deleting it would leave the
+// assessment with nothing to measure, so the definition goes first.
+const assessmentTrainingConstraint = "assessment_definitions_training_id_fkey"
 
 // TrainingProgramUsage names a program that still schedules a training, so a
 // client can send the coach straight to the program holding it.
@@ -963,9 +1039,17 @@ func (h *TrainingHandler) DeleteTraining(c fiber.Ctx) error {
 	}
 
 	if err := h.queries.DeleteTraining(c.Context(), trainingUUID); err != nil {
-		if constraint, isFK := foreignKeyViolation(err); isFK && constraint == scheduledTrainingConstraint {
-			slog.Warn("refused to delete a training a program still schedules", "training_id", trainingUUID.String())
-			return h.trainingInUse(c, trainingUUID)
+		if constraint, isFK := foreignKeyViolation(err); isFK {
+			switch constraint {
+			case scheduledTrainingConstraint:
+				slog.Warn("refused to delete a training a program still schedules", "training_id", trainingUUID.String())
+				return h.trainingInUse(c, trainingUUID)
+			case assessmentTrainingConstraint:
+				slog.Warn("refused to delete the training an assessment is run from", "training_id", trainingUUID.String())
+				return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+					"error": "This training is what an assessment measures. Delete the assessment first",
+				})
+			}
 		}
 		slog.Error("failed to delete coach training", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete training"})
@@ -1012,6 +1096,29 @@ func trainingInUseMessage(programs []TrainingProgramUsage) string {
 		return fmt.Sprintf("This training is scheduled by program %s and cannot be deleted", quoted[0])
 	}
 	return fmt.Sprintf("This training is scheduled by programs %s and cannot be deleted", strings.Join(quoted, ", "))
+}
+
+// buildTrainingDetail is buildTrainingResponse plus the assessment context a
+// client needs to read the tree: the assessment this training is, when it is
+// one, and the ones its items reference.
+func buildTrainingDetail(ctx context.Context, q *db.Queries, training db.Training, items []TrainingItemResponse) (TrainingResponse, error) {
+	resp := buildTrainingResponse(training, items)
+
+	definition, err := q.GetAssessmentDefinitionByTraining(ctx, training.ID)
+	if err == nil {
+		snapshot := assessmentDefinitionToSnapshot(definition)
+		resp.Assessment = &snapshot
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return resp, err
+	}
+
+	referenced, err := freezeAssessmentDefinitions(ctx, q, items)
+	if err != nil {
+		return resp, err
+	}
+	resp.ReferencedAssessments = referenced
+
+	return resp, nil
 }
 
 func buildTrainingResponse(training db.Training, items []TrainingItemResponse) TrainingResponse {

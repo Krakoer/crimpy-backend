@@ -10,7 +10,15 @@ SELECT * FROM trainings WHERE id = @id;
 SELECT id FROM trainings WHERE id = @id AND user_id = @user_id;
 
 -- name: GetTrainings :many
-SELECT * FROM trainings WHERE user_id = @user_id ORDER BY title;
+-- @is_assessment is null for the whole library, true for the assessments alone
+-- and false for the trainings that are not one.
+SELECT t.*, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand
+FROM trainings t
+LEFT JOIN assessment_definitions d ON d.training_id = t.id
+WHERE t.user_id = @user_id
+  AND (sqlc.narg('is_assessment')::bool IS NULL
+       OR (d.id IS NOT NULL) = sqlc.narg('is_assessment')::bool)
+ORDER BY t.title;
 
 -- name: UpdateTraining :one
 UPDATE trainings

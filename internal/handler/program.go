@@ -491,5 +491,11 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 	var zeroParent pgtype.UUID
 	items := buildTrainingItemTree(rows, zeroParent)
 
-	return c.Status(fiber.StatusOK).JSON(buildTrainingResponse(training, items))
+	detail, err := buildTrainingDetail(c.Context(), h.queries, training, items)
+	if err != nil {
+		slog.Error("failed to resolve training assessments", "training_id", training.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(detail)
 }

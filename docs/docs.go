@@ -345,6 +345,227 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/assessment-definitions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The assessments Crimpy ships plus the caller's own, builtins first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessments"
+                ],
+                "summary": "List the assessments the caller may reference",
+                "responses": {
+                    "200": {
+                        "description": "Assessments",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.AssessmentDefinitionResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Turn one of the caller's trainings into an assessment: it is run like any training and ends on the question the prompt asks.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessments"
+                ],
+                "summary": "Create a custom assessment",
+                "parameters": [
+                    {
+                        "description": "Assessment details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateAssessmentDefinitionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created assessment",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AssessmentDefinitionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/assessment-definitions/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Rename an assessment or reword its question. The unit and the per hand flag are frozen once results have been measured, since changing them would restate what those numbers mean.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessments"
+                ],
+                "summary": "Update a custom assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated assessment",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateAssessmentDefinitionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated assessment",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AssessmentDefinitionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Refused while results have been measured against it, so a history can never be silently erased.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessments"
+                ],
+                "summary": "Delete a custom assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted"
+                    },
+                    "400": {
+                        "description": "Assessment has results",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/assessments": {
             "get": {
                 "security": [
@@ -3563,6 +3784,14 @@ const docTemplate = `{
                     "Trainings"
                 ],
                 "summary": "List user's training templates",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted",
+                        "name": "is_assessment",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of trainings",
@@ -4599,17 +4828,89 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.AssessmentDefinitionResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_builtin": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "per_hand": {
+                    "type": "boolean"
+                },
+                "prompt": {
+                    "description": "Prompt and TrainingID are set on a coach written assessment and absent on\nthe ones Crimpy ships, which the app runs from a sensor protocol instead of\na training ending on a question.",
+                    "type": "string"
+                },
+                "training_id": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.AssessmentDefinitionSnapshot": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "per_hand": {
+                    "type": "boolean"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
+                }
+            }
+        },
         "handler.AssessmentListItem": {
             "type": "object",
             "properties": {
+                "assessment_id": {
+                    "type": "string"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
                 "id": {
                     "type": "string"
                 },
+                "label": {
+                    "type": "string"
+                },
                 "left_value": {
                     "type": "number"
+                },
+                "per_hand": {
+                    "type": "boolean"
                 },
                 "right_value": {
                     "type": "number"
@@ -4620,8 +4921,17 @@ const docTemplate = `{
                 "session_id": {
                     "type": "string"
                 },
-                "type": {
-                    "type": "integer"
+                "training_id": {
+                    "description": "The training the assessment is run from, absent for the ones Crimpy ships.",
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
                 },
                 "updated_at": {
                     "type": "string"
@@ -4634,6 +4944,9 @@ const docTemplate = `{
         "handler.AssessmentRequest": {
             "type": "object",
             "properties": {
+                "assessment_id": {
+                    "type": "string"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -4642,23 +4955,29 @@ const docTemplate = `{
                 },
                 "right_value": {
                     "type": "number"
-                },
-                "type": {
-                    "type": "integer"
                 }
             }
         },
         "handler.AssessmentResponse": {
             "type": "object",
             "properties": {
+                "assessment_id": {
+                    "type": "string"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
                 "id": {
                     "type": "string"
                 },
+                "label": {
+                    "type": "string"
+                },
                 "left_value": {
                     "type": "number"
+                },
+                "per_hand": {
+                    "type": "boolean"
                 },
                 "right_value": {
                     "type": "number"
@@ -4666,8 +4985,17 @@ const docTemplate = `{
                 "session_id": {
                     "type": "string"
                 },
-                "type": {
-                    "type": "integer"
+                "training_id": {
+                    "description": "The training the assessment is run from, absent for the ones Crimpy ships.",
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
                 },
                 "updated_at": {
                     "type": "string"
@@ -4743,9 +5071,37 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CreateAssessmentDefinitionRequest": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "per_hand": {
+                    "type": "boolean"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "training_id": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
+                }
+            }
+        },
         "handler.CreateAssessmentRequest": {
             "type": "object",
             "properties": {
+                "assessment_id": {
+                    "type": "string"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -4757,9 +5113,6 @@ const docTemplate = `{
                 },
                 "session_id": {
                     "type": "string"
-                },
-                "type": {
-                    "type": "integer"
                 }
             }
         },
@@ -5613,6 +5966,14 @@ const docTemplate = `{
         "handler.TrainingListItem": {
             "type": "object",
             "properties": {
+                "assessment": {
+                    "description": "Set when the training is a custom assessment, so a list can mark it and a\npicker can offer it as something to measure rather than to train.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/handler.AssessmentDefinitionSnapshot"
+                        }
+                    ]
+                },
                 "comment": {
                     "type": "string"
                 },
@@ -5662,6 +6023,14 @@ const docTemplate = `{
         "handler.TrainingResponse": {
             "type": "object",
             "properties": {
+                "assessment": {
+                    "description": "Set when the training is a custom assessment: it ends on the question the\nprompt asks, and the answer is recorded against this assessment.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/handler.AssessmentDefinitionSnapshot"
+                        }
+                    ]
+                },
                 "comment": {
                     "type": "string"
                 },
@@ -5686,6 +6055,13 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.TrainingItemResponse"
                     }
                 },
+                "referenced_assessments": {
+                    "description": "The assessments the items reference, so a client can name and unit check a\npercentage without reading a definition it may not own, which is the case\nfor an athlete running a training their coach wrote.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentDefinitionSnapshot"
+                    }
+                },
                 "title": {
                     "type": "string"
                 },
@@ -5697,6 +6073,28 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.UpdateAssessmentDefinitionRequest": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "per_hand": {
+                    "type": "boolean"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
                 }
             }
         },
