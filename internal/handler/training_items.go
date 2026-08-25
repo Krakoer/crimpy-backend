@@ -12,6 +12,7 @@ import (
 func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	req := TrainingItemRequest{
 		Type:            item.Type,
+		RepsIsMax:       item.RepsIsMax,
 		Loads:           json.RawMessage(item.Loads),
 		LeftLoads:       json.RawMessage(item.LeftLoads),
 		HandPositions:   json.RawMessage(item.HandPositions),
@@ -23,6 +24,9 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	}
 	if item.CycleRestSeconds.Valid {
 		req.CycleRestSeconds = &item.CycleRestSeconds.Int32
+	}
+	if item.IntervalSeconds.Valid {
+		req.IntervalSeconds = &item.IntervalSeconds.Int32
 	}
 	if item.Reps.Valid {
 		req.Reps = &item.Reps.Int32
@@ -103,6 +107,63 @@ func validateOverrideHangboardRepRepeatFields(base TrainingItemRequest, raw json
 	}
 	if field := hangboardRepRepeatField(over.Reps, over.Cycles, over.CycleRestSeconds); field != "" {
 		return errHangboardRepField(field)
+	}
+	return nil
+}
+
+// validateEmomFields keeps the emom and the circuit apart. What makes a block
+// every minute on the minute is its interval, so an emom must carry one and no
+// other type may: an interval on a circuit names a clock nothing runs it
+// against. The two rest fields go the other way, since the leftover of the
+// interval is already the rest of an emom round: stored, they would read as a
+// gap the block never plays.
+func validateEmomFields(item TrainingItemRequest) error {
+	if item.Type != "emom" {
+		if item.IntervalSeconds != nil {
+			return fmt.Errorf("only an emom takes an interval_seconds; a %s paces itself by its rests", item.Type)
+		}
+		return nil
+	}
+	if item.IntervalSeconds == nil {
+		return fmt.Errorf("an emom must declare the interval_seconds its rounds start on")
+	}
+	if *item.IntervalSeconds < 1 {
+		return fmt.Errorf("interval_seconds must be at least 1 second")
+	}
+	for _, field := range []struct {
+		name  string
+		value *int32
+	}{
+		{"cycle_rest_seconds", item.CycleRestSeconds},
+		{"rest_seconds", item.RestSeconds},
+	} {
+		if field.value != nil {
+			return fmt.Errorf("an emom rests for whatever is left of its interval and takes no %s", field.name)
+		}
+	}
+	return nil
+}
+
+// validateRepsIsMax checks the AMRAP marker. It stands in for the rep count, so
+// it belongs only to a type that has one to leave open, and a rep count already
+// set as a percentage of an assessment is a number: the two cannot both decide
+// how many reps the athlete owes.
+func validateRepsIsMax(item TrainingItemRequest) error {
+	if !item.RepsIsMax {
+		return nil
+	}
+	if item.Type != "exercise" {
+		return fmt.Errorf("only an exercise takes reps_is_max; a %s lays its configuration out one row per rep and needs the count", item.Type)
+	}
+	if !hasJSONValue(item.VariableTargets) {
+		return nil
+	}
+	var targets map[string]variableTarget
+	if err := json.Unmarshal(item.VariableTargets, &targets); err != nil {
+		return nil
+	}
+	if _, ok := targets["reps"]; ok {
+		return fmt.Errorf("reps_is_max leaves the rep count open and cannot also be a percentage of an assessment")
 	}
 	return nil
 }
