@@ -104,7 +104,10 @@ CREATE TABLE "rep_datas" (
   "average_weight" REAL        NOT NULL,
   "session_id"     UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
   "is_rest"        BOOLEAN     NOT NULL,
-  "right_hand"     BOOLEAN     NOT NULL,
+  -- Which hand pulled the rep: 'left', 'right', or 'both' for a hang the athlete
+  -- took two handed. A boolean cannot carry the third state, so a two handed rep
+  -- used to be stored, and read back, as the left hand.
+  "hand"           TEXT        NOT NULL,
   "duration"       INTEGER     NOT NULL,
   "target_weight"  REAL        NOT NULL,
   "index"          INTEGER     NOT NULL,
@@ -132,7 +135,8 @@ CREATE TABLE "rep_datas" (
   -- target still counts as part of the run it was played in.
   "target_unmeasured" BOOLEAN NOT NULL DEFAULT FALSE,
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "rep_datas_hand_check" CHECK (hand IN ('left', 'right', 'both'))
 );
 
 -- Stores the IDs of pinned builtin trainings

@@ -13,9 +13,9 @@ import (
 
 const createRepData = `-- name: CreateRepData :one
 INSERT INTO rep_datas (
-  user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, target_unmeasured
+  user_id, average_weight, session_id, is_rest, hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, target_unmeasured
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, target_unmeasured, updated_at
+RETURNING id, user_id, average_weight, session_id, is_rest, hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, target_unmeasured, updated_at
 `
 
 type CreateRepDataParams struct {
@@ -23,7 +23,7 @@ type CreateRepDataParams struct {
 	AverageWeight    float32
 	SessionID        pgtype.UUID
 	IsRest           bool
-	RightHand        bool
+	Hand             string
 	Duration         int32
 	TargetWeight     float32
 	Index            int32
@@ -39,7 +39,7 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		arg.AverageWeight,
 		arg.SessionID,
 		arg.IsRest,
-		arg.RightHand,
+		arg.Hand,
 		arg.Duration,
 		arg.TargetWeight,
 		arg.Index,
@@ -55,7 +55,7 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 		&i.AverageWeight,
 		&i.SessionID,
 		&i.IsRest,
-		&i.RightHand,
+		&i.Hand,
 		&i.Duration,
 		&i.TargetWeight,
 		&i.Index,
@@ -69,7 +69,7 @@ func (q *Queries) CreateRepData(ctx context.Context, arg CreateRepDataParams) (R
 }
 
 const getSessionRepDatas = `-- name: GetSessionRepDatas :many
-SELECT id, user_id, average_weight, session_id, is_rest, right_hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, target_unmeasured, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
+SELECT id, user_id, average_weight, session_id, is_rest, hand, duration, target_weight, index, grip_position, edge_size_mm, training_item_id, target_unmeasured, updated_at FROM rep_datas WHERE session_id = $1 ORDER BY index
 `
 
 func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID) ([]RepData, error) {
@@ -87,7 +87,7 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 			&i.AverageWeight,
 			&i.SessionID,
 			&i.IsRest,
-			&i.RightHand,
+			&i.Hand,
 			&i.Duration,
 			&i.TargetWeight,
 			&i.Index,

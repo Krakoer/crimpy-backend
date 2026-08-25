@@ -125,7 +125,7 @@ type RepData struct {
 	AverageWeight    float32
 	SessionID        pgtype.UUID
 	IsRest           bool
-	RightHand        bool
+	Hand             string
 	Duration         int32
 	TargetWeight     float32
 	Index            int32

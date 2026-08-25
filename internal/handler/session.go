@@ -22,6 +22,15 @@ const (
 	originLogged = "logged"
 )
 
+// Which hand pulled a rep. A two handed hang is a state of its own rather than
+// one of the single hands, which is what the boolean this replaced could not
+// say. Mirrored by the rep_datas_hand_check constraint.
+const (
+	handLeft  = "left"
+	handRight = "right"
+	handBoth  = "both"
+)
+
 // activityCount bounds the activity label shared with the app: 0 hangboard,
 // 1 climbing, 2 stretching, 3 workout, 4 other. It mirrors the
 // sessions_activity_check constraint in schema/schema.sql.
@@ -136,12 +145,14 @@ type CreateSessionRequest struct {
 type RepDataRequest struct {
 	AverageWeight float32 `json:"average_weight"`
 	IsRest        bool    `json:"is_rest"`
-	RightHand     bool    `json:"right_hand"`
-	Duration      int32   `json:"duration"`
-	TargetWeight  float32 `json:"target_weight"`
-	Index         int32   `json:"index"`
-	GripPosition  int32   `json:"grip_position"`
-	EdgeSizeMm    *int32  `json:"edge_size_mm,omitempty"`
+	// Hand is which hand pulled the rep: "left", "right" or "both". A two handed
+	// hang is a state of its own, not one of the single hands.
+	Hand         string  `json:"hand"`
+	Duration     int32   `json:"duration"`
+	TargetWeight float32 `json:"target_weight"`
+	Index        int32   `json:"index"`
+	GripPosition int32   `json:"grip_position"`
+	EdgeSizeMm   *int32  `json:"edge_size_mm,omitempty"`
 	// TrainingItemID is the prescription item this rep was played from, absent
 	// for a rep recorded outside a training.
 	TrainingItemID *string `json:"training_item_id,omitempty"`
@@ -285,9 +296,10 @@ type RepDataResponse struct {
 	Duration      int32   `json:"duration"`
 	Index         int32   `json:"index"`
 	IsRest        bool    `json:"is_rest"`
-	RightHand     bool    `json:"right_hand"`
-	GripPosition  int32   `json:"grip_position"`
-	EdgeSizeMm    *int32  `json:"edge_size_mm,omitempty"`
+	// Hand is which hand pulled the rep: "left", "right" or "both".
+	Hand         string `json:"hand"`
+	GripPosition int32  `json:"grip_position"`
+	EdgeSizeMm   *int32 `json:"edge_size_mm,omitempty"`
 	// TrainingItemID keys into the session prescription items, so the reps can
 	// be read block by block. Absent on a rep played outside a training, and on
 	// sessions recorded before the app sent it.
@@ -309,7 +321,7 @@ func repDataToResponse(r db.RepData) RepDataResponse {
 		Duration:         r.Duration,
 		Index:            r.Index,
 		IsRest:           r.IsRest,
-		RightHand:        r.RightHand,
+		Hand:             r.Hand,
 		GripPosition:     r.GripPosition,
 		EdgeSizeMm:       optionalInt32(r.EdgeSizeMm),
 		TrainingItemID:   optionalUUIDString(r.TrainingItemID),
@@ -556,6 +568,20 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 	return resolved, -1
 }
 
+// firstInvalidRepHand names the first rep carrying a hand the schema will not
+// take, or -1 when every rep is valid. Checked before the insert so a bad value
+// costs a 400 rather than the check constraint failing mid transaction.
+func firstInvalidRepHand(reps []RepDataRequest) int {
+	for i, rd := range reps {
+		switch rd.Hand {
+		case handLeft, handRight, handBoth:
+		default:
+			return i
+		}
+	}
+	return -1
+}
+
 // collectItemIDs gathers the id of every item of a prescription, nested ones
 // included, so a rep claiming to come from one can be checked against it.
 func collectItemIDs(items []TrainingItemResponse, ids map[string]struct{}) {
@@ -620,6 +646,11 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	}
 	if origin != originPlayed && origin != originLogged {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Origin must be played or logged"})
+	}
+	if handIndex := firstInvalidRepHand(req.RepDatas); handIndex >= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Hand must be left, right or both on rep %d", handIndex),
+		})
 	}
 
 	var userUUID pgtype.UUID
@@ -734,7 +765,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			AverageWeight:    rd.AverageWeight,
 			SessionID:        session.ID,
 			IsRest:           rd.IsRest,
-			RightHand:        rd.RightHand,
+			Hand:             rd.Hand,
 			Duration:         rd.Duration,
 			TargetWeight:     rd.TargetWeight,
 			Index:            rd.Index,

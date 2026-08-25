@@ -24,7 +24,7 @@ http:
           {
             "average_weight": 12.5,
             "is_rest": false,
-            "right_hand": true,
+            "hand": "right",
             "duration": 7000,
             "target_weight": 10.0,
             "index": 0,
@@ -33,7 +33,7 @@ http:
           {
             "average_weight": 0.0,
             "is_rest": true,
-            "right_hand": true,
+            "hand": "right",
             "duration": 3000,
             "target_weight": 0.0,
             "index": 1,
