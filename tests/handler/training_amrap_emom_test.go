@@ -1,15 +1,16 @@
 package handler_test
 
 import (
+	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 )
 
-// emomTestApp builds an app that can create trainings and declare assessments,
-// which is what a reps target needs to be reachable at all.
-func emomTestApp(t *testing.T, email string) (*fiber.App, string) {
+// openItemsApp builds an app that can create trainings, play sessions and
+// declare assessments, which is what a reps target needs to be reachable at all.
+func openItemsApp(t *testing.T, email string) (*fiber.App, string) {
 	t.Helper()
 	t.Setenv("JWT_SECRET", "test-secret-key")
 
@@ -30,7 +31,7 @@ func firstItem(t *testing.T, training map[string]interface{}) map[string]interfa
 }
 
 func TestTrainingEmom_RoundTripsIntervalAndChildren(t *testing.T) {
-	app, token := emomTestApp(t, "emom1@test.com")
+	app, token := openItemsApp(t, "emom1@test.com")
 
 	status, training := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
 		"title": "Pull up EMOM",
@@ -70,7 +71,7 @@ func TestTrainingEmom_RoundTripsIntervalAndChildren(t *testing.T) {
 }
 
 func TestTrainingEmom_RejectsEmomWithoutInterval(t *testing.T) {
-	app, token := emomTestApp(t, "emom2@test.com")
+	app, token := openItemsApp(t, "emom2@test.com")
 
 	status, result := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
 		"title": "Clockless EMOM",
@@ -84,7 +85,7 @@ func TestTrainingEmom_RejectsEmomWithoutInterval(t *testing.T) {
 }
 
 func TestTrainingEmom_RejectsIntervalOnAnotherType(t *testing.T) {
-	app, token := emomTestApp(t, "emom3@test.com")
+	app, token := openItemsApp(t, "emom3@test.com")
 
 	status, result := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
 		"title": "Circuit on a clock",
@@ -102,7 +103,7 @@ func TestTrainingEmom_RejectsIntervalOnAnotherType(t *testing.T) {
 func TestTrainingEmom_RejectsRestFields(t *testing.T) {
 	for _, field := range []string{"cycle_rest_seconds", "rest_seconds"} {
 		t.Run(field, func(t *testing.T) {
-			app, token := emomTestApp(t, "emomrest"+field+"@test.com")
+			app, token := openItemsApp(t, "emomrest"+field+"@test.com")
 
 			status, result := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
 				"title": "EMOM with a rest",
@@ -118,7 +119,7 @@ func TestTrainingEmom_RejectsRestFields(t *testing.T) {
 }
 
 func TestTrainingAmrap_RoundTripsRepsIsMaxOnExercise(t *testing.T) {
-	app, token := emomTestApp(t, "amrap1@test.com")
+	app, token := openItemsApp(t, "amrap1@test.com")
 
 	status, training := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
 		"title": "Max pull ups",
@@ -138,7 +139,7 @@ func TestTrainingAmrap_RoundTripsRepsIsMaxOnExercise(t *testing.T) {
 // A repeater lays its loads, grips and edges out one row per rep, so it has no
 // layout to be written against once the rep count is left open.
 func TestTrainingAmrap_RejectsRepsIsMaxOnRepeater(t *testing.T) {
-	app, token := emomTestApp(t, "amrap2@test.com")
+	app, token := openItemsApp(t, "amrap2@test.com")
 
 	status, result := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
 		"title": "Open repeater",
@@ -152,7 +153,7 @@ func TestTrainingAmrap_RejectsRepsIsMaxOnRepeater(t *testing.T) {
 }
 
 func TestTrainingAmrap_RejectsRepsIsMaxWithRepsTarget(t *testing.T) {
-	app, token := emomTestApp(t, "amrap3@test.com")
+	app, token := openItemsApp(t, "amrap3@test.com")
 
 	_, assessmentID := createAssessmentTraining(t, app, token, "Pull up max", "repetitions", false)
 
@@ -173,5 +174,79 @@ func TestTrainingAmrap_RejectsRepsIsMaxWithRepsTarget(t *testing.T) {
 	})
 	if status != fiber.StatusBadRequest {
 		t.Fatalf("Expected 400 for an open rep count that is also a percentage, got %d: %v", status, result)
+	}
+}
+
+// A program week override reaches the item columns without going through the
+// training write path, so the invariants that path enforces have to hold here
+// too. Otherwise a coach prescribes a week that says both "the rep count is
+// open" and "the rep count is a percentage of your max", which no client can
+// run and the direct write path refuses outright.
+func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "amrapover@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "amrapoveruser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler:             handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:              handler.NewProgramHandler(queries, pool),
+		AssessmentDefinitionHandler: handler.NewAssessmentDefinitionHandler(queries, pool),
+		AssessmentHandler:           handler.NewAssessmentHandler(queries),
+		SessionHandler:              handler.NewSessionHandler(queries, pool),
+	})
+	programID := createTestProgram(t, coachToken, userID, app)
+
+	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
+
+	status, training := postJSON(t, app, "/api/trainings", coachToken, map[string]interface{}{
+		"title": "Open blocks",
+		"items": []map[string]interface{}{
+			{"type": "emom", "cycles": 10, "interval_seconds": 60, "items": []map[string]interface{}{
+				{"type": "exercise", "reps_is_max": true},
+			}},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the training, got %d: %v", status, training)
+	}
+	trainingID := training["id"].(string)
+	emom := firstItem(t, training)
+	emomID := emom["id"].(string)
+	exerciseID := emom["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
+
+	for name, override := range map[string]map[string]interface{}{
+		"a rest on an emom": {"item_id": emomID, "overrides": map[string]interface{}{"rest_seconds": 45}},
+		"a cycle rest on an emom": {
+			"item_id": emomID, "overrides": map[string]interface{}{"cycle_rest_seconds": 45},
+		},
+		"a percentage on an open rep count": {
+			"item_id": exerciseID,
+			"overrides": map[string]interface{}{
+				"variable_targets": map[string]interface{}{
+					"reps": map[string]interface{}{
+						"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := upsertWeekStatus(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+				"sessions": []map[string]interface{}{
+					{
+						"training_id": trainingID,
+						"day_of_week": 0,
+						"overrides":   []map[string]interface{}{override},
+					},
+				},
+			})
+			if got != fiber.StatusBadRequest {
+				t.Fatalf("Expected 400 for %s through an override, got %d", name, got)
+			}
+		})
 	}
 }

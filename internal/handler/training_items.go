@@ -490,15 +490,25 @@ func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingI
 }
 
 // validateItemOverride rejects an override that leaves the item it targets in a
-// layout no client could read: resizing the grid without resending the
-// configuration arrays it invalidates, or shipping arrays that disagree with
-// the granularity in force once the override is applied.
+// state no client could read: resizing the grid without resending the
+// configuration arrays it invalidates, shipping arrays that disagree with the
+// granularity in force once the override is applied, or reaching through the
+// override keys to a shape the direct write path refuses. An override carries
+// rest_seconds, cycle_rest_seconds and variable_targets, which is enough to put
+// a rest on an emom and a percentage on an open rep count, so the item
+// invariants are checked on the merged item and not only where it was written.
 func validateItemOverride(base TrainingItemRequest, raw json.RawMessage, units assessmentUnits) error {
 	if err := validateOverrideHangboardRepRepeatFields(base, raw); err != nil {
 		return err
 	}
 	merged, err := applyItemOverride(base, raw)
 	if err != nil {
+		return err
+	}
+	if err := validateEmomFields(merged); err != nil {
+		return err
+	}
+	if err := validateRepsIsMax(merged); err != nil {
 		return err
 	}
 	return validateItemConfiguration(merged, units)
