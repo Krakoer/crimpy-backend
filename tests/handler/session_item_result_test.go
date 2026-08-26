@@ -36,17 +36,6 @@ func createOpenTraining(t *testing.T, app *fiber.App, token string) (trainingID,
 	return training["id"].(string), emom["id"].(string), children[0].(map[string]interface{})["id"].(string)
 }
 
-func itemResultApp(t *testing.T, email string) (*fiber.App, string) {
-	t.Helper()
-	t.Setenv("JWT_SECRET", "test-secret-key")
-
-	pool, queries := testutil.SetupTestDB(t)
-	t.Cleanup(func() { testutil.CleanupTestDB(t, pool) })
-
-	_, token := testutil.CreateTestUser(t, queries, email)
-	return assessmentApp(t, pool, queries), token
-}
-
 // postSessionWithItemResults plays a session from the training and returns the
 // response, leaving the status assertion to the caller.
 func postSessionWithItemResults(t *testing.T, app *fiber.App, token, trainingID string, results []map[string]interface{}) *http.Response {
@@ -86,7 +75,7 @@ func sessionItemResults(t *testing.T, app *fiber.App, token, sessionID string) [
 }
 
 func TestSessionItemResults_RecordsAndReadsBackOpenCounts(t *testing.T) {
-	app, token := itemResultApp(t, "itemres1@test.com")
+	app, token := openItemsApp(t, "itemres1@test.com")
 	trainingID, emomID, exerciseID := createOpenTraining(t, app, token)
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
@@ -129,7 +118,7 @@ func TestSessionItemResults_RecordsAndReadsBackOpenCounts(t *testing.T) {
 // naming an item the frozen prescription does not hold is unreadable. It is
 // dropped rather than costing the athlete the whole session.
 func TestSessionItemResults_DropsResultOutsideThePrescription(t *testing.T) {
-	app, token := itemResultApp(t, "itemres2@test.com")
+	app, token := openItemsApp(t, "itemres2@test.com")
 	trainingID, _, exerciseID := createOpenTraining(t, app, token)
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
@@ -159,7 +148,7 @@ func TestSessionItemResults_RejectsInvalidInput(t *testing.T) {
 	}
 	for name, result := range cases {
 		t.Run(name, func(t *testing.T) {
-			app, token := itemResultApp(t, "itemresbad"+name[:4]+"@test.com")
+			app, token := openItemsApp(t, "itemresbad"+name[:4]+"@test.com")
 			trainingID, _, exerciseID := createOpenTraining(t, app, token)
 			if _, present := result["training_item_id"]; !present {
 				result["training_item_id"] = exerciseID
@@ -176,7 +165,7 @@ func TestSessionItemResults_RejectsInvalidInput(t *testing.T) {
 // The unique index would otherwise refuse the second row mid transaction, which
 // costs a 500 rather than telling the client what it sent twice.
 func TestSessionItemResults_RejectsTwoAnswersForOnePass(t *testing.T) {
-	app, token := itemResultApp(t, "itemres3@test.com")
+	app, token := openItemsApp(t, "itemres3@test.com")
 	trainingID, _, exerciseID := createOpenTraining(t, app, token)
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{

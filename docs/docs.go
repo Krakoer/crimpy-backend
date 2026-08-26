@@ -1893,7 +1893,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session details with rep_datas and assessments",
+                        "description": "Session details with rep_datas, assessments and item_results",
                         "schema": {
                             "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
@@ -3603,7 +3603,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session details with rep_datas and assessments",
+                        "description": "Session details with rep_datas, assessments and item_results",
                         "schema": {
                             "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
