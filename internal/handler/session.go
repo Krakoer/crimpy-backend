@@ -783,8 +783,8 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 // than a race and still fails the request, as does a second result claiming a
 // field of an item pass that is already answered, which the unique index would
 // otherwise refuse mid transaction. The returned index names the offending
-// result, or -1 when they all resolved; kept says which ones to write.
-func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemIDs map[string]struct{}, userID string) (ids []pgtype.UUID, kept []bool, errIndex int) {
+// returned error names the offending result; kept says which ones to write.
+func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemIDs map[string]struct{}, userID string) (ids []pgtype.UUID, kept []bool, err error) {
 	ids = make([]pgtype.UUID, len(results))
 	kept = make([]bool, len(results))
 	seen := map[string]struct{}{}
@@ -792,18 +792,21 @@ func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemID
 		switch r.Field {
 		case itemResultFieldReps, itemResultFieldCycles:
 		default:
-			return nil, nil, i
+			return nil, nil, fmt.Errorf("item result %d: field must be %s or %s", i, itemResultFieldReps, itemResultFieldCycles)
 		}
-		if r.Value < 0 || r.Occurrence < 0 {
-			return nil, nil, i
+		if r.Value < 0 {
+			return nil, nil, fmt.Errorf("item result %d: value must be zero or more", i)
+		}
+		if r.Occurrence < 0 {
+			return nil, nil, fmt.Errorf("item result %d: occurrence must be zero or more", i)
 		}
 		var itemID pgtype.UUID
-		if err := itemID.Scan(r.TrainingItemID); err != nil {
-			return nil, nil, i
+		if scanErr := itemID.Scan(r.TrainingItemID); scanErr != nil {
+			return nil, nil, fmt.Errorf("item result %d: invalid training item ID", i)
 		}
 		key := fmt.Sprintf("%s/%d/%s", itemID.String(), r.Occurrence, r.Field)
 		if _, dup := seen[key]; dup {
-			return nil, nil, i
+			return nil, nil, fmt.Errorf("item result %d: %s is already answered for pass %d of this item", i, r.Field, r.Occurrence)
 		}
 		seen[key] = struct{}{}
 		if _, ok := prescribedItemIDs[itemID.String()]; !ok {
@@ -814,7 +817,7 @@ func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemID
 		ids[i] = itemID
 		kept[i] = true
 	}
-	return ids, kept, -1
+	return ids, kept, nil
 }
 
 // firstInvalidRepHand names the first rep carrying a hand the schema will not
@@ -984,11 +987,9 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		})
 	}
 
-	itemResultIDs, keepItemResult, errIndex := resolveItemResultLinks(req.ItemResults, prescribedItemIDs, userID)
-	if errIndex >= 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fmt.Sprintf("Invalid item result %d", errIndex),
-		})
+	itemResultIDs, keepItemResult, itemResultErr := resolveItemResultLinks(req.ItemResults, prescribedItemIDs, userID)
+	if itemResultErr != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": itemResultErr.Error()})
 	}
 
 	// Checked here for the same reason, so an assessment the athlete may not
@@ -1143,7 +1144,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Session ID (UUID)"
-// @Success 200 {object} SessionDetailResponse "Session details with rep_datas and assessments"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Session not found"
