@@ -221,6 +221,39 @@ func TestTrainingUpdate_RefusesAnItemIdFromAnotherTraining(t *testing.T) {
 	}
 }
 
+// The scoping on the update is what keeps a coach from writing over an item of
+// somebody else's training by naming its id, so it is asserted across two users
+// and not only across two trainings of one.
+func TestTrainingUpdate_RefusesAnItemIdFromAnotherUsersTraining(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, mine := testutil.CreateTestUser(t, queries, "itemid10mine@test.com")
+	_, theirs := testutil.CreateTestUser(t, queries, "itemid10theirs@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	training, before := createNestedTraining(t, app, mine)
+	other, otherItems := createNestedTraining(t, app, theirs)
+
+	status, result := putJSON(t, app, "/api/trainings/"+training["id"].(string), mine, map[string]interface{}{
+		"title": "Board session",
+		"items": []map[string]interface{}{
+			{"id": otherItems[2], "type": "free", "free_text": "Stretch"},
+		},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for an item id owned by another user, got %d: %v", status, result)
+	}
+
+	if len(treeItemIDs(t, getTraining(t, app, mine, training["id"].(string)))) != len(before) {
+		t.Error("Expected the refused update to change nothing")
+	}
+	if treeItemIDs(t, getTraining(t, app, theirs, other["id"].(string)))[2] != otherItems[2] {
+		t.Error("Expected the other user's training to be left alone")
+	}
+}
+
 func TestTrainingUpdate_RefusesTheSameItemIdTwice(t *testing.T) {
 	app, token := openItemsApp(t, "itemid5@test.com")
 	training, before := createNestedTraining(t, app, token)
@@ -365,5 +398,25 @@ func TestTrainingUpdate_KeepsProgramOverridesOnItsItems(t *testing.T) {
 	}
 	if overrides[0].(map[string]interface{})["item_id"] != itemID {
 		t.Errorf("Expected the override to still name item %s, got %v", itemID, overrides[0])
+	}
+}
+
+// A training turned into a log only one saves an empty tree, which has to clear
+// the items rather than leave the athlete on the old prescription.
+func TestTrainingUpdate_ClearsEveryItemOnAnEmptyPayload(t *testing.T) {
+	app, token := openItemsApp(t, "itemid9@test.com")
+	training, _ := createNestedTraining(t, app, token)
+
+	status, updated := putJSON(t, app, "/api/trainings/"+training["id"].(string), token, map[string]interface{}{
+		"title": "Board session",
+		"items": []map[string]interface{}{},
+	})
+	if status != fiber.StatusOK {
+		t.Fatalf("Expected 200 clearing the items, got %d: %v", status, updated)
+	}
+
+	stored := treeItemIDs(t, getTraining(t, app, token, training["id"].(string)))
+	if len(stored) != 0 {
+		t.Fatalf("Expected the stored tree to be empty, got %d items", len(stored))
 	}
 }

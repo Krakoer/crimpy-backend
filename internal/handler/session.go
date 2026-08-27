@@ -750,9 +750,9 @@ func freezeAssessmentDefinitions(ctx context.Context, qtx *db.Queries, items []T
 // store. A link naming an item the frozen prescription does not hold is dropped
 // to NULL rather than refused: the coach can delete an item while the athlete is
 // mid run, and the link is only a grouping hint the reader already falls back
-// from, so refusing would trade a lost grouping for a lost session. A malformed id is a client bug, not a race,
-// and still fails the request - the returned index names the offending rep, or
-// -1 when every link resolved.
+// from, so refusing would trade a lost grouping for a lost session. A malformed
+// id is a client bug, not a race, and still fails the request - the returned
+// index names the offending rep, or -1 when every link resolved.
 func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]struct{}, userID string) ([]pgtype.UUID, int) {
 	resolved := make([]pgtype.UUID, len(reps))
 	for i, rd := range reps {

@@ -679,8 +679,11 @@ type keptItemIDs struct {
 	seen map[pgtype.UUID]bool
 }
 
+// The id slice starts empty rather than nil: pgx sends a nil slice as SQL NULL,
+// and the prune's NOT (id = ANY(NULL)) is NULL for every row, so a payload that
+// keeps nothing would delete nothing.
 func newKeptItemIDs() *keptItemIDs {
-	return &keptItemIDs{seen: make(map[pgtype.UUID]bool)}
+	return &keptItemIDs{ids: []pgtype.UUID{}, seen: make(map[pgtype.UUID]bool)}
 }
 
 // add keys duplicates on the parsed uuid rather than on the string, because
