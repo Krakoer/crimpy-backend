@@ -33,6 +33,7 @@ var validItemTypes = map[string]bool{
 	"exercise":      true,
 	"circuit":       true,
 	"group":         true,
+	"emom":          true,
 }
 
 // defaultTrainingType applies when a client omits training_type.
@@ -326,6 +327,12 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 		if err := validateHangboardRepRepeatFields(item); err != nil {
 			return err
 		}
+		if err := validateEmomFields(item); err != nil {
+			return err
+		}
+		if err := validateRepsIsMax(item); err != nil {
+			return err
+		}
 		if err := validateItemConfiguration(item, units); err != nil {
 			return err
 		}
@@ -368,7 +375,9 @@ type TrainingItemRequest struct {
 	Type             string                `json:"type"`
 	Cycles           *int32                `json:"cycles"`
 	CycleRestSeconds *int32                `json:"cycle_rest_seconds"`
+	IntervalSeconds  *int32                `json:"interval_seconds"`
 	Reps             *int32                `json:"reps"`
+	RepsIsMax        bool                  `json:"reps_is_max"`
 	Duration         *int32                `json:"duration"`
 	RestSeconds      *int32                `json:"rest_seconds"`
 	ExerciseID       *string               `json:"exercise_id"`
@@ -414,7 +423,9 @@ type TrainingItemResponse struct {
 	Position         int32                  `json:"position"`
 	Cycles           *int32                 `json:"cycles,omitempty"`
 	CycleRestSeconds *int32                 `json:"cycle_rest_seconds,omitempty"`
+	IntervalSeconds  *int32                 `json:"interval_seconds,omitempty"`
 	Reps             *int32                 `json:"reps,omitempty"`
+	RepsIsMax        bool                   `json:"reps_is_max"`
 	Duration         *int32                 `json:"duration,omitempty"`
 	RestSeconds      *int32                 `json:"rest_seconds,omitempty"`
 	ExerciseID       *string                `json:"exercise_id,omitempty"`
@@ -544,9 +555,13 @@ func insertTrainingItemsRecursive(
 		if req.CycleRestSeconds != nil {
 			params.CycleRestSeconds = pgtype.Int4{Int32: *req.CycleRestSeconds, Valid: true}
 		}
+		if req.IntervalSeconds != nil {
+			params.IntervalSeconds = pgtype.Int4{Int32: *req.IntervalSeconds, Valid: true}
+		}
 		if req.Reps != nil {
 			params.Reps = pgtype.Int4{Int32: *req.Reps, Valid: true}
 		}
+		params.RepsIsMax = req.RepsIsMax
 		if req.Duration != nil {
 			params.Duration = pgtype.Int4{Int32: *req.Duration, Valid: true}
 		}
@@ -627,9 +642,13 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if r.CycleRestSeconds.Valid {
 		resp.CycleRestSeconds = &r.CycleRestSeconds.Int32
 	}
+	if r.IntervalSeconds.Valid {
+		resp.IntervalSeconds = &r.IntervalSeconds.Int32
+	}
 	if r.Reps.Valid {
 		resp.Reps = &r.Reps.Int32
 	}
+	resp.RepsIsMax = r.RepsIsMax
 	if r.Duration.Valid {
 		resp.Duration = &r.Duration.Int32
 	}
@@ -705,7 +724,9 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		Position:         r.Position,
 		Cycles:           r.Cycles,
 		CycleRestSeconds: r.CycleRestSeconds,
+		IntervalSeconds:  r.IntervalSeconds,
 		Reps:             r.Reps,
+		RepsIsMax:        r.RepsIsMax,
 		Duration:         r.Duration,
 		RestSeconds:      r.RestSeconds,
 		ExerciseID:       r.ExerciseID,

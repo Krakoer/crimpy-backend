@@ -274,6 +274,14 @@ definitions:
         type: integer
       is_assessment:
         type: boolean
+      item_results:
+        description: |-
+          ItemResults are the counts the run resolved for items the prescription
+          left open: an AMRAP the athlete measured by doing it, and the rounds an
+          emom was carried through.
+        items:
+          $ref: '#/definitions/handler.SessionItemResultRequest'
+        type: array
       name:
         type: string
       notes:
@@ -543,12 +551,56 @@ definitions:
         items:
           $ref: '#/definitions/handler.AssessmentResponse'
         type: array
+      item_results:
+        description: |-
+          ItemResults are the counts the run recorded for the items the
+          prescription left open, empty for a session that had none.
+        items:
+          $ref: '#/definitions/handler.SessionItemResultResponse'
+        type: array
       rep_datas:
         items:
           $ref: '#/definitions/handler.RepDataResponse'
         type: array
       session:
         $ref: '#/definitions/handler.SessionResponse'
+    type: object
+  handler.SessionItemResultRequest:
+    properties:
+      field:
+        enum:
+        - reps
+        - cycles
+        type: string
+      occurrence:
+        type: integer
+      training_item_id:
+        type: string
+      value:
+        type: integer
+    type: object
+  handler.SessionItemResultResponse:
+    properties:
+      field:
+        enum:
+        - reps
+        - cycles
+        type: string
+      id:
+        type: string
+      occurrence:
+        type: integer
+      session_id:
+        type: string
+      training_item_id:
+        description: |-
+          TrainingItemID keys into the session prescription items, the same way a
+          rep does, so the count can be shown against what was asked for.
+        type: string
+      updated_at:
+        type: string
+      value:
+        type: integer
     type: object
   handler.SessionListItem:
     properties:
@@ -703,6 +755,8 @@ definitions:
         items:
           type: object
         type: array
+      interval_seconds:
+        type: integer
       items:
         items:
           $ref: '#/definitions/handler.TrainingItemRequest'
@@ -719,6 +773,8 @@ definitions:
         type: array
       reps:
         type: integer
+      reps_is_max:
+        type: boolean
       rest_seconds:
         type: integer
       type:
@@ -770,6 +826,8 @@ definitions:
         type: array
       id:
         type: string
+      interval_seconds:
+        type: integer
       items:
         items:
           $ref: '#/definitions/handler.TrainingItemResponse'
@@ -788,6 +846,8 @@ definitions:
         type: integer
       reps:
         type: integer
+      reps_is_max:
+        type: boolean
       rest_seconds:
         type: integer
       type:
@@ -2326,7 +2386,8 @@ paths:
       - Coaching
   /api/coach/clients/{user_id}/sessions/{session_id}:
     get:
-      description: Retrieve a specific session with its rep data and assessments for
+      description: Retrieve a specific session with its rep data, assessments and
+        the counts the run recorded for the items the prescription left open, for
         a user enrolled with the authenticated coach.
       parameters:
       - description: Client user ID
@@ -2343,7 +2404,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session details with rep_datas and assessments
+          description: Session details with rep_datas, assessments and item_results
           schema:
             $ref: '#/definitions/handler.SessionDetailResponse'
         "400":
@@ -3408,7 +3469,11 @@ paths:
         prescribed a load the run failed to measure sends target_unmeasured, so a
         client can tell it from a rep no target was ever expected for. That flag is
         what the clients grade on: such a rep is recorded with no target, and one
-        sent with both is stored as it arrives and still read as unmeasured.'
+        sent with both is stored as it arrives and still read as unmeasured. A run
+        may also send item_results, the counts it resolved for items the prescription
+        left open: the reps an AMRAP turned out to be, and the rounds an emom was
+        carried through. Each names one of the prescribed items, an occurrence telling
+        repeated passes apart, and the field it answers.'
       parameters:
       - description: Session details
         in: body
@@ -3505,8 +3570,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve a specific session by ID with all related rep data and
-        assessments. User must own the session unless they are an admin.
+      description: Retrieve a specific session by ID with all related rep data, assessments
+        and the counts the run recorded for the items the prescription left open.
+        User must own the session unless they are an admin.
       parameters:
       - description: Session ID (UUID)
         in: path
@@ -3517,7 +3583,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session details with rep_datas and assessments
+          description: Session details with rep_datas, assessments and item_results
           schema:
             $ref: '#/definitions/handler.SessionDetailResponse'
         "400":

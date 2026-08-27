@@ -470,13 +470,13 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 
 // GetClientSession godoc
 // @Summary Get a client's session details
-// @Description Retrieve a specific session with its rep data and assessments for a user enrolled with the authenticated coach.
+// @Description Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
 // @Param session_id path string true "Session ID"
-// @Success 200 {object} SessionDetailResponse "Session details with rep_datas and assessments"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
 // @Failure 404 {object} map[string]string "Session not found or does not belong to client"
@@ -503,6 +503,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 
 	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
 	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
+	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
 
 	if repDatas == nil {
 		repDatas = []db.RepData{}
@@ -515,6 +516,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		Session:     sessionToResponse(session),
 		RepDatas:    repDatasToResponses(repDatas),
 		Assessments: assessmentsToResponses(assessments),
+		ItemResults: sessionItemResultsToResponses(itemResults),
 	})
 }
 

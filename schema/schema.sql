@@ -271,20 +271,34 @@ CREATE UNIQUE INDEX "assessment_definitions_training_id_idx"
 -- set indexed set * reps + rep). Per-hand fields carry one array per hand so a
 -- row index always means the same thing in every array.
 --
--- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'group'
+-- Types: 'repeater', 'hangboard_rep', 'free', 'exercise', 'circuit', 'group', 'emom'
 CREATE TABLE "training_items" (
   "id"                   UUID        NOT NULL DEFAULT gen_random_uuid(),
   "training_id"          UUID        NOT NULL REFERENCES "trainings"("id") ON DELETE CASCADE,
   "parent_id"            UUID        REFERENCES "training_items"("id") ON DELETE CASCADE,
   "type"                 TEXT        NOT NULL,
   "position"             INTEGER     NOT NULL DEFAULT 0,
-  -- Circuit and repeater cycles (scalar). A hangboard_rep carries neither, for
-  -- the same reason it carries no reps.
+  -- Circuit, repeater and emom cycles (scalar). A hangboard_rep carries
+  -- neither, for the same reason it carries no reps.
   "cycles"               INTEGER,
   "cycle_rest_seconds"   INTEGER,
+  -- How often a round starts, for an 'emom' and nothing else. It is what makes
+  -- the block every minute on the minute rather than a circuit: the work of a
+  -- round is self paced and whatever is left of the interval is the rest, so
+  -- the round after it starts on the clock however fast the round before it
+  -- was. A circuit names the rest instead and lets the block drift.
+  "interval_seconds"     INTEGER,
   -- Exercise and repeater reps (scalar). A hangboard_rep is a single hang and
   -- carries none: the repeater is the block that repeats a hang.
   "reps"                 INTEGER,
+  -- Whether the rep count is left open, which is an AMRAP: the coach prescribes
+  -- no number and the athlete does as many as they can, then records how many
+  -- that was. The stored "reps" is then read by nothing.
+  --
+  -- Exercises only. A repeater lays its loads, grips and edges out one row per
+  -- rep, so a rep count nothing knows until the block has been run leaves those
+  -- arrays with no length to be written against.
+  "reps_is_max"          BOOLEAN     NOT NULL DEFAULT FALSE,
   "duration"             INTEGER,
   "rest_seconds"         INTEGER,
   -- Exercise-specific (scalar)
@@ -337,11 +351,52 @@ CREATE TABLE "training_items" (
   CONSTRAINT "training_items_hand_check"
     CHECK (hand IS NULL OR hand IN ('both', 'alternate', 'split', 'left', 'right')),
   CONSTRAINT "training_items_granularity_check"
-    CHECK (granularity IS NULL OR granularity IN ('uniform', 'rep', 'set'))
+    CHECK (granularity IS NULL OR granularity IN ('uniform', 'rep', 'set')),
+  -- An interval is what an emom is, so the two stand or fall together: a block
+  -- typed emom without one has no clock to start its rounds on, and any other
+  -- type carrying one names a field nothing reading it would run.
+  CONSTRAINT "training_items_emom_interval_check"
+    CHECK ((type = 'emom') = (interval_seconds IS NOT NULL)),
+  CONSTRAINT "training_items_interval_positive_check"
+    CHECK (interval_seconds IS NULL OR interval_seconds > 0),
+  CONSTRAINT "training_items_reps_is_max_check"
+    CHECK (reps_is_max = FALSE OR type = 'exercise')
 );
 
 CREATE INDEX "training_items_training_id_idx" ON "training_items"("training_id");
 CREATE INDEX "training_items_parent_id_idx" ON "training_items"("parent_id");
+
+-- Stores what the athlete achieved on a step the prescription left open. An
+-- AMRAP exercise has no rep count until it has been run, and an emom the
+-- athlete dropped out of ran fewer rounds than it asked for. Neither number can
+-- be read back off "rep_datas": a set of pull ups passes through no sensor, so
+-- without this table nothing records that twenty three of them were done.
+--
+-- One row per open field of one pass through an item. "occurrence" tells the
+-- passes apart when the item sits inside a block that repeats, counting from 0
+-- in the order the run played them.
+CREATE TABLE "session_item_results" (
+  "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "session_id"       UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
+  "user_id"          UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  -- Which item of the prescription the count answers. Deliberately not a
+  -- foreign key, for the reason "rep_datas"."training_item_id" is not one
+  -- either: it points into the session frozen prescription snapshot, which
+  -- keeps the item ids it was resolved with, not into the still editable
+  -- "training_items" row.
+  "training_item_id" UUID        NOT NULL,
+  "occurrence"       INTEGER     NOT NULL DEFAULT 0,
+  -- Which open field the count answers: 'reps' for an AMRAP, 'cycles' for the
+  -- rounds an emom was carried through before the athlete dropped out.
+  "field"            TEXT        NOT NULL,
+  "value"            INTEGER     NOT NULL,
+  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY ("id"),
+  CONSTRAINT "session_item_results_field_check" CHECK (field IN ('reps', 'cycles')),
+  CONSTRAINT "session_item_results_value_check" CHECK (value >= 0),
+  CONSTRAINT "session_item_results_occurrence_check" CHECK (occurrence >= 0),
+  CONSTRAINT "session_item_results_unique" UNIQUE ("session_id", "training_item_id", "occurrence", "field")
+);
 
 -- Stores one-time enrollment invitation tokens generated by coaches.
 CREATE TABLE "enrollment_tokens" (
@@ -467,6 +522,8 @@ CREATE INDEX "assessments_session_id_idx" ON "assessments"("session_id");
 CREATE INDEX "assessments_user_id_idx" ON "assessments"("user_id");
 CREATE INDEX "assessments_assessment_id_idx" ON "assessments"("assessment_id");
 CREATE INDEX "rep_datas_session_id_idx" ON "rep_datas"("session_id");
+CREATE INDEX "session_item_results_session_id_idx" ON "session_item_results"("session_id");
+CREATE INDEX "session_item_results_user_id_idx" ON "session_item_results"("user_id");
 CREATE INDEX "rep_datas_user_id_idx" ON "rep_datas"("user_id");
 CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings"("user_id");
 CREATE INDEX "sensor_configs_user_id_idx" ON "sensor_configs"("user_id");
