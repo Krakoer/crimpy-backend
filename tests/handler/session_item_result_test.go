@@ -114,9 +114,9 @@ func TestSessionItemResults_RecordsAndReadsBackOpenCounts(t *testing.T) {
 	}
 }
 
-// The item ids rotate whenever the coach edits the training mid run, so a count
-// naming an item the frozen prescription does not hold is unreadable. It is
-// dropped rather than costing the athlete the whole session.
+// An item the coach deleted mid run leaves the athlete holding a count the
+// frozen prescription cannot place, and an unreadable count is dropped rather
+// than costing the athlete the whole session.
 func TestSessionItemResults_DropsResultOutsideThePrescription(t *testing.T) {
 	app, token := openItemsApp(t, "itemres2@test.com")
 	trainingID, _, exerciseID := createOpenTraining(t, app, token)

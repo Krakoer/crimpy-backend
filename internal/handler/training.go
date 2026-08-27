@@ -372,6 +372,9 @@ func (h *TrainingHandler) ownedTraining() ownedResource[db.Training] {
 // TrainingItemRequest represents one item in the training tree.
 // Circuits and groups carry nested Items; repeaters and hangboard reps are leaves.
 type TrainingItemRequest struct {
+	// The id the item was last read under, sent back on an update so the row
+	// keeps it. Empty for an item the coach just added, and ignored on create.
+	ID               *string               `json:"id,omitempty"`
 	Type             string                `json:"type"`
 	Cycles           *int32                `json:"cycles"`
 	CycleRestSeconds *int32                `json:"cycle_rest_seconds"`
@@ -531,6 +534,110 @@ func trainingRowToListItem(r db.GetTrainingsRow) TrainingListItem {
 	return item
 }
 
+// trainingItemParams maps one request item onto the columns of its row. The
+// insert and the reconcile paths share it, so a field added to one of them
+// cannot be forgotten by the other.
+func trainingItemParams(trainingID, parentID pgtype.UUID, position int32, req TrainingItemRequest) db.CreateTrainingItemParams {
+	params := db.CreateTrainingItemParams{
+		TrainingID: trainingID,
+		ParentID:   parentID,
+		Type:       req.Type,
+		Position:   position,
+	}
+
+	if req.Cycles != nil {
+		params.Cycles = pgtype.Int4{Int32: *req.Cycles, Valid: true}
+	}
+	if req.CycleRestSeconds != nil {
+		params.CycleRestSeconds = pgtype.Int4{Int32: *req.CycleRestSeconds, Valid: true}
+	}
+	if req.IntervalSeconds != nil {
+		params.IntervalSeconds = pgtype.Int4{Int32: *req.IntervalSeconds, Valid: true}
+	}
+	if req.Reps != nil {
+		params.Reps = pgtype.Int4{Int32: *req.Reps, Valid: true}
+	}
+	params.RepsIsMax = req.RepsIsMax
+	if req.Duration != nil {
+		params.Duration = pgtype.Int4{Int32: *req.Duration, Valid: true}
+	}
+	if req.RestSeconds != nil {
+		params.RestSeconds = pgtype.Int4{Int32: *req.RestSeconds, Valid: true}
+	}
+	if req.ExerciseID != nil {
+		var exUUID pgtype.UUID
+		if err := exUUID.Scan(*req.ExerciseID); err == nil {
+			params.ExerciseID = exUUID
+		}
+	}
+	if req.WorktimeSeconds != nil {
+		params.WorktimeSeconds = pgtype.Int4{Int32: *req.WorktimeSeconds, Valid: true}
+	}
+	if req.Hand != nil {
+		params.Hand = pgtype.Text{String: *req.Hand, Valid: true}
+	}
+	if req.Granularity != nil {
+		params.Granularity = pgtype.Text{String: *req.Granularity, Valid: true}
+	}
+	if req.FreeText != nil {
+		params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
+	}
+	if req.Comment != nil {
+		params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
+	}
+	params.LoadIsMax = req.LoadIsMax
+	if hasJSONValue(req.Loads) {
+		params.Loads = req.Loads
+	}
+	if hasJSONValue(req.LeftLoads) {
+		params.LeftLoads = req.LeftLoads
+	}
+	if hasJSONValue(req.HandPositions) {
+		params.HandPositions = req.HandPositions
+	}
+	if hasJSONValue(req.EdgeSizesMm) {
+		params.EdgeSizesMm = req.EdgeSizesMm
+	}
+	if hasJSONValue(req.VariableTargets) {
+		params.VariableTargets = req.VariableTargets
+	}
+	if req.GroupTitle != nil {
+		params.GroupTitle = pgtype.Text{String: *req.GroupTitle, Valid: true}
+	}
+
+	return params
+}
+
+func updateTrainingItemParams(id pgtype.UUID, p db.CreateTrainingItemParams) db.UpdateTrainingItemParams {
+	return db.UpdateTrainingItemParams{
+		ID:               id,
+		TrainingID:       p.TrainingID,
+		ParentID:         p.ParentID,
+		Type:             p.Type,
+		Position:         p.Position,
+		Cycles:           p.Cycles,
+		CycleRestSeconds: p.CycleRestSeconds,
+		IntervalSeconds:  p.IntervalSeconds,
+		Reps:             p.Reps,
+		RepsIsMax:        p.RepsIsMax,
+		Duration:         p.Duration,
+		RestSeconds:      p.RestSeconds,
+		ExerciseID:       p.ExerciseID,
+		WorktimeSeconds:  p.WorktimeSeconds,
+		Hand:             p.Hand,
+		Granularity:      p.Granularity,
+		FreeText:         p.FreeText,
+		Comment:          p.Comment,
+		LoadIsMax:        p.LoadIsMax,
+		Loads:            p.Loads,
+		LeftLoads:        p.LeftLoads,
+		HandPositions:    p.HandPositions,
+		EdgeSizesMm:      p.EdgeSizesMm,
+		VariableTargets:  p.VariableTargets,
+		GroupTitle:       p.GroupTitle,
+	}
+}
+
 // insertTrainingItemsRecursive inserts a tree of items into the DB, preserving order and parent links.
 func insertTrainingItemsRecursive(
 	ctx context.Context,
@@ -542,74 +649,7 @@ func insertTrainingItemsRecursive(
 	result := make([]TrainingItemResponse, 0, len(items))
 
 	for i, req := range items {
-		params := db.CreateTrainingItemParams{
-			TrainingID: trainingID,
-			ParentID:   parentID,
-			Type:       req.Type,
-			Position:   int32(i),
-		}
-
-		if req.Cycles != nil {
-			params.Cycles = pgtype.Int4{Int32: *req.Cycles, Valid: true}
-		}
-		if req.CycleRestSeconds != nil {
-			params.CycleRestSeconds = pgtype.Int4{Int32: *req.CycleRestSeconds, Valid: true}
-		}
-		if req.IntervalSeconds != nil {
-			params.IntervalSeconds = pgtype.Int4{Int32: *req.IntervalSeconds, Valid: true}
-		}
-		if req.Reps != nil {
-			params.Reps = pgtype.Int4{Int32: *req.Reps, Valid: true}
-		}
-		params.RepsIsMax = req.RepsIsMax
-		if req.Duration != nil {
-			params.Duration = pgtype.Int4{Int32: *req.Duration, Valid: true}
-		}
-		if req.RestSeconds != nil {
-			params.RestSeconds = pgtype.Int4{Int32: *req.RestSeconds, Valid: true}
-		}
-		if req.ExerciseID != nil {
-			var exUUID pgtype.UUID
-			if err := exUUID.Scan(*req.ExerciseID); err == nil {
-				params.ExerciseID = exUUID
-			}
-		}
-		if req.WorktimeSeconds != nil {
-			params.WorktimeSeconds = pgtype.Int4{Int32: *req.WorktimeSeconds, Valid: true}
-		}
-		if req.Hand != nil {
-			params.Hand = pgtype.Text{String: *req.Hand, Valid: true}
-		}
-		if req.Granularity != nil {
-			params.Granularity = pgtype.Text{String: *req.Granularity, Valid: true}
-		}
-		if req.FreeText != nil {
-			params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
-		}
-		if req.Comment != nil {
-			params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
-		}
-		params.LoadIsMax = req.LoadIsMax
-		if hasJSONValue(req.Loads) {
-			params.Loads = req.Loads
-		}
-		if hasJSONValue(req.LeftLoads) {
-			params.LeftLoads = req.LeftLoads
-		}
-		if hasJSONValue(req.HandPositions) {
-			params.HandPositions = req.HandPositions
-		}
-		if hasJSONValue(req.EdgeSizesMm) {
-			params.EdgeSizesMm = req.EdgeSizesMm
-		}
-		if hasJSONValue(req.VariableTargets) {
-			params.VariableTargets = req.VariableTargets
-		}
-		if req.GroupTitle != nil {
-			params.GroupTitle = pgtype.Text{String: *req.GroupTitle, Valid: true}
-		}
-
-		row, err := queries.CreateTrainingItem(ctx, params)
+		row, err := queries.CreateTrainingItem(ctx, trainingItemParams(trainingID, parentID, int32(i), req))
 		if err != nil {
 			return nil, err
 		}
@@ -628,6 +668,103 @@ func insertTrainingItemsRecursive(
 	}
 
 	return result, nil
+}
+
+// keptItemIDs collects the ids an update leaves in place, so the caller can
+// delete the rows the payload dropped. It refuses the same id twice: two request
+// items claiming one row would collapse onto it, and the tree would come back a
+// node short with no error to say so.
+type keptItemIDs struct {
+	ids  []pgtype.UUID
+	seen map[pgtype.UUID]bool
+}
+
+// The id slice starts empty rather than nil: pgx sends a nil slice as SQL NULL,
+// and the prune's NOT (id = ANY(NULL)) is NULL for every row, so a payload that
+// keeps nothing would delete nothing.
+func newKeptItemIDs() *keptItemIDs {
+	return &keptItemIDs{ids: []pgtype.UUID{}, seen: make(map[pgtype.UUID]bool)}
+}
+
+// add keys duplicates on the parsed uuid rather than on the string, because
+// pgtype accepts several spellings of the same one.
+func (k *keptItemIDs) add(id pgtype.UUID) error {
+	if k.seen[id] {
+		return invalidRequestf("item id %s appears more than once", id.String())
+	}
+	k.seen[id] = true
+	k.ids = append(k.ids, id)
+	return nil
+}
+
+// syncTrainingItemsRecursive reconciles the stored tree against the payload
+// instead of recreating it: an item sent back with its id keeps that id, one
+// sent without gets a new row, and the rows nothing claimed are left for the
+// caller to delete. Rep data, session item results and program overrides all key
+// into a training by item id, so recreating the tree strands or cascades away
+// every one of them, on an edit that never touched the item they point at.
+func syncTrainingItemsRecursive(
+	ctx context.Context,
+	queries *db.Queries,
+	trainingID pgtype.UUID,
+	parentID pgtype.UUID,
+	items []TrainingItemRequest,
+	kept *keptItemIDs,
+) ([]TrainingItemResponse, error) {
+	result := make([]TrainingItemResponse, 0, len(items))
+
+	for i, req := range items {
+		row, err := upsertTrainingItem(ctx, queries, trainingItemParams(trainingID, parentID, int32(i), req), req.ID, kept)
+		if err != nil {
+			return nil, err
+		}
+
+		resp := dbTrainingItemToResponse(row)
+
+		if len(req.Items) > 0 {
+			children, err := syncTrainingItemsRecursive(ctx, queries, trainingID, row.ID, req.Items, kept)
+			if err != nil {
+				return nil, err
+			}
+			resp.Items = children
+		}
+
+		result = append(result, resp)
+	}
+
+	return result, nil
+}
+
+func upsertTrainingItem(
+	ctx context.Context,
+	queries *db.Queries,
+	params db.CreateTrainingItemParams,
+	id *string,
+	kept *keptItemIDs,
+) (db.TrainingItem, error) {
+	var none db.TrainingItem
+
+	if id == nil || *id == "" {
+		row, err := queries.CreateTrainingItem(ctx, params)
+		if err != nil {
+			return none, err
+		}
+		return row, kept.add(row.ID)
+	}
+
+	var itemUUID pgtype.UUID
+	if err := itemUUID.Scan(*id); err != nil {
+		return none, invalidRequestf("invalid item id %s", *id)
+	}
+	if err := kept.add(itemUUID); err != nil {
+		return none, err
+	}
+
+	row, err := queries.UpdateTrainingItem(ctx, updateTrainingItemParams(itemUUID, params))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return none, invalidRequestf("item id %s does not belong to this training", *id)
+	}
+	return row, err
 }
 
 func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
@@ -922,7 +1059,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 
 // UpdateCoachTraining godoc
 // @Summary Update a training template
-// @Description Replace the training metadata and items tree. Only the owner can update.
+// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted.
 // @Tags Trainings
 // @Accept json
 // @Produce json
@@ -995,15 +1132,23 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
-	if err := qtx.DeleteTrainingItems(c.Context(), trainingUUID); err != nil {
-		slog.Error("failed to delete training items", "training_id", trainingUUID.String(), "error", err)
+	var zeroParent pgtype.UUID
+	kept := newKeptItemIDs()
+	items, err := syncTrainingItemsRecursive(c.Context(), qtx, trainingUUID, zeroParent, req.Items, kept)
+	if err != nil {
+		var bad invalidRequest
+		if errors.As(err, &bad) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
+		}
+		slog.Error("failed to sync training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})
 	}
 
-	var zeroParent pgtype.UUID
-	items, err := insertTrainingItemsRecursive(c.Context(), qtx, trainingUUID, zeroParent, req.Items)
-	if err != nil {
-		slog.Error("failed to insert training items", "training_id", trainingUUID.String(), "error", err)
+	if err := qtx.DeleteTrainingItemsNotIn(c.Context(), db.DeleteTrainingItemsNotInParams{
+		TrainingID: trainingUUID,
+		KeptIds:    kept.ids,
+	}); err != nil {
+		slog.Error("failed to delete removed training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})
 	}
 

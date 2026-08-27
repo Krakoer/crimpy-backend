@@ -3949,7 +3949,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the training metadata and items tree. Only the owner can update.",
+                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5924,6 +5924,10 @@ const docTemplate = `{
                     "items": {
                         "type": "object"
                     }
+                },
+                "id": {
+                    "description": "The id the item was last read under, sent back on an update so the row\nkeeps it. Empty for an item the coach just added, and ignored on create.",
+                    "type": "string"
                 },
                 "interval_seconds": {
                     "type": "integer"

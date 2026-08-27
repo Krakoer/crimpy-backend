@@ -64,5 +64,26 @@ ORDER BY training_items.position;
 -- name: GetTrainingItemInTraining :one
 SELECT * FROM training_items WHERE id = @id AND training_id = @training_id;
 
--- name: DeleteTrainingItems :exec
-DELETE FROM training_items WHERE training_id = @training_id;
+-- Scoped to the training so an id belonging to another one, and therefore
+-- possibly to another coach, updates nothing and is refused by the caller.
+-- name: UpdateTrainingItem :one
+UPDATE training_items
+SET parent_id = @parent_id, type = @type, position = @position,
+    cycles = @cycles, cycle_rest_seconds = @cycle_rest_seconds,
+    interval_seconds = @interval_seconds,
+    reps = @reps, reps_is_max = @reps_is_max, duration = @duration,
+    rest_seconds = @rest_seconds,
+    exercise_id = @exercise_id,
+    worktime_seconds = @worktime_seconds, hand = @hand, granularity = @granularity,
+    free_text = @free_text, comment = @comment, load_is_max = @load_is_max,
+    loads = @loads, left_loads = @left_loads, hand_positions = @hand_positions,
+    edge_sizes_mm = @edge_sizes_mm,
+    variable_targets = @variable_targets,
+    group_title = @group_title,
+    updated_at = now()
+WHERE id = @id AND training_id = @training_id
+RETURNING *;
+
+-- name: DeleteTrainingItemsNotIn :exec
+DELETE FROM training_items
+WHERE training_id = @training_id AND NOT (id = ANY(@kept_ids::uuid[]));

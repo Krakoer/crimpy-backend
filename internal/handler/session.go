@@ -748,12 +748,11 @@ func freezeAssessmentDefinitions(ctx context.Context, qtx *db.Queries, items []T
 
 // resolveRepItemLinks turns each rep's training item link into the value to
 // store. A link naming an item the frozen prescription does not hold is dropped
-// to NULL rather than refused: the ids rotate whenever the coach edits the
-// training mid-run (UpdateTraining re-inserts every item), and the link is only
-// a grouping hint the reader already falls back from, so refusing would trade a
-// lost grouping for a lost session. A malformed id is a client bug, not a race,
-// and still fails the request - the returned index names the offending rep, or
-// -1 when every link resolved.
+// to NULL rather than refused: the coach can delete an item while the athlete is
+// mid run, and the link is only a grouping hint the reader already falls back
+// from, so refusing would trade a lost grouping for a lost session. A malformed
+// id is a client bug, not a race, and still fails the request - the returned
+// index names the offending rep, or -1 when every link resolved.
 func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]struct{}, userID string) ([]pgtype.UUID, int) {
 	resolved := make([]pgtype.UUID, len(reps))
 	for i, rd := range reps {
@@ -776,8 +775,8 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 
 // resolveItemResultLinks turns each open-count result into the item id to store
 // against it. It drops a result naming an item the frozen prescription does not
-// hold, for the reason resolveRepItemLinks drops a rep link: the ids rotate
-// whenever the coach edits the training mid run, and a count keyed to an item
+// hold, for the reason resolveRepItemLinks drops a rep link: the coach can
+// delete an item while the athlete is mid run, and a count keyed to an item
 // nothing can resolve is unreadable anyway, so refusing would trade an
 // unreadable number for a lost session. A malformed id is a client bug rather
 // than a race and still fails the request, as does a second result claiming a
