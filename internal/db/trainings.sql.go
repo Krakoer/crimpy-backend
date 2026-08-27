@@ -174,12 +174,18 @@ func (q *Queries) DeleteTraining(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
-const deleteTrainingItems = `-- name: DeleteTrainingItems :exec
-DELETE FROM training_items WHERE training_id = $1
+const deleteTrainingItemsNotIn = `-- name: DeleteTrainingItemsNotIn :exec
+DELETE FROM training_items
+WHERE training_id = $1 AND NOT (id = ANY($2::uuid[]))
 `
 
-func (q *Queries) DeleteTrainingItems(ctx context.Context, trainingID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTrainingItems, trainingID)
+type DeleteTrainingItemsNotInParams struct {
+	TrainingID pgtype.UUID
+	KeptIds    []pgtype.UUID
+}
+
+func (q *Queries) DeleteTrainingItemsNotIn(ctx context.Context, arg DeleteTrainingItemsNotInParams) error {
+	_, err := q.db.Exec(ctx, deleteTrainingItemsNotIn, arg.TrainingID, arg.KeptIds)
 	return err
 }
 
@@ -462,6 +468,116 @@ func (q *Queries) UpdateTraining(ctx context.Context, arg UpdateTrainingParams) 
 		&i.Goal,
 		&i.Comment,
 		&i.IsFavorite,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTrainingItem = `-- name: UpdateTrainingItem :one
+UPDATE training_items
+SET parent_id = $1, type = $2, position = $3,
+    cycles = $4, cycle_rest_seconds = $5,
+    interval_seconds = $6,
+    reps = $7, reps_is_max = $8, duration = $9,
+    rest_seconds = $10,
+    exercise_id = $11,
+    worktime_seconds = $12, hand = $13, granularity = $14,
+    free_text = $15, comment = $16, load_is_max = $17,
+    loads = $18, left_loads = $19, hand_positions = $20,
+    edge_sizes_mm = $21,
+    variable_targets = $22,
+    group_title = $23,
+    updated_at = now()
+WHERE id = $24 AND training_id = $25
+RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
+`
+
+type UpdateTrainingItemParams struct {
+	ParentID         pgtype.UUID
+	Type             string
+	Position         int32
+	Cycles           pgtype.Int4
+	CycleRestSeconds pgtype.Int4
+	IntervalSeconds  pgtype.Int4
+	Reps             pgtype.Int4
+	RepsIsMax        bool
+	Duration         pgtype.Int4
+	RestSeconds      pgtype.Int4
+	ExerciseID       pgtype.UUID
+	WorktimeSeconds  pgtype.Int4
+	Hand             pgtype.Text
+	Granularity      pgtype.Text
+	FreeText         pgtype.Text
+	Comment          pgtype.Text
+	LoadIsMax        bool
+	Loads            []byte
+	LeftLoads        []byte
+	HandPositions    []byte
+	EdgeSizesMm      []byte
+	VariableTargets  []byte
+	GroupTitle       pgtype.Text
+	ID               pgtype.UUID
+	TrainingID       pgtype.UUID
+}
+
+// Scoped to the training so an id belonging to another one, and therefore
+// possibly to another coach, updates nothing and is refused by the caller.
+func (q *Queries) UpdateTrainingItem(ctx context.Context, arg UpdateTrainingItemParams) (TrainingItem, error) {
+	row := q.db.QueryRow(ctx, updateTrainingItem,
+		arg.ParentID,
+		arg.Type,
+		arg.Position,
+		arg.Cycles,
+		arg.CycleRestSeconds,
+		arg.IntervalSeconds,
+		arg.Reps,
+		arg.RepsIsMax,
+		arg.Duration,
+		arg.RestSeconds,
+		arg.ExerciseID,
+		arg.WorktimeSeconds,
+		arg.Hand,
+		arg.Granularity,
+		arg.FreeText,
+		arg.Comment,
+		arg.LoadIsMax,
+		arg.Loads,
+		arg.LeftLoads,
+		arg.HandPositions,
+		arg.EdgeSizesMm,
+		arg.VariableTargets,
+		arg.GroupTitle,
+		arg.ID,
+		arg.TrainingID,
+	)
+	var i TrainingItem
+	err := row.Scan(
+		&i.ID,
+		&i.TrainingID,
+		&i.ParentID,
+		&i.Type,
+		&i.Position,
+		&i.Cycles,
+		&i.CycleRestSeconds,
+		&i.IntervalSeconds,
+		&i.Reps,
+		&i.RepsIsMax,
+		&i.Duration,
+		&i.RestSeconds,
+		&i.ExerciseID,
+		&i.WorktimeSeconds,
+		&i.Hand,
+		&i.Granularity,
+		&i.FreeText,
+		&i.Comment,
+		&i.Loads,
+		&i.LeftLoads,
+		&i.HandPositions,
+		&i.EdgeSizesMm,
+		&i.LoadIsMax,
+		&i.VariableTargets,
+		&i.GroupTitle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
