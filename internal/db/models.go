@@ -170,6 +170,7 @@ type Session struct {
 	TrainingID       pgtype.UUID
 	ProgramSessionID pgtype.UUID
 	Prescription     []byte
+	Samples          []byte
 	Duration         int32
 	UpdatedAt        pgtype.Timestamptz
 }

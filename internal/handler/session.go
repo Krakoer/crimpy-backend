@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -151,6 +152,54 @@ type CreateSessionRequest struct {
 	// left open: an AMRAP the athlete measured by doing it, and the rounds an
 	// emom was carried through.
 	ItemResults []SessionItemResultRequest `json:"item_results,omitempty"`
+	// Samples is the force curve the sensor recorded. Accepted on an assessment
+	// only: it is what a critical force or an MVC result means, and on any other
+	// session it would be bulk nothing reads.
+	Samples *SessionSamplesRequest `json:"samples,omitempty"`
+}
+
+// SessionSamplesRequest is a force curve as the app records it: one start
+// instant, then a millisecond offset and a kilogram reading per sample. Two
+// parallel arrays rather than an object per point, which carries the same curve
+// in about a fifth of the bytes.
+type SessionSamplesRequest struct {
+	T0 string    `json:"t0"`
+	Ms []int32   `json:"ms"`
+	Kg []float32 `json:"kg"`
+}
+
+// maxSessionSamples caps a curve at roughly two hours of the sensor's output,
+// well past the longest protocol, so a malformed or hostile body cannot push an
+// unbounded document into the row.
+const maxSessionSamples = 60000
+
+// encodeSessionSamples checks a curve over and returns it as the JSON the column
+// stores, or nil when the request carried none.
+func encodeSessionSamples(req *CreateSessionRequest) ([]byte, error) {
+	if req.Samples == nil {
+		return nil, nil
+	}
+	s := req.Samples
+	if !req.IsAssessment {
+		return nil, errors.New("Samples are only accepted on an assessment session")
+	}
+	if len(s.Ms) != len(s.Kg) {
+		return nil, errors.New("Samples must carry as many offsets as readings")
+	}
+	if len(s.Ms) == 0 {
+		return nil, errors.New("Samples must carry at least one reading")
+	}
+	if len(s.Ms) > maxSessionSamples {
+		return nil, fmt.Errorf("Samples must carry at most %d readings", maxSessionSamples)
+	}
+	if _, err := parseSessionDate(s.T0); err != nil {
+		return nil, errors.New("Invalid samples t0")
+	}
+	encoded, err := json.Marshal(s)
+	if err != nil {
+		return nil, errors.New("Invalid samples")
+	}
+	return encoded, nil
 }
 
 // SessionItemResultRequest is one count a run answered an open item with. The
@@ -218,8 +267,12 @@ type SessionResponse struct {
 	// leave it out, since it is a whole training per row and only the detail
 	// screen reads it.
 	Prescription json.RawMessage `json:"prescription,omitempty" swaggertype:"object"`
-	Duration     int32           `json:"duration"`
-	UpdatedAt    string          `json:"updated_at"`
+	// Samples is the force curve the sensor recorded, carried on an assessment
+	// session only. Absent everywhere else, and left out by the list endpoints
+	// for the reason the prescription is.
+	Samples   json.RawMessage `json:"samples,omitempty" swaggertype:"object"`
+	Duration  int32           `json:"duration"`
+	UpdatedAt string          `json:"updated_at"`
 }
 
 // SessionListItem is a session as the list endpoints return it, with the rep
@@ -244,6 +297,7 @@ type sessionFields struct {
 	TrainingID       pgtype.UUID
 	ProgramSessionID pgtype.UUID
 	Prescription     []byte
+	Samples          []byte
 	Duration         int32
 	UpdatedAt        pgtype.Timestamptz
 }
@@ -280,6 +334,9 @@ func (f sessionFields) toResponse() SessionResponse {
 	}
 	if len(f.Prescription) > 0 {
 		resp.Prescription = json.RawMessage(f.Prescription)
+	}
+	if len(f.Samples) > 0 {
+		resp.Samples = json.RawMessage(f.Samples)
 	}
 	return resp
 }
@@ -991,6 +1048,13 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": itemResultErr.Error()})
 	}
 
+	// Same again: a malformed curve costs a round trip rather than a rolled back
+	// insert of the session and every rep behind it.
+	samples, err := encodeSessionSamples(&req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	// Checked here for the same reason, so an assessment the athlete may not
 	// record against is refused before the session and its reps are inserted.
 	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
@@ -1013,6 +1077,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		TrainingID:       trainingID,
 		ProgramSessionID: programSessionID,
 		Prescription:     prescription,
+		Samples:          samples,
 		Duration:         req.Duration,
 	})
 	if err != nil {
@@ -1213,6 +1278,10 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update session"})
 	}
 
+	// An update touches the name, the notes and the duration, and never the
+	// curve. Echoing it back would ship the bulkiest thing the row holds down
+	// the wire to answer a rename, for a client that reads none of it.
+	updated.Samples = nil
 	return c.JSON(sessionToResponse(updated))
 }
 

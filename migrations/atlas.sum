@@ -1,4 +1,4 @@
-h1:1Y8S0kgAzv6/ZYZuBBOIZz4dRHNNfEE4kQCf3cv10YA=
+h1:w6lVH7LPA3PFrX4DK6zlqgr5u5MLqPjj8mI/wkMBsII=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -48,3 +48,4 @@ h1:1Y8S0kgAzv6/ZYZuBBOIZz4dRHNNfEE4kQCf3cv10YA=
 20260825072054_convert_rep_data_hand.sql h1:0jb9/BrisPtJC3o8Te+CRbjrj1VpRvHN525aLTSUQEA=
 20260825120637_custom_assessments.sql h1:yfxH4FfEmnRXQy9vZaSsQK5IusGjuhHBW3UhC1jIXC0=
 20260825172659_add_amrap_emom.sql h1:/kBRXO2zwjGwZ6Rdj4ecmVyzFfmZzXCpvGicyf3CPUE=
+20260827173638_add_session_samples.sql h1:Z3uRsIWKihvDHXcvH6hpzw4wM6epnYnOWst/Xz1h/c0=

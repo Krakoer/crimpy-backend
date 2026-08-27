@@ -294,6 +294,13 @@ definitions:
         items:
           $ref: '#/definitions/handler.RepDataRequest'
         type: array
+      samples:
+        allOf:
+        - $ref: '#/definitions/handler.SessionSamplesRequest'
+        description: |-
+          Samples is the force curve the sensor recorded. Accepted on an assessment
+          only: it is what a critical force or an MVC result means, and on any other
+          session it would be bulk nothing reads.
       training_id:
         type: string
     type: object
@@ -631,6 +638,12 @@ definitions:
         type: string
       rep_count:
         type: integer
+      samples:
+        description: |-
+          Samples is the force curve the sensor recorded, carried on an assessment
+          session only. Absent everywhere else, and left out by the list endpoints
+          for the reason the prescription is.
+        type: object
       training_id:
         type: string
       updated_at:
@@ -681,11 +694,30 @@ definitions:
         type: object
       program_session_id:
         type: string
+      samples:
+        description: |-
+          Samples is the force curve the sensor recorded, carried on an assessment
+          session only. Absent everywhere else, and left out by the list endpoints
+          for the reason the prescription is.
+        type: object
       training_id:
         type: string
       updated_at:
         type: string
       user_id:
+        type: string
+    type: object
+  handler.SessionSamplesRequest:
+    properties:
+      kg:
+        items:
+          type: number
+        type: array
+      ms:
+        items:
+          type: integer
+        type: array
+      t0:
         type: string
     type: object
   handler.SetExerciseFavoriteRequest:
