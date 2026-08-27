@@ -5268,6 +5268,14 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.RepDataRequest"
                     }
                 },
+                "samples": {
+                    "description": "Samples is the force curve the sensor recorded. Accepted on an assessment\nonly: it is what a critical force or an MVC result means, and on any other\nsession it would be bulk nothing reads.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/handler.SessionSamplesRequest"
+                        }
+                    ]
+                },
                 "training_id": {
                     "type": "string"
                 }
@@ -5745,6 +5753,10 @@ const docTemplate = `{
                 "rep_count": {
                     "type": "integer"
                 },
+                "samples": {
+                    "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
+                    "type": "object"
+                },
                 "training_id": {
                     "type": "string"
                 },
@@ -5815,6 +5827,10 @@ const docTemplate = `{
                 "program_session_id": {
                     "type": "string"
                 },
+                "samples": {
+                    "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
+                    "type": "object"
+                },
                 "training_id": {
                     "type": "string"
                 },
@@ -5822,6 +5838,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.SessionSamplesRequest": {
+            "type": "object",
+            "properties": {
+                "kg": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "ms": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "t0": {
                     "type": "string"
                 }
             }

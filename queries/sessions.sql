@@ -1,9 +1,9 @@
 -- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, duration, date
+  program_session_id, prescription, samples, duration, date
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 ) RETURNING *;
 
 -- name: GetSession :one

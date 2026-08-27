@@ -70,6 +70,14 @@ CREATE TABLE "sessions" (
   -- describes what the athlete was actually asked to do. Null exactly when the
   -- session was not run from a training, see the check below.
   "prescription"        JSONB,
+  -- The force curve the sensor recorded, on an assessment session only: the
+  -- samples are what a critical force or an MVC result means, while on an
+  -- ordinary repeater they are noise nothing reads. Shaped {"t0", "ms", "kg"},
+  -- a start instant and two equal length arrays, rather than a point per object
+  -- with its own timestamp, which is about five times the bytes for the same
+  -- curve. Null on every session that carries no curve. Kept off the history
+  -- list query for the reason the prescription is, see GetUserSessions.
+  "samples"             JSONB,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
@@ -80,7 +88,12 @@ CREATE TABLE "sessions" (
   -- keeping no record of what, which no write path produces. Not the converse:
   -- deleting the training nulls the link and the snapshot rightly outlives it.
   CONSTRAINT "sessions_training_has_prescription_check"
-    CHECK (training_id IS NULL OR prescription IS NOT NULL)
+    CHECK (training_id IS NULL OR prescription IS NOT NULL),
+  -- Only an assessment carries a curve, which is the decision this column was
+  -- added under. Enforced here so a client cannot quietly start filling it for
+  -- every repeater session and grow the table by an order of magnitude.
+  CONSTRAINT "sessions_samples_assessment_only_check"
+    CHECK (samples IS NULL OR is_assessment)
 );
 
 -- Stores the assessments the user has done, with the results.

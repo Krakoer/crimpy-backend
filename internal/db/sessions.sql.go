@@ -65,10 +65,10 @@ func (q *Queries) CountAccessibleTraining(ctx context.Context, arg CountAccessib
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, duration, date
+  program_session_id, prescription, samples, duration, date
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, duration, updated_at
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, updated_at
 `
 
 type CreateSessionParams struct {
@@ -81,6 +81,7 @@ type CreateSessionParams struct {
 	TrainingID       pgtype.UUID
 	ProgramSessionID pgtype.UUID
 	Prescription     []byte
+	Samples          []byte
 	Duration         int32
 	Date             pgtype.Timestamptz
 }
@@ -96,6 +97,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		arg.TrainingID,
 		arg.ProgramSessionID,
 		arg.Prescription,
+		arg.Samples,
 		arg.Duration,
 		arg.Date,
 	)
@@ -112,6 +114,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.TrainingID,
 		&i.ProgramSessionID,
 		&i.Prescription,
+		&i.Samples,
 		&i.Duration,
 		&i.UpdatedAt,
 	)
@@ -128,7 +131,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, duration, updated_at FROM sessions WHERE id = $1
+SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, updated_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -146,6 +149,7 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 		&i.TrainingID,
 		&i.ProgramSessionID,
 		&i.Prescription,
+		&i.Samples,
 		&i.Duration,
 		&i.UpdatedAt,
 	)
@@ -234,7 +238,7 @@ UPDATE sessions
 SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date),
     updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, duration, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, updated_at
 `
 
 type UpdateSessionParams struct {
@@ -266,6 +270,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		&i.TrainingID,
 		&i.ProgramSessionID,
 		&i.Prescription,
+		&i.Samples,
 		&i.Duration,
 		&i.UpdatedAt,
 	)
