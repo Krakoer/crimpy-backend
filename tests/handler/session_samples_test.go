@@ -4,7 +4,6 @@ import (
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -16,7 +15,7 @@ import (
 // the API rather than the store, since accepting the curve and handing it back
 // on the detail read is the whole contract the app codes against.
 
-func samplesRequest(isAssessment bool, samples interface{}) []byte {
+func samplesRequest(isAssessment bool, samples interface{}) map[string]interface{} {
 	body := map[string]interface{}{
 		"name":          "Critical force",
 		"notes":         "",
@@ -28,22 +27,7 @@ func samplesRequest(isAssessment bool, samples interface{}) []byte {
 	if samples != nil {
 		body["samples"] = samples
 	}
-	encoded, _ := json.Marshal(body)
-	return encoded
-}
-
-func postSession(t *testing.T, app *fiber.App, token string, body []byte) (*http.Response, map[string]interface{}) {
-	t.Helper()
-	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
-	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
-
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Failed to execute request: %v", err)
-	}
-	var decoded map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&decoded)
-	return resp, decoded
+	return body
 }
 
 func samplesApp(t *testing.T, email string) (*fiber.App, string) {
@@ -68,35 +52,17 @@ func TestSessionSamples_StoredAndReadBack(t *testing.T) {
 		"ms": []int32{0, 125, 250},
 		"kg": []float32{0, 12.5, 31.25},
 	}
-	resp, created := postSession(t, app, token, samplesRequest(true, curve))
-	if resp.StatusCode != fiber.StatusCreated {
-		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, resp.StatusCode, created)
+	status, created := postJSON(t, app, "/api/sessions", token, samplesRequest(true, curve))
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, status, created)
 	}
 
 	sessionID, _ := created["id"].(string)
-	if nested, ok := created["session"].(map[string]interface{}); ok {
-		sessionID, _ = nested["id"].(string)
-	}
 	if sessionID == "" {
 		t.Fatalf("Create returned no session id: %v", created)
 	}
 
-	req := testutil.NewJSONRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
-	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
-	detail, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Failed to read the session back: %v", err)
-	}
-	if detail.StatusCode != fiber.StatusOK {
-		t.Fatalf("Expected status %d reading back, got %d", fiber.StatusOK, detail.StatusCode)
-	}
-
-	var read map[string]interface{}
-	json.NewDecoder(detail.Body).Decode(&read)
-	session, ok := read["session"].(map[string]interface{})
-	if !ok {
-		session = read
-	}
+	session := getSessionJSON(t, app, token, sessionID)
 	samples, ok := session["samples"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("Expected the curve back on the detail read, got %v", session["samples"])
@@ -123,10 +89,10 @@ func TestSessionSamples_RefusedOnAnOrdinarySession(t *testing.T) {
 		"ms": []int32{0},
 		"kg": []float32{12},
 	}
-	resp, decoded := postSession(t, app, token, samplesRequest(false, curve))
+	status, decoded := postJSON(t, app, "/api/sessions", token, samplesRequest(false, curve))
 
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, resp.StatusCode, decoded)
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, status, decoded)
 	}
 }
 
@@ -138,10 +104,10 @@ func TestSessionSamples_RefusedWhenTheArraysDisagree(t *testing.T) {
 		"ms": []int32{0, 125},
 		"kg": []float32{12},
 	}
-	resp, decoded := postSession(t, app, token, samplesRequest(true, curve))
+	status, decoded := postJSON(t, app, "/api/sessions", token, samplesRequest(true, curve))
 
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, resp.StatusCode, decoded)
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, status, decoded)
 	}
 }
 
@@ -153,10 +119,10 @@ func TestSessionSamples_RefusedWhenT0IsNotADate(t *testing.T) {
 		"ms": []int32{0},
 		"kg": []float32{12},
 	}
-	resp, decoded := postSession(t, app, token, samplesRequest(true, curve))
+	status, decoded := postJSON(t, app, "/api/sessions", token, samplesRequest(true, curve))
 
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, resp.StatusCode, decoded)
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, status, decoded)
 	}
 }
 
@@ -164,17 +130,38 @@ func TestSessionSamples_RefusedWhenT0IsNotADate(t *testing.T) {
 func TestSessionSamples_AbsentWhenNoneWereSent(t *testing.T) {
 	app, token := samplesApp(t, "samples-none@test.com")
 
-	resp, created := postSession(t, app, token, samplesRequest(true, nil))
-	if resp.StatusCode != fiber.StatusCreated {
-		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, resp.StatusCode, created)
+	status, created := postJSON(t, app, "/api/sessions", token, samplesRequest(true, nil))
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, status, created)
 	}
 
-	session, ok := created["session"].(map[string]interface{})
-	if !ok {
-		session = created
+	if _, present := created["samples"]; present {
+		t.Errorf("Expected no samples key, got %v", created["samples"])
 	}
-	if _, present := session["samples"]; present {
-		t.Errorf("Expected no samples key, got %v", session["samples"])
+}
+
+// The cap is the only thing standing between one request and an unbounded
+// document in the row, so it is worth a test even though the app's own buffer
+// stops well short of it.
+func TestSessionSamples_RefusedPastTheCap(t *testing.T) {
+	app, token := samplesApp(t, "samples-cap@test.com")
+
+	const tooMany = 60001
+	offsets := make([]int32, tooMany)
+	readings := make([]float32, tooMany)
+	for i := range offsets {
+		offsets[i] = int32(i * 125)
+		readings[i] = 12.5
+	}
+	curve := map[string]interface{}{
+		"t0": "2026-08-27T09:12:03Z",
+		"ms": offsets,
+		"kg": readings,
+	}
+	status, decoded := postJSON(t, app, "/api/sessions", token, samplesRequest(true, curve))
+
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusBadRequest, status, decoded)
 	}
 }
 
@@ -188,8 +175,8 @@ func TestSessionSamples_LeftOffTheList(t *testing.T) {
 		"ms": []int32{0, 125},
 		"kg": []float32{0, 12.5},
 	}
-	if resp, decoded := postSession(t, app, token, samplesRequest(true, curve)); resp.StatusCode != fiber.StatusCreated {
-		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, resp.StatusCode, decoded)
+	if status, decoded := postJSON(t, app, "/api/sessions", token, samplesRequest(true, curve)); status != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, status, decoded)
 	}
 
 	req := testutil.NewJSONRequest(http.MethodGet, "/api/sessions", nil)
@@ -206,5 +193,43 @@ func TestSessionSamples_LeftOffTheList(t *testing.T) {
 	}
 	if _, present := list[0]["samples"]; present {
 		t.Errorf("Expected the list to leave the curve out, got %v", list[0]["samples"])
+	}
+}
+
+// A rename answers with the session, and the curve is the bulkiest thing it
+// holds. The update never touches it, so shipping it back buys the client
+// nothing.
+func TestSessionSamples_LeftOffAnUpdate(t *testing.T) {
+	app, token := samplesApp(t, "samples-update@test.com")
+
+	curve := map[string]interface{}{
+		"t0": "2026-08-27T09:12:03Z",
+		"ms": []int32{0, 125},
+		"kg": []float32{0, 12.5},
+	}
+	status, created := postJSON(t, app, "/api/sessions", token, samplesRequest(true, curve))
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected status %d, got %d: %v", fiber.StatusCreated, status, created)
+	}
+	sessionID, _ := created["id"].(string)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":     "Renamed",
+		"notes":    "",
+		"duration": 240,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPut, "/api/sessions/"+sessionID, body, token))
+	if err != nil {
+		t.Fatalf("Failed to update the session: %v", err)
+	}
+	var updated map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&updated)
+	if _, present := updated["samples"]; present {
+		t.Errorf("Expected the update to leave the curve out, got %v", updated["samples"])
+	}
+
+	// Left off the response, still in the row.
+	if _, ok := getSessionJSON(t, app, token, sessionID)["samples"].(map[string]interface{}); !ok {
+		t.Errorf("Expected the stored curve to survive the update")
 	}
 }

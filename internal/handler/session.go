@@ -1278,6 +1278,10 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update session"})
 	}
 
+	// An update touches the name, the notes and the duration, and never the
+	// curve. Echoing it back would ship the bulkiest thing the row holds down
+	// the wire to answer a rename, for a client that reads none of it.
+	updated.Samples = nil
 	return c.JSON(sessionToResponse(updated))
 }
 
