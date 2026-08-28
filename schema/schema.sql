@@ -79,6 +79,18 @@ CREATE TABLE "sessions" (
   -- list query for the reason the prescription is, see GetUserSessions.
   "samples"             JSONB,
   "duration"            INTEGER     NOT NULL DEFAULT 0,
+  -- The coach's answer to the notes the athlete left after the session. "notes"
+  -- is the athlete's side of that exchange, so the two live on the row together
+  -- rather than in a thread table: one session carries at most one exchange.
+  -- Null while the coach has not answered.
+  "coach_reply"         TEXT,
+  -- When the answer was last written. Read back by the app to order the replies
+  -- it has to announce.
+  "coach_reply_at"      TIMESTAMPTZ,
+  -- When the athlete opened the answer. Null on an answer still unread, which is
+  -- what the app raises a notification for. Reset by a coach rewriting their
+  -- answer, since the athlete has then not seen what it now says.
+  "coach_reply_read_at" TIMESTAMPTZ,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
@@ -93,7 +105,14 @@ CREATE TABLE "sessions" (
   -- added under. Enforced here so a client cannot quietly start filling it for
   -- every repeater session and grow the table by an order of magnitude.
   CONSTRAINT "sessions_samples_assessment_only_check"
-    CHECK (samples IS NULL OR is_assessment)
+    CHECK (samples IS NULL OR is_assessment),
+  -- The three reply columns describe one answer, so they cannot disagree about
+  -- whether there is one: no timestamp without the text it dates, and nothing
+  -- read that was never written.
+  CONSTRAINT "sessions_coach_reply_at_check"
+    CHECK ((coach_reply IS NULL) = (coach_reply_at IS NULL)),
+  CONSTRAINT "sessions_coach_reply_read_at_check"
+    CHECK (coach_reply_read_at IS NULL OR coach_reply IS NOT NULL)
 );
 
 -- Stores the assessments the user has done, with the results.

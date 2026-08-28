@@ -172,6 +172,9 @@ type Session struct {
 	Prescription     []byte
 	Samples          []byte
 	Duration         int32
+	CoachReply       pgtype.Text
+	CoachReplyAt     pgtype.Timestamptz
+	CoachReplyReadAt pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 }
 

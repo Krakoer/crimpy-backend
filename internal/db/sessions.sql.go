@@ -11,6 +11,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearSessionCoachReply = `-- name: ClearSessionCoachReply :one
+UPDATE sessions
+SET coach_reply = NULL,
+    coach_reply_at = NULL,
+    coach_reply_read_at = NULL,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
+`
+
+type ClearSessionCoachReplyParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+// Takes the answer back, leaving the session as if it had never been answered.
+// Scoped the way SetSessionCoachReply is, for the same reason.
+func (q *Queries) ClearSessionCoachReply(ctx context.Context, arg ClearSessionCoachReplyParams) (Session, error) {
+	row := q.db.QueryRow(ctx, clearSessionCoachReply, arg.ID, arg.UserID)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Notes,
+		&i.Date,
+		&i.IsAssessment,
+		&i.Activity,
+		&i.Origin,
+		&i.TrainingID,
+		&i.ProgramSessionID,
+		&i.Prescription,
+		&i.Samples,
+		&i.Duration,
+		&i.CoachReply,
+		&i.CoachReplyAt,
+		&i.CoachReplyReadAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const countAccessibleProgramSession = `-- name: CountAccessibleProgramSession :one
 SELECT COUNT(*) FROM coach_program_week_sessions
 JOIN coach_program_weeks ON coach_program_weeks.id = coach_program_week_sessions.week_id
@@ -68,7 +110,7 @@ INSERT INTO sessions (
   program_session_id, prescription, samples, duration, date
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, updated_at
+) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
 `
 
 type CreateSessionParams struct {
@@ -116,6 +158,9 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Prescription,
 		&i.Samples,
 		&i.Duration,
+		&i.CoachReply,
+		&i.CoachReplyAt,
+		&i.CoachReplyReadAt,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -131,7 +176,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, updated_at FROM sessions WHERE id = $1
+SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -151,6 +196,9 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 		&i.Prescription,
 		&i.Samples,
 		&i.Duration,
+		&i.CoachReply,
+		&i.CoachReplyAt,
+		&i.CoachReplyReadAt,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -169,6 +217,9 @@ SELECT
   sessions.training_id,
   sessions.program_session_id,
   sessions.duration,
+  sessions.coach_reply,
+  sessions.coach_reply_at,
+  sessions.coach_reply_read_at,
   sessions.updated_at,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
@@ -190,6 +241,9 @@ type GetUserSessionsRow struct {
 	TrainingID       pgtype.UUID
 	ProgramSessionID pgtype.UUID
 	Duration         int32
+	CoachReply       pgtype.Text
+	CoachReplyAt     pgtype.Timestamptz
+	CoachReplyReadAt pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	RepCount         int64
 }
@@ -220,6 +274,9 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Ge
 			&i.TrainingID,
 			&i.ProgramSessionID,
 			&i.Duration,
+			&i.CoachReply,
+			&i.CoachReplyAt,
+			&i.CoachReplyReadAt,
 			&i.UpdatedAt,
 			&i.RepCount,
 		); err != nil {
@@ -233,12 +290,93 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Ge
 	return items, nil
 }
 
+const markSessionCoachReplyRead = `-- name: MarkSessionCoachReplyRead :one
+UPDATE sessions
+SET coach_reply_read_at = COALESCE(coach_reply_read_at, now())
+WHERE id = $1 AND coach_reply IS NOT NULL
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
+`
+
+// Stamps the answer as seen. The first read wins, so reopening the session does
+// not keep moving the instant the athlete actually read it.
+func (q *Queries) MarkSessionCoachReplyRead(ctx context.Context, id pgtype.UUID) (Session, error) {
+	row := q.db.QueryRow(ctx, markSessionCoachReplyRead, id)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Notes,
+		&i.Date,
+		&i.IsAssessment,
+		&i.Activity,
+		&i.Origin,
+		&i.TrainingID,
+		&i.ProgramSessionID,
+		&i.Prescription,
+		&i.Samples,
+		&i.Duration,
+		&i.CoachReply,
+		&i.CoachReplyAt,
+		&i.CoachReplyReadAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setSessionCoachReply = `-- name: SetSessionCoachReply :one
+UPDATE sessions
+SET coach_reply = $1,
+    coach_reply_at = now(),
+    coach_reply_read_at = NULL,
+    updated_at = now()
+WHERE id = $2 AND user_id = $3
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
+`
+
+type SetSessionCoachReplyParams struct {
+	CoachReply pgtype.Text
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+}
+
+// Writes the coach's answer to a session and marks it unread again: an answer
+// the coach rewrote is not one the athlete has seen.
+//
+// Scoped by the athlete the caller verified is their client, so the ownership
+// check and the write are one statement: reading the row first left a window in
+// which the athlete could delete it, and turned a normal race into a 500.
+func (q *Queries) SetSessionCoachReply(ctx context.Context, arg SetSessionCoachReplyParams) (Session, error) {
+	row := q.db.QueryRow(ctx, setSessionCoachReply, arg.CoachReply, arg.ID, arg.UserID)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Notes,
+		&i.Date,
+		&i.IsAssessment,
+		&i.Activity,
+		&i.Origin,
+		&i.TrainingID,
+		&i.ProgramSessionID,
+		&i.Prescription,
+		&i.Samples,
+		&i.Duration,
+		&i.CoachReply,
+		&i.CoachReplyAt,
+		&i.CoachReplyReadAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date),
     updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
 `
 
 type UpdateSessionParams struct {
@@ -272,6 +410,9 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		&i.Prescription,
 		&i.Samples,
 		&i.Duration,
+		&i.CoachReply,
+		&i.CoachReplyAt,
+		&i.CoachReplyReadAt,
 		&i.UpdatedAt,
 	)
 	return i, err

@@ -27,6 +27,9 @@ SELECT
   sessions.training_id,
   sessions.program_session_id,
   sessions.duration,
+  sessions.coach_reply,
+  sessions.coach_reply_at,
+  sessions.coach_reply_read_at,
   sessions.updated_at,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
@@ -69,3 +72,37 @@ JOIN coach_program_weeks ON coach_program_weeks.id = coach_program_week_sessions
 JOIN coach_programs ON coach_programs.id = coach_program_weeks.program_id
 WHERE coach_program_week_sessions.id = sqlc.arg('program_session_id')
   AND coach_programs.user_id = sqlc.arg('user_id');
+
+-- name: SetSessionCoachReply :one
+-- Writes the coach's answer to a session and marks it unread again: an answer
+-- the coach rewrote is not one the athlete has seen.
+--
+-- Scoped by the athlete the caller verified is their client, so the ownership
+-- check and the write are one statement: reading the row first left a window in
+-- which the athlete could delete it, and turned a normal race into a 500.
+UPDATE sessions
+SET coach_reply = sqlc.arg('coach_reply'),
+    coach_reply_at = now(),
+    coach_reply_read_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg('id') AND user_id = sqlc.arg('user_id')
+RETURNING *;
+
+-- name: ClearSessionCoachReply :one
+-- Takes the answer back, leaving the session as if it had never been answered.
+-- Scoped the way SetSessionCoachReply is, for the same reason.
+UPDATE sessions
+SET coach_reply = NULL,
+    coach_reply_at = NULL,
+    coach_reply_read_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg('id') AND user_id = sqlc.arg('user_id')
+RETURNING *;
+
+-- name: MarkSessionCoachReplyRead :one
+-- Stamps the answer as seen. The first read wins, so reopening the session does
+-- not keep moving the instant the athlete actually read it.
+UPDATE sessions
+SET coach_reply_read_at = COALESCE(coach_reply_read_at, now())
+WHERE id = $1 AND coach_reply IS NOT NULL
+RETURNING *;

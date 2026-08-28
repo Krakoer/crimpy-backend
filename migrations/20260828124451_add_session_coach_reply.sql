@@ -1,0 +1,2 @@
+-- Modify "sessions" table
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_coach_reply_at_check" CHECK ((coach_reply IS NULL) = (coach_reply_at IS NULL)), ADD CONSTRAINT "sessions_coach_reply_read_at_check" CHECK ((coach_reply_read_at IS NULL) OR (coach_reply IS NOT NULL)), ADD COLUMN "coach_reply" text NULL, ADD COLUMN "coach_reply_at" timestamptz NULL, ADD COLUMN "coach_reply_read_at" timestamptz NULL;
