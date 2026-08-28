@@ -935,6 +935,65 @@ func TestWeekHandler_UpsertWeek_KeepsSessionIDsSentBack(t *testing.T) {
 	}
 }
 
+// The order of the sessions inside a day is the coach's, not an accident of how
+// the rows were written. The payload order is the only thing carrying it, so the
+// position it becomes has to survive both the write and a later read.
+func TestWeekHandler_UpsertWeek_KeepsTheOrderOfSessionsInADay(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wkordercoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wkorderuser@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	firstTrainingID := createTestCoachTraining(t, coachToken, app)
+	secondTrainingID := createTestCoachTraining(t, coachToken, app)
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"training_id": firstTrainingID, "day_of_week": 2},
+			{"training_id": secondTrainingID, "day_of_week": 2},
+		},
+	})
+	ids := weekSessionIDs(created)
+	assertSessionOrder(t, created, "on create", ids[0], ids[1])
+
+	swapped := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{"id": ids[1], "training_id": secondTrainingID, "day_of_week": 2},
+			{"id": ids[0], "training_id": firstTrainingID, "day_of_week": 2},
+		},
+	})
+	assertSessionOrder(t, swapped, "after the swap", ids[1], ids[0])
+	assertSessionOrder(t, getWeek(t, app, coachToken, userID, programID, 1), "on read back", ids[1], ids[0])
+}
+
+// Order means both the order the sessions come back in and the positions they
+// carry, since a client is free to sort on either.
+func assertSessionOrder(t *testing.T, week map[string]interface{}, stage string, wantIDs ...string) {
+	t.Helper()
+	sessions := week["sessions"].([]interface{})
+	if len(sessions) != len(wantIDs) {
+		t.Fatalf("Expected %d sessions %s, got %d", len(wantIDs), stage, len(sessions))
+	}
+	for i, wantID := range wantIDs {
+		session := sessions[i].(map[string]interface{})
+		if session["id"] != wantID {
+			t.Errorf("Expected session %s at index %d %s, got %s", wantID, i, stage, session["id"])
+		}
+		if session["position"] != float64(i) {
+			t.Errorf("Expected position %d for session at index %d %s, got %v", i, i, stage, session["position"])
+		}
+	}
+}
+
 func TestWeekHandler_UpsertWeek_KeepsPlayedSessionLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
