@@ -76,22 +76,27 @@ WHERE coach_program_week_sessions.id = sqlc.arg('program_session_id')
 -- name: SetSessionCoachReply :one
 -- Writes the coach's answer to a session and marks it unread again: an answer
 -- the coach rewrote is not one the athlete has seen.
+--
+-- Scoped by the athlete the caller verified is their client, so the ownership
+-- check and the write are one statement: reading the row first left a window in
+-- which the athlete could delete it, and turned a normal race into a 500.
 UPDATE sessions
 SET coach_reply = sqlc.arg('coach_reply'),
     coach_reply_at = now(),
     coach_reply_read_at = NULL,
     updated_at = now()
-WHERE id = $1
+WHERE id = sqlc.arg('id') AND user_id = sqlc.arg('user_id')
 RETURNING *;
 
 -- name: ClearSessionCoachReply :one
 -- Takes the answer back, leaving the session as if it had never been answered.
+-- Scoped the way SetSessionCoachReply is, for the same reason.
 UPDATE sessions
 SET coach_reply = NULL,
     coach_reply_at = NULL,
     coach_reply_read_at = NULL,
     updated_at = now()
-WHERE id = $1
+WHERE id = sqlc.arg('id') AND user_id = sqlc.arg('user_id')
 RETURNING *;
 
 -- name: MarkSessionCoachReplyRead :one

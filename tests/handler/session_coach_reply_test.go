@@ -59,7 +59,19 @@ func TestCoachHandler_SetClientSessionReply_TooLong(t *testing.T) {
 		long += "a"
 	}
 	writeCoachReply(t, app, coachToken, userID, sessionID, long, fiber.StatusBadRequest)
+
+	// The cap counts characters, so a reply of accented ones fits exactly as
+	// many as an ASCII one does.
+	accented := ""
+	for range maxAcceptedCoachReply {
+		accented += "\u00e9"
+	}
+	writeCoachReply(t, app, coachToken, userID, sessionID, accented, fiber.StatusOK)
 }
+
+// maxAcceptedCoachReply mirrors the handler's cap, so the test states the
+// boundary it is checking rather than a number pulled from nowhere.
+const maxAcceptedCoachReply = 4000
 
 func TestCoachHandler_SetClientSessionReply_OtherCoachForbidden(t *testing.T) {
 	t.Setenv("JWT_SECRET", "devsecret")

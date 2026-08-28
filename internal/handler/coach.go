@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -553,27 +554,33 @@ func (h *CoachHandler) SetClientSessionReply(c fiber.Ctx) error {
 	}
 
 	reply := strings.TrimSpace(req.Reply)
-	if len(reply) > maxCoachReplyLength {
+	// Counted in characters rather than bytes, so an accented reply is not cut
+	// short of one written in ASCII.
+	if utf8.RuneCountInString(reply) > maxCoachReplyLength {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Reply is too long"})
 	}
 
-	// Loaded before the write so a session belonging to someone else is a 404
-	// rather than an answer landing on a stranger's row.
-	session, err := h.queries.GetSession(c.Context(), sessionUUID)
-	if err != nil || session.UserID.Bytes != clientUUID.Bytes {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
-	}
-
+	// Both writes are scoped to the client, so a session belonging to anyone
+	// else matches no row and comes back as a 404 rather than an answer landing
+	// on a stranger's session.
 	var updated db.Session
+	var err error
 	if reply == "" {
-		updated, err = h.queries.ClearSessionCoachReply(c.Context(), sessionUUID)
+		updated, err = h.queries.ClearSessionCoachReply(c.Context(), db.ClearSessionCoachReplyParams{
+			ID:     sessionUUID,
+			UserID: clientUUID,
+		})
 	} else {
 		updated, err = h.queries.SetSessionCoachReply(c.Context(), db.SetSessionCoachReplyParams{
 			ID:         sessionUUID,
+			UserID:     clientUUID,
 			CoachReply: pgtype.Text{String: reply, Valid: true},
 		})
 	}
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
+		}
 		slog.Error("failed to write coach reply", "session_id", c.Params("session_id"), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save the reply"})
 	}

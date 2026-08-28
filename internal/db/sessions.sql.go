@@ -17,13 +17,19 @@ SET coach_reply = NULL,
     coach_reply_at = NULL,
     coach_reply_read_at = NULL,
     updated_at = now()
-WHERE id = $1
+WHERE id = $1 AND user_id = $2
 RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
 `
 
+type ClearSessionCoachReplyParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
 // Takes the answer back, leaving the session as if it had never been answered.
-func (q *Queries) ClearSessionCoachReply(ctx context.Context, id pgtype.UUID) (Session, error) {
-	row := q.db.QueryRow(ctx, clearSessionCoachReply, id)
+// Scoped the way SetSessionCoachReply is, for the same reason.
+func (q *Queries) ClearSessionCoachReply(ctx context.Context, arg ClearSessionCoachReplyParams) (Session, error) {
+	row := q.db.QueryRow(ctx, clearSessionCoachReply, arg.ID, arg.UserID)
 	var i Session
 	err := row.Scan(
 		&i.ID,
@@ -320,23 +326,28 @@ func (q *Queries) MarkSessionCoachReplyRead(ctx context.Context, id pgtype.UUID)
 
 const setSessionCoachReply = `-- name: SetSessionCoachReply :one
 UPDATE sessions
-SET coach_reply = $2,
+SET coach_reply = $1,
     coach_reply_at = now(),
     coach_reply_read_at = NULL,
     updated_at = now()
-WHERE id = $1
+WHERE id = $2 AND user_id = $3
 RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, updated_at
 `
 
 type SetSessionCoachReplyParams struct {
-	ID         pgtype.UUID
 	CoachReply pgtype.Text
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
 }
 
 // Writes the coach's answer to a session and marks it unread again: an answer
 // the coach rewrote is not one the athlete has seen.
+//
+// Scoped by the athlete the caller verified is their client, so the ownership
+// check and the write are one statement: reading the row first left a window in
+// which the athlete could delete it, and turned a normal race into a 500.
 func (q *Queries) SetSessionCoachReply(ctx context.Context, arg SetSessionCoachReplyParams) (Session, error) {
-	row := q.db.QueryRow(ctx, setSessionCoachReply, arg.ID, arg.CoachReply)
+	row := q.db.QueryRow(ctx, setSessionCoachReply, arg.CoachReply, arg.ID, arg.UserID)
 	var i Session
 	err := row.Scan(
 		&i.ID,
