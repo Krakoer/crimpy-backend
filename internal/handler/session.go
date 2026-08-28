@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -248,6 +249,16 @@ type UpdateSessionRequest struct {
 	Date string `json:"date,omitempty"`
 }
 
+// SessionCoachReplyRequest is the answer a coach writes to the notes an athlete
+// left on a session. An empty reply takes a previous answer back.
+type SessionCoachReplyRequest struct {
+	Reply string `json:"reply"`
+}
+
+// maxCoachReplyLength caps an answer at a few paragraphs, which is what the
+// exchange is for. Anything longer belongs in the program the coach edits.
+const maxCoachReplyLength = 4000
+
 // SessionResponse is the JSON a session is returned as. It is a mapped shape
 // rather than the generated row, so reads speak the same snake_case the request
 // bodies do.
@@ -270,9 +281,16 @@ type SessionResponse struct {
 	// Samples is the force curve the sensor recorded, carried on an assessment
 	// session only. Absent everywhere else, and left out by the list endpoints
 	// for the reason the prescription is.
-	Samples   json.RawMessage `json:"samples,omitempty" swaggertype:"object"`
-	Duration  int32           `json:"duration"`
-	UpdatedAt string          `json:"updated_at"`
+	Samples  json.RawMessage `json:"samples,omitempty" swaggertype:"object"`
+	Duration int32           `json:"duration"`
+	// CoachReply is what the coach answered the athlete's notes with, absent
+	// while they have not answered. CoachReplyAt dates that answer, and
+	// CoachReplyRead says whether the athlete has opened it since it was last
+	// written, which is what the app announces an unread answer from.
+	CoachReply     *string `json:"coach_reply,omitempty"`
+	CoachReplyAt   *string `json:"coach_reply_at,omitempty"`
+	CoachReplyRead bool    `json:"coach_reply_read"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 // SessionListItem is a session as the list endpoints return it, with the rep
@@ -299,6 +317,9 @@ type sessionFields struct {
 	Prescription     []byte
 	Samples          []byte
 	Duration         int32
+	CoachReply       pgtype.Text
+	CoachReplyAt     pgtype.Timestamptz
+	CoachReplyReadAt pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 }
 
@@ -307,6 +328,16 @@ func optionalUUIDString(id pgtype.UUID) *string {
 		return nil
 	}
 	s := id.String()
+	return &s
+}
+
+// optionalTimestamp formats a nullable instant the way every other timestamp
+// leaves this package, or returns nil when the column holds none.
+func optionalTimestamp(t pgtype.Timestamptz) *string {
+	if !t.Valid {
+		return nil
+	}
+	s := t.Time.UTC().Format(time.RFC3339)
 	return &s
 }
 
@@ -330,7 +361,12 @@ func (f sessionFields) toResponse() SessionResponse {
 		TrainingID:       optionalUUIDString(f.TrainingID),
 		ProgramSessionID: optionalUUIDString(f.ProgramSessionID),
 		Duration:         f.Duration,
+		CoachReplyAt:     optionalTimestamp(f.CoachReplyAt),
+		CoachReplyRead:   f.CoachReplyReadAt.Valid,
 		UpdatedAt:        f.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if f.CoachReply.Valid {
+		resp.CoachReply = &f.CoachReply.String
 	}
 	if len(f.Prescription) > 0 {
 		resp.Prescription = json.RawMessage(f.Prescription)
@@ -359,6 +395,9 @@ func sessionRowToListItem(r db.GetUserSessionsRow) SessionListItem {
 			TrainingID:       r.TrainingID,
 			ProgramSessionID: r.ProgramSessionID,
 			Duration:         r.Duration,
+			CoachReply:       r.CoachReply,
+			CoachReplyAt:     r.CoachReplyAt,
+			CoachReplyReadAt: r.CoachReplyReadAt,
 			UpdatedAt:        r.UpdatedAt,
 		}.toResponse(),
 		RepCount: r.RepCount,
@@ -1311,4 +1350,38 @@ func (h *SessionHandler) DeleteSession(c fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Session deleted successfully"})
+}
+
+// MarkCoachReplyRead godoc
+// @Summary Mark a coach reply as read
+// @Description Stamp the coach's answer to this session as seen by the athlete. Idempotent: the first read is the one kept. User must own the session unless they are an admin.
+// @Tags Session
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Session ID (UUID)"
+// @Success 200 {object} SessionResponse "Session with the reply marked read"
+// @Failure 400 {object} map[string]string "Invalid session ID"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Session not found or carries no coach reply"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/sessions/{id}/coach-reply/read [put]
+func (h *SessionHandler) MarkCoachReplyRead(c fiber.Ctx) error {
+	_, sessionUUID, ok := h.ownedSession().require(c)
+	if !ok {
+		return nil
+	}
+
+	updated, err := h.queries.MarkSessionCoachReplyRead(c.Context(), sessionUUID)
+	if err != nil {
+		// The query only matches a session that carries an answer, so no row is
+		// an athlete marking one that was never written or was taken back.
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session carries no coach reply"})
+		}
+		slog.Error("failed to mark coach reply read", "session_id", sessionUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to mark the reply as read"})
+	}
+
+	updated.Samples = nil
+	return c.JSON(sessionToResponse(updated))
 }

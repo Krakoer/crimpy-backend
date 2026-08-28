@@ -1928,6 +1928,95 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/coach/clients/{user_id}/sessions/{session_id}/reply": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Write the coach's answer to the notes the athlete left on a session, or take a previous answer back by sending an empty reply. Writing an answer marks it unread, so the athlete is told about a correction too.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Answer a client's session notes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The answer to write",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.SessionCoachReplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session with the reply",
+                        "schema": {
+                            "$ref": "#/definitions/handler.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid session ID or reply",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a coach or user not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found or does not belong to client",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/coach/enrollment-token": {
             "post": {
                 "security": [
@@ -3792,6 +3881,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/sessions/{id}/coach-reply/read": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Stamp the coach's answer to this session as seen by the athlete. Idempotent: the first read is the one kept. User must own the session unless they are an admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session"
+                ],
+                "summary": "Mark a coach reply as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session with the reply marked read",
+                        "schema": {
+                            "$ref": "#/definitions/handler.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid session ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found or carries no coach reply",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/trainings": {
             "get": {
                 "security": [
@@ -5637,6 +5796,14 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.SessionCoachReplyRequest": {
+            "type": "object",
+            "properties": {
+                "reply": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.SessionDetailResponse": {
             "type": "object",
             "properties": {
@@ -5722,6 +5889,16 @@ const docTemplate = `{
                 "activity": {
                     "type": "integer"
                 },
+                "coach_reply": {
+                    "description": "CoachReply is what the coach answered the athlete's notes with, absent\nwhile they have not answered. CoachReplyAt dates that answer, and\nCoachReplyRead says whether the athlete has opened it since it was last\nwritten, which is what the app announces an unread answer from.",
+                    "type": "string"
+                },
+                "coach_reply_at": {
+                    "type": "string"
+                },
+                "coach_reply_read": {
+                    "type": "boolean"
+                },
                 "date": {
                     "type": "string"
                 },
@@ -5798,6 +5975,16 @@ const docTemplate = `{
             "properties": {
                 "activity": {
                     "type": "integer"
+                },
+                "coach_reply": {
+                    "description": "CoachReply is what the coach answered the athlete's notes with, absent\nwhile they have not answered. CoachReplyAt dates that answer, and\nCoachReplyRead says whether the athlete has opened it since it was last\nwritten, which is what the app announces an unread answer from.",
+                    "type": "string"
+                },
+                "coach_reply_at": {
+                    "type": "string"
+                },
+                "coach_reply_read": {
+                    "type": "boolean"
                 },
                 "date": {
                     "type": "string"

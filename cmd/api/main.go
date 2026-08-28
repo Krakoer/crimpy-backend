@@ -189,6 +189,7 @@ func main() {
 	api.Get("/sessions/:id", sessionHandler.GetSession)
 	api.Put("/sessions/:id", sessionHandler.UpdateSession)
 	api.Delete("/sessions/:id", sessionHandler.DeleteSession)
+	api.Put("/sessions/:id/coach-reply/read", sessionHandler.MarkCoachReplyRead)
 
 	// Enrollment routes
 	api.Post("/coach/enrollment-token", coachHandler.GenerateEnrollmentToken)
@@ -226,6 +227,7 @@ func main() {
 	// Coaching panel routes
 	api.Get("/coach/clients/:user_id/sessions", coachHandler.GetClientSessions)
 	api.Get("/coach/clients/:user_id/sessions/:session_id", coachHandler.GetClientSession)
+	api.Put("/coach/clients/:user_id/sessions/:session_id/reply", coachHandler.SetClientSessionReply)
 	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
 
 	// Program routes (coach manages, coachee reads)

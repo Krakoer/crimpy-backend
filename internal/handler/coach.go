@@ -520,6 +520,70 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 	})
 }
 
+// SetClientSessionReply godoc
+// @Summary Answer a client's session notes
+// @Description Write the coach's answer to the notes the athlete left on a session, or take a previous answer back by sending an empty reply. Writing an answer marks it unread, so the athlete is told about a correction too.
+// @Tags Coaching
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param user_id path string true "Client user ID"
+// @Param session_id path string true "Session ID"
+// @Param request body SessionCoachReplyRequest true "The answer to write"
+// @Success 200 {object} SessionResponse "Session with the reply"
+// @Failure 400 {object} map[string]string "Invalid session ID or reply"
+// @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
+// @Failure 404 {object} map[string]string "Session not found or does not belong to client"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/coach/clients/{user_id}/sessions/{session_id}/reply [put]
+func (h *CoachHandler) SetClientSessionReply(c fiber.Ctx) error {
+	clientUUID, ok := h.verifyCoachClientRelationship(c, c.Params("user_id"))
+	if !ok {
+		return nil
+	}
+
+	var sessionUUID pgtype.UUID
+	if err := sessionUUID.Scan(c.Params("session_id")); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid session ID"})
+	}
+
+	var req SessionCoachReplyRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	reply := strings.TrimSpace(req.Reply)
+	if len(reply) > maxCoachReplyLength {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Reply is too long"})
+	}
+
+	// Loaded before the write so a session belonging to someone else is a 404
+	// rather than an answer landing on a stranger's row.
+	session, err := h.queries.GetSession(c.Context(), sessionUUID)
+	if err != nil || session.UserID.Bytes != clientUUID.Bytes {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
+	}
+
+	var updated db.Session
+	if reply == "" {
+		updated, err = h.queries.ClearSessionCoachReply(c.Context(), sessionUUID)
+	} else {
+		updated, err = h.queries.SetSessionCoachReply(c.Context(), db.SetSessionCoachReplyParams{
+			ID:         sessionUUID,
+			CoachReply: pgtype.Text{String: reply, Valid: true},
+		})
+	}
+	if err != nil {
+		slog.Error("failed to write coach reply", "session_id", c.Params("session_id"), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save the reply"})
+	}
+
+	// The curve is the bulkiest thing the row holds and no client reads it to
+	// render an answer, so it stays out of the echo.
+	updated.Samples = nil
+	return c.JSON(sessionToResponse(updated))
+}
+
 // GetClientAssessments godoc
 // @Summary Get a client's assessments
 // @Description Retrieve all assessments for a user enrolled with the authenticated coach.

@@ -552,6 +552,11 @@ definitions:
       email:
         type: string
     type: object
+  handler.SessionCoachReplyRequest:
+    properties:
+      reply:
+        type: string
+    type: object
   handler.SessionDetailResponse:
     properties:
       assessments:
@@ -613,6 +618,17 @@ definitions:
     properties:
       activity:
         type: integer
+      coach_reply:
+        description: |-
+          CoachReply is what the coach answered the athlete's notes with, absent
+          while they have not answered. CoachReplyAt dates that answer, and
+          CoachReplyRead says whether the athlete has opened it since it was last
+          written, which is what the app announces an unread answer from.
+        type: string
+      coach_reply_at:
+        type: string
+      coach_reply_read:
+        type: boolean
       date:
         type: string
       duration:
@@ -671,6 +687,17 @@ definitions:
     properties:
       activity:
         type: integer
+      coach_reply:
+        description: |-
+          CoachReply is what the coach answered the athlete's notes with, absent
+          while they have not answered. CoachReplyAt dates that answer, and
+          CoachReplyRead says whether the athlete has opened it since it was last
+          written, which is what the app announces an unread answer from.
+        type: string
+      coach_reply_at:
+        type: string
+      coach_reply_read:
+        type: boolean
       date:
         type: string
       duration:
@@ -2470,6 +2497,66 @@ paths:
       summary: Get a client's session details
       tags:
       - Coaching
+  /api/coach/clients/{user_id}/sessions/{session_id}/reply:
+    put:
+      consumes:
+      - application/json
+      description: Write the coach's answer to the notes the athlete left on a session,
+        or take a previous answer back by sending an empty reply. Writing an answer
+        marks it unread, so the athlete is told about a correction too.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: The answer to write
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SessionCoachReplyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session with the reply
+          schema:
+            $ref: '#/definitions/handler.SessionResponse'
+        "400":
+          description: Invalid session ID or reply
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a coach or user not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found or does not belong to client
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Answer a client's session notes
+      tags:
+      - Coaching
   /api/coach/enrollment-token:
     post:
       description: Generate a one-time enrollment link token (valid 7 days). Requires
@@ -3700,6 +3787,53 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a session
+      tags:
+      - Session
+  /api/sessions/{id}/coach-reply/read:
+    put:
+      description: 'Stamp the coach''s answer to this session as seen by the athlete.
+        Idempotent: the first read is the one kept. User must own the session unless
+        they are an admin.'
+      parameters:
+      - description: Session ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session with the reply marked read
+          schema:
+            $ref: '#/definitions/handler.SessionResponse'
+        "400":
+          description: Invalid session ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found or carries no coach reply
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark a coach reply as read
       tags:
       - Session
   /api/trainings:
