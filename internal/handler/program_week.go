@@ -489,7 +489,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week.
+// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored.
 // @Tags Programs
 // @Accept json
 // @Produce json
