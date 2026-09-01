@@ -508,7 +508,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -593,7 +593,7 @@ func (h *ProgramHandler) GetWeeks(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -633,7 +633,7 @@ func (h *ProgramHandler) GetWeek(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -687,7 +687,7 @@ func (h *ProgramHandler) DeleteWeek(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}

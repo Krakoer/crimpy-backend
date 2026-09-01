@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
 	"strings"
@@ -60,4 +61,31 @@ func (r ownedResource[T]) require(c fiber.Ctx) (T, pgtype.UUID, bool) {
 	}
 
 	return resource, id, true
+}
+
+// verifyClientEnrolled checks that the user named by clientIDStr is enrolled
+// with the given coach. Coach owned resources hang off the enrollment rather
+// than off a single owner column, so ownedResource cannot express them and this
+// two hop check stands in for it. When it returns false the error response is
+// already written and the handler should return nil.
+func verifyClientEnrolled(c fiber.Ctx, queries *db.Queries, coachUUID pgtype.UUID, clientIDStr string) (pgtype.UUID, bool) {
+	var clientUUID pgtype.UUID
+	if err := clientUUID.Scan(clientIDStr); err != nil {
+		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid client ID"})
+		return pgtype.UUID{}, false
+	}
+	_, err := queries.GetCoachEnrollment(c.Context(), db.GetCoachEnrollmentParams{
+		CoachID: coachUUID,
+		UserID:  clientUUID,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Client is not enrolled with this coach"})
+		} else {
+			slog.Error("failed to verify coach-client relationship", "error", err)
+			c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal server error"})
+		}
+		return pgtype.UUID{}, false
+	}
+	return clientUUID, true
 }
