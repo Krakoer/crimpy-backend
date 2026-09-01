@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 	"unicode/utf8"
 
@@ -100,7 +101,9 @@ func availabilityRowsToWeeks(rows []db.CoacheeDayAvailability) []WeekAvailabilit
 			})
 		}
 		week := &weeks[len(weeks)-1]
-		// The week reads as edited when its most recently touched day was.
+		// The week reads as edited when its most recently touched day was. The
+		// string compare holds because every value goes through the same
+		// fixed width RFC3339 UTC format, where lexical order is chronological.
 		if updatedAt > week.UpdatedAt {
 			week.UpdatedAt = updatedAt
 		}
@@ -142,7 +145,7 @@ func validateWeekAvailability(days []DayAvailabilityRequest) error {
 	seen := make(map[int32]bool, daysInWeek)
 	for _, day := range days {
 		if day.DayOfWeek < 0 || day.DayOfWeek > 6 {
-			return errors.New("day_of_week must be between 0 and 6")
+			return errors.New("day_of_week must be between 0 (Monday) and 6 (Sunday)")
 		}
 		if seen[day.DayOfWeek] {
 			return fmt.Errorf("day_of_week %d is declared twice", day.DayOfWeek)
@@ -160,7 +163,7 @@ func validateWeekAvailability(days []DayAvailabilityRequest) error {
 
 func validateReminderRequest(req AvailabilityReminderRequest) error {
 	if req.DayOfWeek < 0 || req.DayOfWeek > 6 {
-		return errors.New("day_of_week must be between 0 and 6")
+		return errors.New("day_of_week must be between 0 (Monday) and 6 (Sunday)")
 	}
 	if req.Hour < 0 || req.Hour > 23 {
 		return errors.New("hour must be between 0 and 23")
@@ -171,10 +174,13 @@ func validateReminderRequest(req AvailabilityReminderRequest) error {
 	return nil
 }
 
-func callerUUID(c fiber.Ctx) (pgtype.UUID, bool) {
+// requireCallerUUID reads the authenticated user from the request context. A
+// subject that is not a UUID means a malformed token rather than a bad body,
+// so it answers 401 the way the shared ownership helper does.
+func requireCallerUUID(c fiber.Ctx) (pgtype.UUID, bool) {
 	var userUUID pgtype.UUID
 	if err := userUUID.Scan(middleware.GetUserID(c)); err != nil {
-		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
+		c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
 		return pgtype.UUID{}, false
 	}
 	return userUUID, true
@@ -187,11 +193,11 @@ func callerUUID(c fiber.Ctx) (pgtype.UUID, bool) {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {array} WeekAvailabilityResponse "Declared weeks"
-// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Failure 401 {object} map[string]string "Invalid user ID"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/user/availability [get]
 func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
-	userUUID, ok := callerUUID(c)
+	userUUID, ok := requireCallerUUID(c)
 	if !ok {
 		return nil
 	}
@@ -207,7 +213,7 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 
 // UpsertMyWeekAvailability godoc
 // @Summary Declare my availability for a calendar week
-// @Description Replace the authenticated user's availability for one calendar week. The body must carry all seven days.
+// @Description Replace the authenticated user's availability for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. A day declared unavailable keeps its note and drops its duration.
 // @Tags Availability
 // @Accept json
 // @Produce json
@@ -219,7 +225,7 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/user/availability/{week_start} [put]
 func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
-	userUUID, ok := callerUUID(c)
+	userUUID, ok := requireCallerUUID(c)
 	if !ok {
 		return nil
 	}
@@ -237,6 +243,13 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Written in a fixed order rather than the order the body listed them, so
+	// two concurrent writes of the same week take the row locks the same way
+	// round and cannot deadlock each other.
+	sort.Slice(req.Days, func(i, j int) bool {
+		return req.Days[i].DayOfWeek < req.Days[j].DayOfWeek
+	})
+
 	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
@@ -252,7 +265,10 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 			DayOfWeek:   day.DayOfWeek,
 			IsAvailable: day.IsAvailable,
 		}
-		if day.DurationMinutes != nil {
+		// A duration on a day the athlete cannot train has no reading, and the
+		// app leaves one behind when a filled day is toggled off. The note is
+		// kept: "travelling" is worth saying about a day that is a no.
+		if day.IsAvailable && day.DurationMinutes != nil {
 			params.DurationMinutes = pgtype.Int4{Int32: *day.DurationMinutes, Valid: true}
 		}
 		if day.Note != nil {
@@ -283,7 +299,10 @@ func (h *AvailabilityHandler) respondWithWeek(c fiber.Ctx, userUUID pgtype.UUID,
 	}
 	weeks := availabilityRowsToWeeks(rows)
 	if len(weeks) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Availability not found"})
+		// The seven rows were committed a moment ago, so an empty read is a
+		// broken invariant rather than a week the client should handle.
+		slog.Error("availability read back empty after a committed write", "user_id", userUUID.String())
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
 	return c.Status(fiber.StatusOK).JSON(weeks[0])
 }
@@ -295,12 +314,12 @@ func (h *AvailabilityHandler) respondWithWeek(c fiber.Ctx, userUUID pgtype.UUID,
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} AvailabilityReminderResponse "The reminder"
-// @Failure 400 {object} map[string]string "Invalid user ID"
+// @Failure 401 {object} map[string]string "Invalid user ID"
 // @Failure 404 {object} map[string]string "No coach, or no reminder configured"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/user/availability-reminder [get]
 func (h *AvailabilityHandler) GetMyAvailabilityReminder(c fiber.Ctx) error {
-	userUUID, ok := callerUUID(c)
+	userUUID, ok := requireCallerUUID(c)
 	if !ok {
 		return nil
 	}
@@ -379,7 +398,7 @@ func (h *AvailabilityHandler) GetAvailabilityReminder(c fiber.Ctx) error {
 
 // SetAvailabilityReminder godoc
 // @Summary Set my availability reminder
-// @Description Configure the weekly reminder nudging coachees who have not declared the coming week. The hour is a wall clock time each athlete's app raises in that athlete's own timezone, not the coach's.
+// @Description Configure the weekly reminder nudging coachees who have not declared the coming week. day_of_week is 0 = Monday to 6 = Sunday. The hour is a wall clock time each athlete's app raises in that athlete's own timezone, not the coach's.
 // @Tags Availability
 // @Accept json
 // @Produce json

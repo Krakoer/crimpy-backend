@@ -1204,7 +1204,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Configure the weekly reminder nudging coachees who have not declared the coming week. The hour is a wall clock time each athlete's app raises in that athlete's own timezone, not the coach's.",
+                "description": "Configure the weekly reminder nudging coachees who have not declared the coming week. day_of_week is 0 = Monday to 6 = Sunday. The hour is a wall clock time each athlete's app raises in that athlete's own timezone, not the coach's.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4502,7 +4502,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "400": {
+                    "401": {
                         "description": "Invalid user ID",
                         "schema": {
                             "type": "object",
@@ -4545,7 +4545,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.AvailabilityReminderResponse"
                         }
                     },
-                    "400": {
+                    "401": {
                         "description": "Invalid user ID",
                         "schema": {
                             "type": "object",
@@ -4582,7 +4582,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the authenticated user's availability for one calendar week. The body must carry all seven days.",
+                "description": "Replace the authenticated user's availability for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. A day declared unavailable keeps its note and drops its duration.",
                 "consumes": [
                     "application/json"
                 ],

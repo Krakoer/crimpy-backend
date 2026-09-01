@@ -2076,8 +2076,9 @@ paths:
       consumes:
       - application/json
       description: Configure the weekly reminder nudging coachees who have not declared
-        the coming week. The hour is a wall clock time each athlete's app raises in
-        that athlete's own timezone, not the coach's.
+        the coming week. day_of_week is 0 = Monday to 6 = Sunday. The hour is a wall
+        clock time each athlete's app raises in that athlete's own timezone, not the
+        coach's.
       parameters:
       - description: Reminder settings
         in: body
@@ -4262,7 +4263,7 @@ paths:
             items:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'
             type: array
-        "400":
+        "401":
           description: Invalid user ID
           schema:
             additionalProperties:
@@ -4291,7 +4292,7 @@ paths:
           description: The reminder
           schema:
             $ref: '#/definitions/handler.AvailabilityReminderResponse'
-        "400":
+        "401":
           description: Invalid user ID
           schema:
             additionalProperties:
@@ -4319,7 +4320,8 @@ paths:
       consumes:
       - application/json
       description: Replace the authenticated user's availability for one calendar
-        week. The body must carry all seven days.
+        week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday.
+        A day declared unavailable keeps its note and drops its duration.
       parameters:
       - description: Monday of the week, YYYY-MM-DD
         in: path

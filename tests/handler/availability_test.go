@@ -80,6 +80,14 @@ func TestAvailability_UpsertAndRead(t *testing.T) {
 		t.Errorf("Expected no duration on an undeclared day, got %v", monday["duration_minutes"])
 	}
 
+	// A second athlete declaring the same week must not widen the first one's
+	// list: this route carries no id in its URL, so a regression in the query
+	// filter would be a silent cross-tenant leak.
+	_, otherToken := testutil.CreateTestUser(t, queries, "avail1other@test.com")
+	putWeek(t, app, otherToken, testWeekStart, fullWeek(map[int]map[string]interface{}{
+		5: {"is_available": true},
+	}))
+
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability", nil, userToken)
 	listResp, err := app.Test(req)
 	if err != nil {
@@ -92,6 +100,41 @@ func TestAvailability_UpsertAndRead(t *testing.T) {
 	}
 	if len(weeks[0]["days"].([]interface{})) != 7 {
 		t.Errorf("Expected the listed week to carry 7 days")
+	}
+	saturday := weeks[0]["days"].([]interface{})[5].(map[string]interface{})
+	if saturday["is_available"] != false {
+		t.Errorf("Expected the other athlete's saturday not to leak into this list")
+	}
+}
+
+func TestAvailability_UnavailableDayDropsItsDuration(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail11user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+
+	// The app leaves a duration behind when a filled day is toggled off, and a
+	// row saying "not available for 120 minutes" has no reading for a coach.
+	resp := putWeek(t, app, userToken, testWeekStart, fullWeek(map[int]map[string]interface{}{
+		2: {"is_available": false, "duration_minutes": 120, "note": "travelling"},
+	}))
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	var week map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&week)
+	wednesday := week["days"].([]interface{})[2].(map[string]interface{})
+	if _, present := wednesday["duration_minutes"]; present {
+		t.Errorf("Expected the duration dropped on an unavailable day, got %v", wednesday["duration_minutes"])
+	}
+	// The note survives: it is the whole point of a permissive form.
+	if wednesday["note"] != "travelling" {
+		t.Errorf("Expected the note kept on an unavailable day, got %v", wednesday["note"])
 	}
 }
 
