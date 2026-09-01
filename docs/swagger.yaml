@@ -141,6 +141,28 @@ definitions:
       user_id:
         type: string
     type: object
+  handler.AvailabilityReminderRequest:
+    properties:
+      day_of_week:
+        type: integer
+      enabled:
+        type: boolean
+      hour:
+        type: integer
+      minute:
+        type: integer
+    type: object
+  handler.AvailabilityReminderResponse:
+    properties:
+      day_of_week:
+        type: integer
+      enabled:
+        type: boolean
+      hour:
+        type: integer
+      minute:
+        type: integer
+    type: object
   handler.BuiltinTrainingWeightResponse:
     properties:
       builtin_training_id:
@@ -328,6 +350,28 @@ definitions:
       title:
         type: string
       training_type:
+        type: string
+    type: object
+  handler.DayAvailabilityRequest:
+    properties:
+      day_of_week:
+        type: integer
+      duration_minutes:
+        type: integer
+      is_available:
+        type: boolean
+      note:
+        type: string
+    type: object
+  handler.DayAvailabilityResponse:
+    properties:
+      day_of_week:
+        type: integer
+      duration_minutes:
+        type: integer
+      is_available:
+        type: boolean
+      note:
         type: string
     type: object
   handler.EnrolledUserResponse:
@@ -1143,6 +1187,26 @@ definitions:
   handler.VerifyEmailRequest:
     properties:
       token:
+        type: string
+    type: object
+  handler.WeekAvailabilityRequest:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/handler.DayAvailabilityRequest'
+        type: array
+    type: object
+  handler.WeekAvailabilityResponse:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/handler.DayAvailabilityResponse'
+        type: array
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      week_start:
         type: string
     type: object
   handler.WeekListItem:
@@ -1974,6 +2038,83 @@ paths:
       summary: Update a builtin training weight override
       tags:
       - BuiltinTrainingWeight
+  /api/coach/availability-reminder:
+    get:
+      description: Retrieve the weekly reminder the authenticated coach configured
+        for their coachees.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The reminder
+          schema:
+            $ref: '#/definitions/handler.AvailabilityReminderResponse'
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: No reminder configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my availability reminder
+      tags:
+      - Availability
+    put:
+      consumes:
+      - application/json
+      description: Configure the weekly reminder nudging coachees who have not declared
+        the coming week. The hour is a wall clock time each athlete's app raises in
+        that athlete's own timezone, not the coach's.
+      parameters:
+      - description: Reminder settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.AvailabilityReminderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The saved reminder
+          schema:
+            $ref: '#/definitions/handler.AvailabilityReminderResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set my availability reminder
+      tags:
+      - Availability
   /api/coach/clients/{user_id}/assessments:
     get:
       description: Retrieve all assessments for a user enrolled with the authenticated
@@ -2004,6 +2145,48 @@ paths:
       summary: Get a client's assessments
       tags:
       - Coaching
+  /api/coach/clients/{user_id}/availability:
+    get:
+      description: Retrieve every calendar week a user enrolled with the authenticated
+        coach has declared.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Declared weeks
+          schema:
+            items:
+              $ref: '#/definitions/handler.WeekAvailabilityResponse'
+            type: array
+        "400":
+          description: Invalid client ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach or client not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a client's declared availability
+      tags:
+      - Availability
   /api/coach/clients/{user_id}/programs:
     get:
       description: Get all training programs created by this coach for a specific
@@ -4066,6 +4249,113 @@ paths:
       summary: Get current user information
       tags:
       - Authentication
+  /api/user/availability:
+    get:
+      description: Retrieve every calendar week the authenticated user has declared
+        their availability for.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Declared weeks
+          schema:
+            items:
+              $ref: '#/definitions/handler.WeekAvailabilityResponse'
+            type: array
+        "400":
+          description: Invalid user ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my declared availability
+      tags:
+      - Availability
+  /api/user/availability-reminder:
+    get:
+      description: Retrieve the weekly reminder the authenticated user's coach set.
+        The hour is a wall clock time the athlete app raises in the athlete's own
+        timezone.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The reminder
+          schema:
+            $ref: '#/definitions/handler.AvailabilityReminderResponse'
+        "400":
+          description: Invalid user ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: No coach, or no reminder configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get the availability reminder my coach configured
+      tags:
+      - Availability
+  /api/user/availability/{week_start}:
+    put:
+      consumes:
+      - application/json
+      description: Replace the authenticated user's availability for one calendar
+        week. The body must carry all seven days.
+      parameters:
+      - description: Monday of the week, YYYY-MM-DD
+        in: path
+        name: week_start
+        required: true
+        type: string
+      - description: The seven days of the week
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.WeekAvailabilityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The declared week
+          schema:
+            $ref: '#/definitions/handler.WeekAvailabilityResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Declare my availability for a calendar week
+      tags:
+      - Availability
   /api/user/enrollment:
     delete:
       description: Remove the authenticated user from their current coach enrollment.
