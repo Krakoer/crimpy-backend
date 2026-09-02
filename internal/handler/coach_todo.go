@@ -82,6 +82,10 @@ type CoachTodoResponse struct {
 	PendingFeedback []PendingFeedbackResponse  `json:"pending_feedback"`
 	EmptyWeeks      []EmptyProgramWeekResponse `json:"empty_weeks"`
 	EmptyWeekCheck  EmptyWeekCheckResponse     `json:"empty_week_check"`
+	// How many sessions the coach's athletes did in the current week. Carried
+	// here rather than on its own route because the week it counts is the local
+	// one this request already had to place to judge the empty week check.
+	SessionsThisWeek int64 `json:"sessions_this_week"`
 }
 
 type CoachTodoSettingsRequest struct {
@@ -237,7 +241,7 @@ func feedRowToResponse(row db.GetCoachFeedRow) FeedEventResponse {
 
 // GetCoachTodo godoc
 // @Summary Get my coaching TODO list
-// @Description What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, and the programs whose next calendar week holds no session. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
+// @Description What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, and the programs whose next calendar week holds no session, plus how many sessions their athletes did this week. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -281,9 +285,23 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		Add(time.Duration(settings.EmptyWeekHour)*time.Hour + time.Duration(settings.EmptyWeekMinute)*time.Minute)
 	nextMonday := thisMonday.AddDate(0, 0, daysInWeek)
 
+	// Back out of the shifted clock to name the two real instants the week runs
+	// between, since the rows being counted are stored in UTC.
+	weekStart := thisMonday.Add(-offset)
+	sessionsThisWeek, err := h.queries.CountCoachSessionsInWindow(c.Context(), db.CountCoachSessionsInWindowParams{
+		CoachID:     coachUUID,
+		WindowStart: pgtype.Timestamptz{Time: weekStart, Valid: true},
+		WindowEnd:   pgtype.Timestamptz{Time: weekStart.AddDate(0, 0, daysInWeek), Valid: true},
+	})
+	if err != nil {
+		slog.Error("failed to count sessions this week", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
+	}
+
 	response := CoachTodoResponse{
-		PendingFeedback: make([]PendingFeedbackResponse, 0, len(pending)),
-		EmptyWeeks:      []EmptyProgramWeekResponse{},
+		PendingFeedback:  make([]PendingFeedbackResponse, 0, len(pending)),
+		EmptyWeeks:       []EmptyProgramWeekResponse{},
+		SessionsThisWeek: sessionsThisWeek,
 		EmptyWeekCheck: EmptyWeekCheckResponse{
 			DayOfWeek: settings.EmptyWeekDayOfWeek,
 			Hour:      settings.EmptyWeekHour,

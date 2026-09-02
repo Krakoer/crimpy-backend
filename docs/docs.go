@@ -3221,7 +3221,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, and the programs whose next calendar week holds no session. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.",
+                "description": "What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, and the programs whose next calendar week holds no session, plus how many sessions their athletes did this week. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.",
                 "produces": [
                     "application/json"
                 ],
@@ -5894,6 +5894,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/handler.PendingFeedbackResponse"
                     }
+                },
+                "sessions_this_week": {
+                    "description": "How many sessions the coach's athletes did in the current week. Carried\nhere rather than on its own route because the week it counts is the local\none this request already had to place to judge the empty week check.",
+                    "type": "integer"
                 }
             }
         },

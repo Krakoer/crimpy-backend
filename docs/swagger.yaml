@@ -218,6 +218,12 @@ definitions:
         items:
           $ref: '#/definitions/handler.PendingFeedbackResponse'
         type: array
+      sessions_this_week:
+        description: |-
+          How many sessions the coach's athletes did in the current week. Carried
+          here rather than on its own route because the week it counts is the local
+          one this request already had to place to judge the empty week check.
+        type: integer
     type: object
   handler.CoachTodoSettingsRequest:
     properties:
@@ -3517,9 +3523,9 @@ paths:
     get:
       description: 'What the authenticated coach still owes their coachees: the sessions
         whose notes have no answer yet, and the programs whose next calendar week
-        holds no session. The empty weeks only appear once the weekly moment the coach
-        configured has passed in their own week, which is why the caller sends its
-        UTC offset.'
+        holds no session, plus how many sessions their athletes did this week. The
+        empty weeks only appear once the weekly moment the coach configured has passed
+        in their own week, which is why the caller sends its UTC offset.'
       parameters:
       - description: Caller's offset east of UTC in minutes, defaults to 0
         in: query

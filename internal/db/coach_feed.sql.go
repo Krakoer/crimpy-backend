@@ -11,6 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCoachSessionsInWindow = `-- name: CountCoachSessionsInWindow :one
+SELECT COUNT(*) FROM sessions s
+JOIN coach_enrollments e ON e.user_id = s.user_id
+WHERE e.coach_id = $1
+  AND s.date >= $2
+  AND s.date < $3
+`
+
+type CountCoachSessionsInWindowParams struct {
+	CoachID     pgtype.UUID
+	WindowStart pgtype.Timestamptz
+	WindowEnd   pgtype.Timestamptz
+}
+
+// How many sessions the coach's athletes did in one window. The dashboard shows
+// it for the current week, whose bounds only the caller's timezone offset can
+// place, which is why the window arrives as two instants rather than a week.
+func (q *Queries) CountCoachSessionsInWindow(ctx context.Context, arg CountCoachSessionsInWindowParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoachSessionsInWindow, arg.CoachID, arg.WindowStart, arg.WindowEnd)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getCoachEmptyProgramWeeks = `-- name: GetCoachEmptyProgramWeeks :many
 WITH target AS (
   SELECT $2::date AS week_start

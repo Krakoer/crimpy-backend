@@ -318,6 +318,9 @@ func TestCoachTodo_ListsOnlyUnansweredFeedback(t *testing.T) {
 	if len(pending) != 1 {
 		t.Fatalf("Expected exactly the unanswered session, got %v", pending)
 	}
+	if todo["sessions_this_week"].(float64) != 3 {
+		t.Errorf("Expected the three sessions of this week counted, got %v", todo["sessions_this_week"])
+	}
 	item := pending[0].(map[string]interface{})
 	if item["session_name"] != "Waiting on you" {
 		t.Errorf("Expected the unanswered session, got %v", item["session_name"])
