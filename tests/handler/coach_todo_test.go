@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -101,6 +102,35 @@ func momentStillAhead(now time.Time) (day, hour, minute int, ok bool) {
 	return 0, 0, 0, false
 }
 
+func parseInstant(t *testing.T, raw string) time.Time {
+	t.Helper()
+	instant, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t.Fatalf("Failed to parse %q: %v", raw, err)
+	}
+	return instant
+}
+
+func occurredAt(t *testing.T, event map[string]interface{}) time.Time {
+	t.Helper()
+	return parseInstant(t, event["occurred_at"].(string))
+}
+
+func getFeed(t *testing.T, app *fiber.App, token, query string) []map[string]interface{} {
+	t.Helper()
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/feed"+query, nil, token)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to get the feed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 getting the feed, got %d", resp.StatusCode)
+	}
+	var events []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&events)
+	return events
+}
+
 func getTodo(t *testing.T, app *fiber.App, token string) map[string]interface{} {
 	t.Helper()
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/todo", nil, token)
@@ -186,7 +216,7 @@ func TestCoachFeed_ReportsWhatCoacheesDid(t *testing.T) {
 
 	// Newest first, which is what makes the before cursor a page boundary.
 	for i := 1; i < len(events); i++ {
-		if events[i-1]["occurred_at"].(string) < events[i]["occurred_at"].(string) {
+		if occurredAt(t, events[i-1]).Before(occurredAt(t, events[i])) {
 			t.Fatalf("Expected the feed ordered newest first, got %v", events)
 		}
 	}
@@ -229,7 +259,7 @@ func TestCoachFeed_HonoursLimitAndBefore(t *testing.T) {
 	var next []map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&next)
 	for _, event := range next {
-		if event["occurred_at"].(string) >= cursor {
+		if !occurredAt(t, event).Before(parseInstant(t, cursor)) {
 			t.Errorf("Expected every event under the cursor, got %v", event["occurred_at"])
 		}
 	}
@@ -317,6 +347,9 @@ func TestCoachTodo_ListsOnlyUnansweredFeedback(t *testing.T) {
 	pending := todo["pending_feedback"].([]interface{})
 	if len(pending) != 1 {
 		t.Fatalf("Expected exactly the unanswered session, got %v", pending)
+	}
+	if todo["pending_feedback_total"].(float64) != 1 {
+		t.Errorf("Expected the one unanswered session counted in all, got %v", todo["pending_feedback_total"])
 	}
 	if todo["sessions_this_week"].(float64) != 3 {
 		t.Errorf("Expected the three sessions of this week counted, got %v", todo["sessions_this_week"])
@@ -514,5 +547,96 @@ func TestCoachTodo_RejectsAnImpossibleTimezoneOffset(t *testing.T) {
 	resp, _ := app.Test(req)
 	if resp.StatusCode != fiber.StatusBadRequest {
 		t.Errorf("Expected 400 for an offset no timezone has, got %d", resp.StatusCode)
+	}
+}
+
+func TestCoachFeed_PagesThroughEventsSharingASecond(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "feedsubsecondcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "feedsubsecondathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	// Three sessions inside one second. A cursor formatted to whole seconds
+	// would read as the start of that second and skip the two under it.
+	base := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	insertSession(t, pool, userID, "Third", "", base.Add(300*time.Millisecond), nil)
+	insertSession(t, pool, userID, "Second", "", base.Add(600*time.Millisecond), nil)
+	insertSession(t, pool, userID, "First", "", base.Add(900*time.Millisecond), nil)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	page := getFeed(t, app, coachToken, "?limit=1&before="+url.QueryEscape(base.Add(time.Second).Format(time.RFC3339Nano)))
+	if len(page) != 1 || page[0]["title"] != "First" {
+		t.Fatalf("Expected the newest of the three, got %v", page)
+	}
+
+	seen := []string{page[0]["title"].(string)}
+	for range 2 {
+		cursor := page[len(page)-1]["occurred_at"].(string)
+		page = getFeed(t, app, coachToken, "?limit=1&before="+url.QueryEscape(cursor))
+		if len(page) != 1 {
+			t.Fatalf("Expected the paging to reach every session, stopped after %v", seen)
+		}
+		seen = append(seen, page[0]["title"].(string))
+	}
+
+	if seen[0] != "First" || seen[1] != "Second" || seen[2] != "Third" {
+		t.Errorf("Expected the three sessions in order, got %v", seen)
+	}
+}
+
+func TestCoachTodo_DropsTheProgramsOfAnUnenrolledAthlete(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "unenrolledcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "unenrolledathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	insertProgram(t, pool, coachID, userID, "Abandoned block", mondayOfTestWeek(now, 1), 12)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+	if resp := putTodoSettings(t, app, coachToken, 0, 0, 0); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 saving the settings, got %d", resp.StatusCode)
+	}
+
+	if len(getTodo(t, app, coachToken)["empty_weeks"].([]interface{})) != 1 {
+		t.Fatalf("Expected the empty week while the athlete is enrolled")
+	}
+
+	// The program outlives the enrollment, and every route that could open or
+	// delete it answers 403 once the athlete has left, so a TODO item for it
+	// would be one the coach can never clear.
+	if _, err := pool.Exec(context.Background(),
+		"DELETE FROM coach_enrollments WHERE coach_id = $1 AND user_id = $2", coachID, userID); err != nil {
+		t.Fatalf("Failed to unenroll: %v", err)
+	}
+
+	if empty := getTodo(t, app, coachToken)["empty_weeks"].([]interface{}); len(empty) != 0 {
+		t.Fatalf("Expected no empty week for an athlete who left, got %v", empty)
+	}
+}
+
+func TestCoachTodoSettings_RefusesANonCoachWrite(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "todowritenotacoach@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	if resp := putTodoSettings(t, app, userToken, 4, 21, 0); resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected 403 writing TODO settings as a non coach, got %d", resp.StatusCode)
 	}
 }

@@ -89,10 +89,22 @@ WHERE e.coach_id = @coach_id
 ORDER BY s.date DESC
 LIMIT @row_limit;
 
+-- How many sessions are waiting on an answer in all. The list above is capped,
+-- so without this the badge counting it would stop rising at the cap and read as
+-- a total it is not.
+-- name: CountCoachPendingSessionFeedback :one
+SELECT COUNT(*) FROM sessions s
+JOIN coach_enrollments e ON e.user_id = s.user_id
+WHERE e.coach_id = @coach_id
+  AND s.notes <> ''
+  AND s.coach_reply IS NULL;
+
 -- The coach's programs that cover the calendar week starting @week_start and
--- have no session prescribed in it. The program week that week falls in is the
--- whole weeks elapsed since the program started, plus one, so a program whose
--- start date is not a Monday still reports the week the coach would open.
+-- have no session prescribed in it. Start dates are Mondays, so the program week
+-- that calendar week falls in is the whole weeks elapsed since the program
+-- started, plus one. Joined to the enrollment like every other query here: a
+-- program outlives the enrollment it was written under, and an unenrolled
+-- athlete's empty week is one the coach can no longer open, let alone fill.
 -- name: GetCoachEmptyProgramWeeks :many
 WITH target AS (
   SELECT @week_start::date AS week_start
@@ -105,6 +117,7 @@ SELECT
   u.lastname  AS user_lastname,
   (((t.week_start - p.start_date) / 7) + 1)::integer AS week_number
 FROM coach_programs p
+JOIN coach_enrollments e ON e.user_id = p.user_id AND e.coach_id = p.coach_id
 JOIN users u ON u.id = p.user_id
 CROSS JOIN target t
 WHERE p.coach_id = @coach_id

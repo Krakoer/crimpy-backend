@@ -3,6 +3,7 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -17,6 +18,7 @@ const (
 	defaultFeedLimit     = 20
 	maxFeedLimit         = 100
 	maxPendingFeedback   = 50
+	minTimezoneOffsetMin = -12 * 60
 	maxTimezoneOffsetMin = 14 * 60
 
 	defaultEmptyWeekDayOfWeek = 4
@@ -82,6 +84,9 @@ type CoachTodoResponse struct {
 	PendingFeedback []PendingFeedbackResponse  `json:"pending_feedback"`
 	EmptyWeeks      []EmptyProgramWeekResponse `json:"empty_weeks"`
 	EmptyWeekCheck  EmptyWeekCheckResponse     `json:"empty_week_check"`
+	// How many sessions are waiting on an answer in all, which is more than
+	// PendingFeedback holds once the cap is reached.
+	PendingFeedbackTotal int64 `json:"pending_feedback_total"`
 	// How many sessions the coach's athletes did in the current week. Carried
 	// here rather than on its own route because the week it counts is the local
 	// one this request already had to place to judge the empty week check.
@@ -141,8 +146,8 @@ func parseTimezoneOffset(raw string) (time.Duration, error) {
 		return 0, nil
 	}
 	minutes, err := strconv.Atoi(raw)
-	if err != nil || minutes < -maxTimezoneOffsetMin || minutes > maxTimezoneOffsetMin {
-		return 0, errors.New("tz_offset_minutes must be a whole number of minutes between -840 and 840")
+	if err != nil || minutes < minTimezoneOffsetMin || minutes > maxTimezoneOffsetMin {
+		return 0, fmt.Errorf("tz_offset_minutes must be a whole number of minutes between %d and %d", minTimezoneOffsetMin, maxTimezoneOffsetMin)
 	}
 	return time.Duration(minutes) * time.Minute, nil
 }
@@ -209,8 +214,12 @@ func (h *CoachTodoHandler) GetCoachFeed(c fiber.Ctx) error {
 
 func feedRowToResponse(row db.GetCoachFeedRow) FeedEventResponse {
 	event := FeedEventResponse{
-		Kind:          row.Kind,
-		OccurredAt:    row.OccurredAt.Time.UTC().Format(time.RFC3339),
+		Kind: row.Kind,
+		// Nanoseconds, unlike every other timestamp this API writes: the client
+		// hands this value straight back as the before cursor, and the query
+		// filters on it strictly. Truncated to the second, an event stored at
+		// .900 would page as .000 and silently swallow every sibling under it.
+		OccurredAt:    row.OccurredAt.Time.UTC().Format(time.RFC3339Nano),
 		UserID:        row.UserID.String(),
 		UserFirstname: row.UserFirstname,
 		UserLastname:  row.UserLastname,
@@ -241,7 +250,7 @@ func feedRowToResponse(row db.GetCoachFeedRow) FeedEventResponse {
 
 // GetCoachTodo godoc
 // @Summary Get my coaching TODO list
-// @Description What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, and the programs whose next calendar week holds no session, plus how many sessions their athletes did this week. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
+// @Description What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, capped at 50 with pending_feedback_total carrying the real count, and the programs whose next calendar week holds no session, plus how many sessions their athletes did this week. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -285,6 +294,12 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		Add(time.Duration(settings.EmptyWeekHour)*time.Hour + time.Duration(settings.EmptyWeekMinute)*time.Minute)
 	nextMonday := thisMonday.AddDate(0, 0, daysInWeek)
 
+	pendingTotal, err := h.queries.CountCoachPendingSessionFeedback(c.Context(), coachUUID)
+	if err != nil {
+		slog.Error("failed to count pending session feedback", "coach_id", coachUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
+	}
+
 	// Back out of the shifted clock to name the two real instants the week runs
 	// between, since the rows being counted are stored in UTC.
 	weekStart := thisMonday.Add(-offset)
@@ -299,9 +314,10 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 	}
 
 	response := CoachTodoResponse{
-		PendingFeedback:  make([]PendingFeedbackResponse, 0, len(pending)),
-		EmptyWeeks:       []EmptyProgramWeekResponse{},
-		SessionsThisWeek: sessionsThisWeek,
+		PendingFeedback:      make([]PendingFeedbackResponse, 0, len(pending)),
+		EmptyWeeks:           []EmptyProgramWeekResponse{},
+		PendingFeedbackTotal: pendingTotal,
+		SessionsThisWeek:     sessionsThisWeek,
 		EmptyWeekCheck: EmptyWeekCheckResponse{
 			DayOfWeek: settings.EmptyWeekDayOfWeek,
 			Hour:      settings.EmptyWeekHour,

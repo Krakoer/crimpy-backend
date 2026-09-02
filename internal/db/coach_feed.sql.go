@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCoachPendingSessionFeedback = `-- name: CountCoachPendingSessionFeedback :one
+SELECT COUNT(*) FROM sessions s
+JOIN coach_enrollments e ON e.user_id = s.user_id
+WHERE e.coach_id = $1
+  AND s.notes <> ''
+  AND s.coach_reply IS NULL
+`
+
+// How many sessions are waiting on an answer in all. The list above is capped,
+// so without this the badge counting it would stop rising at the cap and read as
+// a total it is not.
+func (q *Queries) CountCoachPendingSessionFeedback(ctx context.Context, coachID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoachPendingSessionFeedback, coachID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countCoachSessionsInWindow = `-- name: CountCoachSessionsInWindow :one
 SELECT COUNT(*) FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
@@ -47,6 +65,7 @@ SELECT
   u.lastname  AS user_lastname,
   (((t.week_start - p.start_date) / 7) + 1)::integer AS week_number
 FROM coach_programs p
+JOIN coach_enrollments e ON e.user_id = p.user_id AND e.coach_id = p.coach_id
 JOIN users u ON u.id = p.user_id
 CROSS JOIN target t
 WHERE p.coach_id = $1
@@ -78,9 +97,11 @@ type GetCoachEmptyProgramWeeksRow struct {
 }
 
 // The coach's programs that cover the calendar week starting @week_start and
-// have no session prescribed in it. The program week that week falls in is the
-// whole weeks elapsed since the program started, plus one, so a program whose
-// start date is not a Monday still reports the week the coach would open.
+// have no session prescribed in it. Start dates are Mondays, so the program week
+// that calendar week falls in is the whole weeks elapsed since the program
+// started, plus one. Joined to the enrollment like every other query here: a
+// program outlives the enrollment it was written under, and an unenrolled
+// athlete's empty week is one the coach can no longer open, let alone fill.
 func (q *Queries) GetCoachEmptyProgramWeeks(ctx context.Context, arg GetCoachEmptyProgramWeeksParams) ([]GetCoachEmptyProgramWeeksRow, error) {
 	rows, err := q.db.Query(ctx, getCoachEmptyProgramWeeks, arg.CoachID, arg.WeekStart)
 	if err != nil {
