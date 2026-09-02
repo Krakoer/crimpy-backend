@@ -377,13 +377,25 @@ func TestCoachTodo_DoesNotLeakAnotherCoachsFeedback(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 	insertSession(t, pool, userID, "Private session", "private note", time.Now().UTC(), nil)
 
+	now := time.Now().UTC()
+	insertProgram(t, pool, coachID, userID, "Private block", mondayOfTestWeek(now, 0), 4)
+
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
 	})
 
+	// Monday at midnight has always passed, so both halves of the empty week
+	// list are looked up and both have to come back empty.
+	if resp := putTodoSettings(t, app, otherCoachToken, 0, 0, 0); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 saving the settings, got %d", resp.StatusCode)
+	}
+
 	todo := getTodo(t, app, otherCoachToken)
 	if len(todo["pending_feedback"].([]interface{})) != 0 {
 		t.Fatalf("Another coach's unanswered feedback leaked: %v", todo["pending_feedback"])
+	}
+	if empty := todo["empty_weeks"].([]interface{}); len(empty) != 0 {
+		t.Fatalf("Another coach's empty program weeks leaked: %v", empty)
 	}
 }
 

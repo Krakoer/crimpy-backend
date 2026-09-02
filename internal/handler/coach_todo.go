@@ -355,7 +355,7 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 	// window ends up never hearing about it at all.
 	currentWeeks, err := h.emptyWeeksOf(c, coachUUID, thisMonday, emptyWeekScopeCurrent)
 	if err != nil {
-		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "week", "current", "error", err)
+		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "week", emptyWeekScopeCurrent, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
 	}
 	response.EmptyWeeks = append(response.EmptyWeeks, currentWeeks...)
@@ -366,7 +366,7 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 
 	nextWeeks, err := h.emptyWeeksOf(c, coachUUID, nextMonday, emptyWeekScopeNext)
 	if err != nil {
-		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "week", "next", "error", err)
+		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "week", emptyWeekScopeNext, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
 	}
 	response.EmptyWeeks = append(response.EmptyWeeks, nextWeeks...)
