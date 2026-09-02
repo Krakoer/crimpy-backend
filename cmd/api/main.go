@@ -96,6 +96,7 @@ func main() {
 	tagHandler := handler.NewTagHandler(queries, pool)
 	trainingHandler := handler.NewTrainingHandler(queries, pool)
 	programHandler := handler.NewProgramHandler(queries, pool)
+	availabilityHandler := handler.NewAvailabilityHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -245,6 +246,14 @@ func main() {
 	api.Get("/user/programs/:program_id/weeks", programHandler.GetMyWeeks)
 	api.Get("/user/programs/:program_id/weeks/:week_number", programHandler.GetMyWeek)
 	api.Get("/user/programs/:program_id/trainings/:training_id", programHandler.GetMyProgramTraining)
+
+	// Availability routes (coachee declares, coach reads)
+	api.Get("/user/availability", availabilityHandler.GetMyAvailability)
+	api.Put("/user/availability/:week_start", availabilityHandler.UpsertMyWeekAvailability)
+	api.Get("/user/availability-reminder", availabilityHandler.GetMyAvailabilityReminder)
+	api.Get("/coach/clients/:user_id/availability", availabilityHandler.GetClientAvailability)
+	api.Get("/coach/availability-reminder", availabilityHandler.GetAvailabilityReminder)
+	api.Put("/coach/availability-reminder", availabilityHandler.SetAvailabilityReminder)
 
 	// Sensor config routes
 	api.Post("/sensor-configs", sensorConfigHandler.CreateSensorConfig)

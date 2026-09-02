@@ -181,6 +181,14 @@ type HandlerConfig struct {
 		GetMyWeek(fiber.Ctx) error
 		GetMyProgramTraining(fiber.Ctx) error
 	}
+	AvailabilityHandler interface {
+		GetMyAvailability(fiber.Ctx) error
+		UpsertMyWeekAvailability(fiber.Ctx) error
+		GetMyAvailabilityReminder(fiber.Ctx) error
+		GetClientAvailability(fiber.Ctx) error
+		GetAvailabilityReminder(fiber.Ctx) error
+		SetAvailabilityReminder(fiber.Ctx) error
+	}
 	BuiltinTrainingWeightHandler interface {
 		CreateBuiltinTrainingWeight(fiber.Ctx) error
 		GetBuiltinTrainingWeights(fiber.Ctx) error
@@ -290,6 +298,15 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/user/programs/:program_id/weeks", config.ProgramHandler.GetMyWeeks)
 		api.Get("/user/programs/:program_id/weeks/:week_number", config.ProgramHandler.GetMyWeek)
 		api.Get("/user/programs/:program_id/trainings/:training_id", config.ProgramHandler.GetMyProgramTraining)
+	}
+
+	if config.AvailabilityHandler != nil {
+		api.Get("/user/availability", config.AvailabilityHandler.GetMyAvailability)
+		api.Put("/user/availability/:week_start", config.AvailabilityHandler.UpsertMyWeekAvailability)
+		api.Get("/user/availability-reminder", config.AvailabilityHandler.GetMyAvailabilityReminder)
+		api.Get("/coach/clients/:user_id/availability", config.AvailabilityHandler.GetClientAvailability)
+		api.Get("/coach/availability-reminder", config.AvailabilityHandler.GetAvailabilityReminder)
+		api.Put("/coach/availability-reminder", config.AvailabilityHandler.SetAvailabilityReminder)
 	}
 
 	if config.BuiltinTrainingWeightHandler != nil {

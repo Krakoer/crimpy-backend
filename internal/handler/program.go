@@ -45,28 +45,6 @@ type ProgramResponse struct {
 
 type ProgramListItem = ProgramResponse
 
-func (h *ProgramHandler) verifyClientEnrolled(c fiber.Ctx, coachUUID pgtype.UUID, clientIDStr string) (pgtype.UUID, bool) {
-	var clientUUID pgtype.UUID
-	if err := clientUUID.Scan(clientIDStr); err != nil {
-		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid client ID"})
-		return pgtype.UUID{}, false
-	}
-	_, err := h.queries.GetCoachEnrollment(c.Context(), db.GetCoachEnrollmentParams{
-		CoachID: coachUUID,
-		UserID:  clientUUID,
-	})
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Client is not enrolled with this coach"})
-		} else {
-			slog.Error("failed to verify coach-client relationship", "error", err)
-			c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal server error"})
-		}
-		return pgtype.UUID{}, false
-	}
-	return clientUUID, true
-}
-
 func (h *ProgramHandler) verifyProgramOwnership(c fiber.Ctx, coachUUID, clientUUID pgtype.UUID, programIDStr string) (pgtype.UUID, bool) {
 	var programUUID pgtype.UUID
 	if err := programUUID.Scan(programIDStr); err != nil {
@@ -144,7 +122,7 @@ func (h *ProgramHandler) CreateProgram(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -196,7 +174,7 @@ func (h *ProgramHandler) GetPrograms(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -235,7 +213,7 @@ func (h *ProgramHandler) GetProgram(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -273,7 +251,7 @@ func (h *ProgramHandler) UpdateProgram(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}
@@ -331,7 +309,7 @@ func (h *ProgramHandler) DeleteProgram(c fiber.Ctx) error {
 	if !ok {
 		return nil
 	}
-	clientUUID, ok := h.verifyClientEnrolled(c, coachUUID, c.Params("user_id"))
+	clientUUID, ok := verifyClientEnrolled(c, h.queries, coachUUID, c.Params("user_id"))
 	if !ok {
 		return nil
 	}

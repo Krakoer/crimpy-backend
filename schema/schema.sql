@@ -530,6 +530,50 @@ CREATE TABLE "coach_program_session_overrides" (
 
 CREATE INDEX "coach_program_session_overrides_session_id_idx" ON "coach_program_session_overrides"("session_id");
 
+-- What a coachee declared they can do on each day of a calendar week, so a coach
+-- builds the program around the week the athlete actually has.
+-- week_start is the Monday of that week; day_of_week 0=Mon...6=Sun.
+-- A week is always written whole, so the existence of any row for a week is what
+-- says the coachee has declared it, and an all unavailable week is still 7 rows.
+CREATE TABLE "coachee_day_availabilities" (
+  "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"          UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "week_start"       DATE        NOT NULL,
+  "day_of_week"      INTEGER     NOT NULL,
+  "is_available"     BOOLEAN     NOT NULL DEFAULT FALSE,
+  "duration_minutes" INTEGER,
+  "note"             TEXT,
+  "created_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cda_day_range_check" CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  CONSTRAINT "cda_duration_check"
+    CHECK (duration_minutes IS NULL OR duration_minutes > 0),
+  CONSTRAINT "cda_week_start_monday_check"
+    CHECK (EXTRACT(ISODOW FROM week_start) = 1),
+  UNIQUE ("user_id", "week_start", "day_of_week"),
+  PRIMARY KEY ("id")
+);
+
+CREATE INDEX "coachee_day_availabilities_user_week_idx"
+  ON "coachee_day_availabilities"("user_id", "week_start");
+
+-- One reminder per coach, applying to every coachee they train. The hour is a
+-- wall clock time delivered by the athlete app in the athlete's own timezone,
+-- which is why it is stored as plain integers rather than a TIME or TIMESTAMPTZ.
+CREATE TABLE "coach_availability_reminders" (
+  "coach_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "enabled"     BOOLEAN     NOT NULL DEFAULT FALSE,
+  "day_of_week" INTEGER     NOT NULL,
+  "hour"        INTEGER     NOT NULL,
+  "minute"      INTEGER     NOT NULL DEFAULT 0,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "car_day_range_check" CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  CONSTRAINT "car_hour_range_check" CHECK (hour >= 0 AND hour <= 23),
+  CONSTRAINT "car_minute_range_check" CHECK (minute >= 0 AND minute <= 59),
+  PRIMARY KEY ("coach_id")
+);
+
 -- Declared here rather than inline on "sessions" because both targets are
 -- created further down this file.
 ALTER TABLE "sessions"

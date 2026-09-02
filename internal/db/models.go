@@ -40,6 +40,16 @@ type BuiltinTrainingWeight struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+type CoachAvailabilityReminder struct {
+	CoachID   pgtype.UUID
+	Enabled   bool
+	DayOfWeek int32
+	Hour      int32
+	Minute    int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
 type CoachEnrollment struct {
 	ID         pgtype.UUID
 	CoachID    pgtype.UUID
@@ -88,6 +98,18 @@ type CoachProgramWeekSession struct {
 	Notes        pgtype.Text
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
+}
+
+type CoacheeDayAvailability struct {
+	ID              pgtype.UUID
+	UserID          pgtype.UUID
+	WeekStart       pgtype.Date
+	DayOfWeek       int32
+	IsAvailable     bool
+	DurationMinutes pgtype.Int4
+	Note            pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type EnrollmentToken struct {
