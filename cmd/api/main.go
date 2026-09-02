@@ -97,6 +97,7 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries, pool)
 	programHandler := handler.NewProgramHandler(queries, pool)
 	availabilityHandler := handler.NewAvailabilityHandler(queries, pool)
+	coachTodoHandler := handler.NewCoachTodoHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -254,6 +255,12 @@ func main() {
 	api.Get("/coach/clients/:user_id/availability", availabilityHandler.GetClientAvailability)
 	api.Get("/coach/availability-reminder", availabilityHandler.GetAvailabilityReminder)
 	api.Put("/coach/availability-reminder", availabilityHandler.SetAvailabilityReminder)
+
+	// Coach feed and TODO routes
+	api.Get("/coach/feed", coachTodoHandler.GetCoachFeed)
+	api.Get("/coach/todo", coachTodoHandler.GetCoachTodo)
+	api.Get("/coach/todo-settings", coachTodoHandler.GetCoachTodoSettings)
+	api.Put("/coach/todo-settings", coachTodoHandler.SetCoachTodoSettings)
 
 	// Sensor config routes
 	api.Post("/sensor-configs", sensorConfigHandler.CreateSensorConfig)

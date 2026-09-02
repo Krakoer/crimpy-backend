@@ -574,6 +574,28 @@ CREATE TABLE "coach_availability_reminders" (
   PRIMARY KEY ("coach_id")
 );
 
+-- When in the week a coach wants the programs whose next week holds no session
+-- to show up in their TODO. Shaped like "coach_availability_reminders" and read
+-- the same way, a weekday plus a wall clock time, except the clock is the
+-- coach's own: the portal sends its UTC offset and the moment is judged against
+-- the coach's local week, not the server's. A coach with no row is read at the
+-- defaults below rather than told nothing was configured.
+CREATE TABLE "coach_todo_settings" (
+  "coach_id"               UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "empty_week_day_of_week" INTEGER     NOT NULL DEFAULT 4,
+  "empty_week_hour"        INTEGER     NOT NULL DEFAULT 21,
+  "empty_week_minute"      INTEGER     NOT NULL DEFAULT 0,
+  "created_at"             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cts_day_range_check"
+    CHECK (empty_week_day_of_week >= 0 AND empty_week_day_of_week <= 6),
+  CONSTRAINT "cts_hour_range_check"
+    CHECK (empty_week_hour >= 0 AND empty_week_hour <= 23),
+  CONSTRAINT "cts_minute_range_check"
+    CHECK (empty_week_minute >= 0 AND empty_week_minute <= 59),
+  PRIMARY KEY ("coach_id")
+);
+
 -- Declared here rather than inline on "sessions" because both targets are
 -- created further down this file.
 ALTER TABLE "sessions"

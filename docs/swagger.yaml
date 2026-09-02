@@ -206,6 +206,48 @@ definitions:
       lastname:
         type: string
     type: object
+  handler.CoachTodoResponse:
+    properties:
+      empty_week_check:
+        $ref: '#/definitions/handler.EmptyWeekCheckResponse'
+      empty_weeks:
+        items:
+          $ref: '#/definitions/handler.EmptyProgramWeekResponse'
+        type: array
+      pending_feedback:
+        items:
+          $ref: '#/definitions/handler.PendingFeedbackResponse'
+        type: array
+      pending_feedback_total:
+        description: |-
+          How many sessions are waiting on an answer in all, which is more than
+          PendingFeedback holds once the cap is reached.
+        type: integer
+      sessions_this_week:
+        description: |-
+          How many sessions the coach's athletes did in the current week. Carried
+          here rather than on its own route because the week it counts is the local
+          one this request already had to place to judge the empty week check.
+        type: integer
+    type: object
+  handler.CoachTodoSettingsRequest:
+    properties:
+      empty_week_day_of_week:
+        type: integer
+      empty_week_hour:
+        type: integer
+      empty_week_minute:
+        type: integer
+    type: object
+  handler.CoachTodoSettingsResponse:
+    properties:
+      empty_week_day_of_week:
+        type: integer
+      empty_week_hour:
+        type: integer
+      empty_week_minute:
+        type: integer
+    type: object
   handler.CreateAssessmentDefinitionRequest:
     properties:
       label:
@@ -374,6 +416,36 @@ definitions:
       note:
         type: string
     type: object
+  handler.EmptyProgramWeekResponse:
+    properties:
+      program_id:
+        type: string
+      program_name:
+        type: string
+      user_firstname:
+        type: string
+      user_id:
+        type: string
+      user_lastname:
+        type: string
+      week_number:
+        type: integer
+      week_start:
+        type: string
+    type: object
+  handler.EmptyWeekCheckResponse:
+    properties:
+      day_of_week:
+        type: integer
+      hour:
+        type: integer
+      minute:
+        type: integer
+      reached:
+        type: boolean
+      week_start:
+        type: string
+    type: object
   handler.EnrolledUserResponse:
     properties:
       enrolled_at:
@@ -447,11 +519,55 @@ definitions:
       video_link:
         type: string
     type: object
+  handler.FeedEventResponse:
+    properties:
+      activity:
+        type: integer
+      kind:
+        type: string
+      note:
+        type: string
+      occurred_at:
+        type: string
+      origin:
+        type: string
+      session_id:
+        type: string
+      title:
+        type: string
+      user_firstname:
+        type: string
+      user_id:
+        type: string
+      user_lastname:
+        type: string
+      week_start:
+        type: string
+    type: object
   handler.LoginRequest:
     properties:
       email:
         type: string
       password:
+        type: string
+    type: object
+  handler.PendingFeedbackResponse:
+    properties:
+      activity:
+        type: integer
+      notes:
+        type: string
+      session_date:
+        type: string
+      session_id:
+        type: string
+      session_name:
+        type: string
+      user_firstname:
+        type: string
+      user_id:
+        type: string
+      user_lastname:
         type: string
     type: object
   handler.PinBuiltinTrainingRequest:
@@ -3206,6 +3322,54 @@ paths:
       summary: List favorite exercises
       tags:
       - Exercises
+  /api/coach/feed:
+    get:
+      description: 'Recent activity across every coachee enrolled with the authenticated
+        coach, newest first. Each event carries a kind: session_completed for a session
+        an athlete did, availability_declared for a calendar week they declared, coachee_enrolled
+        for a coachee who joined. Pass before to page backwards, using the occurred_at
+        of the oldest event already held.'
+      parameters:
+      - description: Events to return, 1 to 100, defaults to 20
+        in: query
+        name: limit
+        type: integer
+      - description: Only events strictly older than this RFC3339 instant
+        in: query
+        name: before
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feed events
+          schema:
+            items:
+              $ref: '#/definitions/handler.FeedEventResponse'
+            type: array
+        "400":
+          description: Invalid before cursor
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my coaching feed
+      tags:
+      - Coaching
   /api/coach/tags:
     get:
       description: Get all tags in the authenticated coach's library.
@@ -3360,6 +3524,121 @@ paths:
       summary: Update a tag
       tags:
       - Tags
+  /api/coach/todo:
+    get:
+      description: 'What the authenticated coach still owes their coachees: the sessions
+        whose notes have no answer yet, capped at 50 with pending_feedback_total carrying
+        the real count, and the programs whose next calendar week holds no session,
+        plus how many sessions their athletes did this week. The empty weeks only
+        appear once the weekly moment the coach configured has passed in their own
+        week, which is why the caller sends its UTC offset.'
+      parameters:
+      - description: Caller's offset east of UTC in minutes, defaults to 0
+        in: query
+        name: tz_offset_minutes
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The TODO list
+          schema:
+            $ref: '#/definitions/handler.CoachTodoResponse'
+        "400":
+          description: Invalid timezone offset
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my coaching TODO list
+      tags:
+      - Coaching
+  /api/coach/todo-settings:
+    get:
+      description: Retrieve when in the week the authenticated coach wants the programs
+        with an unprogrammed next week to appear in their TODO. A coach who never
+        saved any is answered the defaults, Friday at 21:00.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The settings
+          schema:
+            $ref: '#/definitions/handler.CoachTodoSettingsResponse'
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my TODO settings
+      tags:
+      - Coaching
+    put:
+      consumes:
+      - application/json
+      description: Choose when in the week the programs whose next calendar week holds
+        no session appear in the TODO. empty_week_day_of_week is 0 = Monday to 6 =
+        Sunday and the time is read on the coach's own clock.
+      parameters:
+      - description: TODO settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CoachTodoSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The saved settings
+          schema:
+            $ref: '#/definitions/handler.CoachTodoSettingsResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set my TODO settings
+      tags:
+      - Coaching
   /api/enrollment/{token}:
     get:
       description: Validate a token and return the coach's info. Used before accepting
