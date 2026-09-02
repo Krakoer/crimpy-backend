@@ -2909,6 +2909,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/coach/feed": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recent activity across every coachee enrolled with the authenticated coach, newest first. Each event carries a kind: session_completed for a session an athlete did, availability_declared for a calendar week they declared, coachee_enrolled for a coachee who joined. Pass before to page backwards, using the occurred_at of the oldest event already held.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Get my coaching feed",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Events to return, 1 to 100, defaults to 20",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only events strictly older than this RFC3339 instant",
+                        "name": "before",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Feed events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.FeedEventResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid before cursor",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/coach/tags": {
             "get": {
                 "security": [
@@ -3135,6 +3204,173 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Tag not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/todo": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, and the programs whose next calendar week holds no session. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Get my coaching TODO list",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Caller's offset east of UTC in minutes, defaults to 0",
+                        "name": "tz_offset_minutes",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The TODO list",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachTodoResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid timezone offset",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/todo-settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve when in the week the authenticated coach wants the programs with an unprogrammed next week to appear in their TODO. A coach who never saved any is answered the defaults, Friday at 21:00.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Get my TODO settings",
+                "responses": {
+                    "200": {
+                        "description": "The settings",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachTodoSettingsResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Choose when in the week the programs whose next calendar week holds no session appear in the TODO. empty_week_day_of_week is 0 = Monday to 6 = Sunday and the time is read on the coach's own clock.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Set my TODO settings",
+                "parameters": [
+                    {
+                        "description": "TODO settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachTodoSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The saved settings",
+                        "schema": {
+                            "$ref": "#/definitions/handler.CoachTodoSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5641,6 +5877,54 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CoachTodoResponse": {
+            "type": "object",
+            "properties": {
+                "empty_week_check": {
+                    "$ref": "#/definitions/handler.EmptyWeekCheckResponse"
+                },
+                "empty_weeks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.EmptyProgramWeekResponse"
+                    }
+                },
+                "pending_feedback": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.PendingFeedbackResponse"
+                    }
+                }
+            }
+        },
+        "handler.CoachTodoSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "empty_week_day_of_week": {
+                    "type": "integer"
+                },
+                "empty_week_hour": {
+                    "type": "integer"
+                },
+                "empty_week_minute": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.CoachTodoSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "empty_week_day_of_week": {
+                    "type": "integer"
+                },
+                "empty_week_hour": {
+                    "type": "integer"
+                },
+                "empty_week_minute": {
+                    "type": "integer"
+                }
+            }
+        },
         "handler.CreateAssessmentDefinitionRequest": {
             "type": "object",
             "properties": {
@@ -5890,6 +6174,52 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.EmptyProgramWeekResponse": {
+            "type": "object",
+            "properties": {
+                "program_id": {
+                    "type": "string"
+                },
+                "program_name": {
+                    "type": "string"
+                },
+                "user_firstname": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_lastname": {
+                    "type": "string"
+                },
+                "week_number": {
+                    "type": "integer"
+                },
+                "week_start": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.EmptyWeekCheckResponse": {
+            "type": "object",
+            "properties": {
+                "day_of_week": {
+                    "type": "integer"
+                },
+                "hour": {
+                    "type": "integer"
+                },
+                "minute": {
+                    "type": "integer"
+                },
+                "reached": {
+                    "type": "boolean"
+                },
+                "week_start": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.EnrolledUserResponse": {
             "type": "object",
             "properties": {
@@ -6002,6 +6332,44 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.FeedEventResponse": {
+            "type": "object",
+            "properties": {
+                "activity": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "occurred_at": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "user_firstname": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_lastname": {
+                    "type": "string"
+                },
+                "week_start": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.LoginRequest": {
             "type": "object",
             "properties": {
@@ -6009,6 +6377,35 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.PendingFeedbackResponse": {
+            "type": "object",
+            "properties": {
+                "activity": {
+                    "type": "integer"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "user_firstname": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_lastname": {
                     "type": "string"
                 }
             }

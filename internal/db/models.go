@@ -100,6 +100,15 @@ type CoachProgramWeekSession struct {
 	UpdatedAt    pgtype.Timestamptz
 }
 
+type CoachTodoSetting struct {
+	CoachID            pgtype.UUID
+	EmptyWeekDayOfWeek int32
+	EmptyWeekHour      int32
+	EmptyWeekMinute    int32
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
 type CoacheeDayAvailability struct {
 	ID              pgtype.UUID
 	UserID          pgtype.UUID
