@@ -39,7 +39,7 @@ swagger:
     swag init -g cmd/api/main.go -o docs
 
 prod-up:
-    mkdir -p pgdata
+    mkdir -p logs
     docker compose --env-file .env.prod pull
     docker compose --env-file .env.prod up -d
 

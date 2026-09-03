@@ -172,22 +172,33 @@ are always version-matched to the api that runs them.
 | Push to `main` | `:edge` |
 | Push of tag `vX.Y.Z` | `:vX.Y.Z` and `:latest` |
 
+### The stack
+
+Both compose files describe the whole product, not just the API: Postgres, the
+migration job, the api, the coach frontend and pgAdmin, behind Traefik.
+`docker-compose.yml` is production on `crimpy.app`, `docker-compose.preprod.yml`
+is preproduction on `dev.crimpy.app`, VPN gated. The frontend image is built out
+of the crimpy-frontend repository; only the compose entry lives here.
+
 ### Version selection
 
-A single `VERSION` variable in the environment file selects both images, which
-keeps a promotion atomic and prevents api/migration skew:
+Two variables in the environment file select the images, one per release train:
 
 ```bash
-VERSION=edge      # preproduction, tracks main
-VERSION=v1.0.0    # production, pinned to a validated release
+API_VERSION=v1.0.1       # krakoer/crimpy-api and krakoer/crimpy-migrate
+FRONTEND_VERSION=v1.0.0  # krakoer/crimpy-frontend
 ```
 
-That variable also selects `krakoer/crimpy-frontend`, which is tagged out of a
-different repository on its own version numbers. A pin therefore only resolves
-when crimpy-backend and crimpy-frontend both carry the tag. When they do not,
-leave `VERSION` unset: the compose default is `:latest`, which each repo
-republishes on every one of its own tags. Krakoer/crimpy#56 tracks splitting the
-variable per image so the two repos can be pinned independently.
+`API_VERSION` covers the api and the migration job together, which keeps a
+promotion atomic and prevents api/migration skew: both images are built from the
+same commit and share the same tags. `FRONTEND_VERSION` is separate because
+crimpy-frontend is a different repository with its own tags, so the two version
+numbers are unrelated and a single shared variable could not resolve to a real
+tag in both registries.
+
+Leave either unset to take the compose default, `latest` in production and
+`edge` in preproduction. Mixing is fine and expected: pin the one you are
+promoting, leave the other alone.
 
 ### Running migrations
 
@@ -215,7 +226,7 @@ nano .env.prod  # Edit with production values
 # - DB_USER, DB_PASSWORD (avoid special chars like % and &)
 # - JWT_SECRET (generate with: openssl rand -base64 32)
 # - DATABASE_URL (update with your DB_PASSWORD, keep 'db' as hostname)
-# - VERSION (the released tag to run)
+# - API_VERSION and FRONTEND_VERSION (the released tags to run)
 
 # Pull the images and start services
 just prod-up
@@ -255,16 +266,20 @@ GitHub Actions then automatically:
 **Promote to production:**
 
 ```bash
-# Edit .env.prod: VERSION=v1.0.0 (the tag preproduction already validated)
+# Edit .env.prod: API_VERSION=v1.0.0 (the tag preproduction already validated)
 just prod-pull
 ```
 
 **Rollback:**
 
 ```bash
-# Edit .env.prod: VERSION=v0.9.0
+# Edit .env.prod: API_VERSION=v0.9.0
 just prod-pull
 ```
+
+Both promote and rollback touch one train at a time. Rolling the api back does
+not move the frontend, and vice versa, so check that the pair you end up with is
+one that was actually tested together.
 
 ### Health endpoint
 
@@ -313,7 +328,8 @@ ENV=development
 
 **Production** (set via `.env.prod`, see [.env.prod.example](.env.prod.example) for the full list):
 ```bash
-VERSION=v1.0.0
+API_VERSION=v1.0.0
+FRONTEND_VERSION=v1.0.0
 DATABASE_URL=postgres://...
 JWT_SECRET=<strong-random-secret>
 PORT=3000
