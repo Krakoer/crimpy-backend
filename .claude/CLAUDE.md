@@ -184,8 +184,7 @@ This application is configured to work with **Traefik** as a reverse proxy. The 
    ```
 
 This command will:
-- Create `./pgdata` directory owned by your user
-- Start PostgreSQL database with persistent storage in `./pgdata`
+- Start PostgreSQL with persistent storage in the `prod-pgdata` named volume
 - Run database migrations automatically via Atlas
 - Build and start the API server
 - Connect to Traefik's `proxy` network for external access
@@ -199,25 +198,29 @@ The production setup includes these Traefik labels:
 - `Entrypoint`: `websecure` (HTTPS)
 - `Certificate resolver`: `dnsResolver`
 
-To change the domain, edit the `traefik.http.routers.crimpy-api.rule` label in [docker-compose.prod.yml](docker-compose.prod.yml).
+To change the domain, edit the `traefik.http.routers.crimpy-api.rule` label in [docker-compose.yml](docker-compose.yml).
 
-### Database Data Ownership
+### Database Storage
 
-The PostgreSQL data is stored in `./pgdata` and is **owned by your user** (not root). This is achieved by:
-- Running the PostgreSQL container as your user (via `DOCKER_UID` and `DOCKER_GID` environment variables)
-- Using a bind mount to `./pgdata` instead of a Docker-managed volume
-- Setting `PGDATA=/var/lib/postgresql/data/pgdata` to work with non-root user
+Both stacks keep PostgreSQL in a Docker named volume, `prod-pgdata` for
+production and `preprod-pgdata` for preproduction, not in a bind mount. pgAdmin
+and the api log file use named volumes too (`prod-pgadmin-data`, `prod-logs`).
 
-This allows you to:
-- Back up the database by simply copying the `pgdata` directory
-- Delete the `pgdata` directory to reset the database
-- Access database files without sudo permissions
+Back up and reset go through docker rather than the filesystem:
+
+```bash
+docker compose --env-file .env.prod exec db pg_dump -U "$DB_USER" "$DB_NAME" > dump.sql
+docker volume rm crimpy-prod_prod-pgdata   # reset, stack must be down
+```
+
+The volume names are prefixed with the compose project name, `crimpy-prod` or
+`crimpy-preprod`.
 
 **Important:**
 - Ensure `.env.prod` is never committed to version control (already in .gitignore)
 - The API container exposes port 3000 internally but is only accessible via Traefik
-- Database data persists in `./pgdata` directory owned by your user
-- The `pgdata` directory is excluded from Docker builds via `.dockerignore`
+- The api runs as uid 10001, which is why `/logs` is a named volume initialised
+  from the image rather than a bind mount the host user would own
 
 ### Continuous Deployment with Docker
 

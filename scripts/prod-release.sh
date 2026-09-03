@@ -111,6 +111,4 @@ git push origin "$tag"
 
 echo
 echo "$tag pushed, the CI is building krakoer/crimpy-api:$tag and krakoer/crimpy-migrate:$tag"
-echo "VERSION in .env.prod pins the frontend image too, so set VERSION=$tag only once"
-echo "crimpy-frontend carries $tag as well, otherwise leave it unset and let just"
-echo "prod-pull take the :latest each repo publishes on its own tag"
+echo "once it is green, on the server: set API_VERSION=$tag in .env.prod, then just prod-pull"
