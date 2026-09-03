@@ -182,6 +182,13 @@ VERSION=edge      # preproduction, tracks main
 VERSION=v1.0.0    # production, pinned to a validated release
 ```
 
+That variable also selects `krakoer/crimpy-frontend`, which is tagged out of a
+different repository on its own version numbers. A pin therefore only resolves
+when crimpy-backend and crimpy-frontend both carry the tag. When they do not,
+leave `VERSION` unset: the compose default is `:latest`, which each repo
+republishes on every one of its own tags. Krakoer/crimpy#56 tracks splitting the
+variable per image so the two repos can be pinned independently.
+
 ### Running migrations
 
 The migrate image needs no repository checkout and no bind mount. It reads

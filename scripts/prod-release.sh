@@ -46,12 +46,24 @@ if [ "$(git rev-parse dev)" != "$(git rev-parse origin/dev)" ]; then
     exit 1
 fi
 
+if ! git rev-parse -q --verify origin/main >/dev/null; then
+    echo "origin/main does not exist" >&2
+    exit 1
+fi
+
 if [ "$(git rev-parse origin/main)" != "$(git rev-parse origin/dev)" ]; then
     echo "origin/main is not origin/dev: run scripts/preprod-release.sh and validate preproduction first" >&2
     exit 1
 fi
 
-previous=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+head_tag=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+if [ -n "$head_tag" ]; then
+    echo "HEAD is already tagged $head_tag, there is nothing new to release" >&2
+    echo "if that tag failed to publish, push it again: git push origin $head_tag" >&2
+    exit 1
+fi
+
+previous=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
 current=${previous#v}
 [ -n "$current" ] || current=0.0.0
 
@@ -64,8 +76,15 @@ patch) next="$major.$minor.$((patch + 1))" ;;
 esac
 
 tag="v$next"
+if [ "$next" = "$current" ] || [ "$(printf '%s\n%s\n' "$current" "$next" | sort -V | tail -n 1)" != "$next" ]; then
+    echo "$tag does not sort above the current version v$current" >&2
+    exit 1
+fi
+
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     echo "$tag already exists" >&2
+    echo "if an earlier run stopped after tagging, finish it with:" >&2
+    echo "  git push origin $tag" >&2
     exit 1
 fi
 
@@ -92,4 +111,6 @@ git push origin "$tag"
 
 echo
 echo "$tag pushed, the CI is building krakoer/crimpy-api:$tag and krakoer/crimpy-migrate:$tag"
-echo "once it is green, on the server: set VERSION=$tag in .env.prod, then just prod-pull"
+echo "VERSION in .env.prod pins the frontend image too, so set VERSION=$tag only once"
+echo "crimpy-frontend carries $tag as well, otherwise leave it unset and let just"
+echo "prod-pull take the :latest each repo publishes on its own tag"

@@ -6,14 +6,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 assume_yes=false
-if [ "${1:-}" = "-y" ]; then
-    assume_yes=true
-elif [ $# -gt 0 ]; then
-    echo "usage: $0 [-y]" >&2
-    exit 1
+if [ $# -gt 0 ]; then
+    if [ "$1" = "-y" ] && [ $# -eq 1 ]; then
+        assume_yes=true
+    else
+        echo "usage: $0 [-y]" >&2
+        exit 1
+    fi
 fi
 
 git fetch origin
+
+if ! git rev-parse -q --verify origin/main >/dev/null; then
+    echo "origin/main does not exist" >&2
+    exit 1
+fi
 
 if git merge-base --is-ancestor origin/dev origin/main; then
     echo "origin/main already contains origin/dev, nothing to promote"
