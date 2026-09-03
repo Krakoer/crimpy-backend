@@ -15,7 +15,6 @@ services:
     restart: always
     security_opt:
       - no-new-privileges:true
-    env_file: [.env.prod]
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -59,7 +58,7 @@ services:
     expose:
       - ${PORT:-3000}
     volumes:
-      - ./logs:/logs
+      - prod-logs:/logs
     networks:
       - crimpy_prod_net
       - proxy
@@ -98,6 +97,12 @@ services:
       - 3000
     networks:
       - proxy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     labels:
       - traefik.enable=true
       - traefik.http.routers.crimpy-frontend.rule=Host(`crimpy.app`)
@@ -111,7 +116,6 @@ services:
     restart: always
     security_opt:
       - no-new-privileges:true
-    env_file: [.env.prod]
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_MAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PWD}
@@ -137,3 +141,4 @@ services:
 volumes:
   prod-pgdata:
   prod-pgadmin-data:
+  prod-logs:

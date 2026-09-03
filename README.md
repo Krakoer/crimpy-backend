@@ -200,6 +200,13 @@ Leave either unset to take the compose default, `latest` in production and
 `edge` in preproduction. Mixing is fine and expected: pin the one you are
 promoting, leave the other alone.
 
+**Upgrading an existing server.** These two replace a single `VERSION`. A
+`.env.prod` still holding `VERSION=v1.0.0` is not an error and produces no
+warning: the variable is simply ignored and all three images fall back to
+`latest`. Rename it to `API_VERSION` and add `FRONTEND_VERSION` on the first
+deploy after this change, or the next `just prod-pull` silently moves production
+onto whatever `latest` points at.
+
 ### Running migrations
 
 The migrate image needs no repository checkout and no bind mount. It reads
@@ -300,14 +307,27 @@ just prod-restart  # Restart API service
 
 ## Traefik Configuration
 
-The production setup uses Traefik as a reverse proxy:
-- **Host**: `api.crimpy.app`
-- **Entrypoint**: `websecure` (HTTPS)
-- **Certificate resolver**: `dnsResolver`
+The stack routes three hosts through Traefik, all on the `websecure` entrypoint
+with the `dnsResolver` certificate resolver:
+
+| Host | Service | Preproduction |
+| --- | --- | --- |
+| `api.crimpy.app` | api | `devapi.crimpy.app` |
+| `crimpy.app` | frontend | `dev.crimpy.app` |
+| `pg.crimpy.app` | pgAdmin, VPN gated | `devpg.crimpy.app` |
+
+Preproduction gates every one of them behind `vpn-only@file`.
 
 Prerequisites:
-- Traefik running with external network named `proxy`
-- DNS configured to point domain to VPS
+- Traefik running, attached to the external `proxy` network
+- Both external networks created, since compose will not create them itself:
+  ```bash
+  docker network create proxy
+  docker network create admin_net
+  ```
+  Without `admin_net`, `just prod-up` aborts with `network admin_net declared as
+  external, but could not be found` before anything starts.
+- DNS pointing each host above at the VPS
 
 ## Authentication Flow
 
