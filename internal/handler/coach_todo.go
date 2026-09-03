@@ -23,6 +23,12 @@ const (
 
 	defaultEmptyWeekDayOfWeek = 4
 	defaultEmptyWeekHour      = 21
+
+	// Which week an empty week item is about. The current one is already being
+	// trained and is listed whatever the coach's moment says; the next one only
+	// once that moment has passed.
+	emptyWeekScopeCurrent = "current"
+	emptyWeekScopeNext    = "next"
 )
 
 type CoachTodoHandler struct {
@@ -60,6 +66,9 @@ type PendingFeedbackResponse struct {
 }
 
 type EmptyProgramWeekResponse struct {
+	// Scope is "current" for the week being trained right now and "next" for
+	// the one starting on the coming Monday.
+	Scope         string `json:"scope"`
 	ProgramID     string `json:"program_id"`
 	ProgramName   string `json:"program_name"`
 	UserID        string `json:"user_id"`
@@ -69,9 +78,10 @@ type EmptyProgramWeekResponse struct {
 	WeekStart     string `json:"week_start"`
 }
 
-// EmptyWeekCheckResponse tells the portal what the empty week list is about,
-// so a coach reading an empty list knows whether nothing is missing or the
-// moment they chose has simply not come round yet.
+// EmptyWeekCheckResponse tells the portal about the next week half of the empty
+// week list, so a coach seeing none of them knows whether nothing is missing or
+// the moment they chose has simply not come round yet. The current week half is
+// never gated by it.
 type EmptyWeekCheckResponse struct {
 	DayOfWeek int32  `json:"day_of_week"`
 	Hour      int32  `json:"hour"`
@@ -250,7 +260,7 @@ func feedRowToResponse(row db.GetCoachFeedRow) FeedEventResponse {
 
 // GetCoachTodo godoc
 // @Summary Get my coaching TODO list
-// @Description What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, capped at 50 with pending_feedback_total carrying the real count, and the programs whose next calendar week holds no session, plus how many sessions their athletes did this week. The empty weeks only appear once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
+// @Description What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -340,32 +350,58 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		})
 	}
 
+	// The current week is listed whatever the moment says. It is already being
+	// trained, so gating it behind a weekly moment is how a coach who missed one
+	// window ends up never hearing about it at all.
+	currentWeeks, err := h.emptyWeeksOf(c, coachUUID, thisMonday, emptyWeekScopeCurrent)
+	if err != nil {
+		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "week", emptyWeekScopeCurrent, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
+	}
+	response.EmptyWeeks = append(response.EmptyWeeks, currentWeeks...)
+
 	if !response.EmptyWeekCheck.Reached {
 		return c.Status(fiber.StatusOK).JSON(response)
 	}
 
-	emptyWeeks, err := h.queries.GetCoachEmptyProgramWeeks(c.Context(), db.GetCoachEmptyProgramWeeksParams{
-		CoachID:   coachUUID,
-		WeekStart: pgtype.Date{Time: nextMonday, Valid: true},
-	})
+	nextWeeks, err := h.emptyWeeksOf(c, coachUUID, nextMonday, emptyWeekScopeNext)
 	if err != nil {
-		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "error", err)
+		slog.Error("failed to retrieve empty program weeks", "coach_id", coachUUID.String(), "week", emptyWeekScopeNext, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
 	}
+	response.EmptyWeeks = append(response.EmptyWeeks, nextWeeks...)
 
-	for _, row := range emptyWeeks {
-		response.EmptyWeeks = append(response.EmptyWeeks, EmptyProgramWeekResponse{
+	return c.Status(fiber.StatusOK).JSON(response)
+}
+
+// emptyWeeksOf lists the coach's programs that cover the calendar week starting
+// on monday and prescribe nothing in it, tagged with the scope the caller groups
+// them by. monday is read on the coach's own shifted clock, like every other week
+// boundary here.
+func (h *CoachTodoHandler) emptyWeeksOf(c fiber.Ctx, coachUUID pgtype.UUID, monday time.Time, scope string) ([]EmptyProgramWeekResponse, error) {
+	rows, err := h.queries.GetCoachEmptyProgramWeeks(c.Context(), db.GetCoachEmptyProgramWeeksParams{
+		CoachID:   coachUUID,
+		WeekStart: pgtype.Date{Time: monday, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	weekStart := monday.Format(time.DateOnly)
+	weeks := make([]EmptyProgramWeekResponse, 0, len(rows))
+	for _, row := range rows {
+		weeks = append(weeks, EmptyProgramWeekResponse{
+			Scope:         scope,
 			ProgramID:     row.ProgramID.String(),
 			ProgramName:   row.ProgramName,
 			UserID:        row.UserID.String(),
 			UserFirstname: row.UserFirstname,
 			UserLastname:  row.UserLastname,
 			WeekNumber:    row.WeekNumber,
-			WeekStart:     nextMonday.Format(time.DateOnly),
+			WeekStart:     weekStart,
 		})
 	}
-
-	return c.Status(fiber.StatusOK).JSON(response)
+	return weeks, nil
 }
 
 func (h *CoachTodoHandler) todoSettings(c fiber.Ctx, coachUUID pgtype.UUID) (CoachTodoSettingsResponse, error) {

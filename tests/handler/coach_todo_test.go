@@ -377,13 +377,25 @@ func TestCoachTodo_DoesNotLeakAnotherCoachsFeedback(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 	insertSession(t, pool, userID, "Private session", "private note", time.Now().UTC(), nil)
 
+	now := time.Now().UTC()
+	insertProgram(t, pool, coachID, userID, "Private block", mondayOfTestWeek(now, 0), 4)
+
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
 	})
 
+	// Monday at midnight has always passed, so both halves of the empty week
+	// list are looked up and both have to come back empty.
+	if resp := putTodoSettings(t, app, otherCoachToken, 0, 0, 0); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 saving the settings, got %d", resp.StatusCode)
+	}
+
 	todo := getTodo(t, app, otherCoachToken)
 	if len(todo["pending_feedback"].([]interface{})) != 0 {
 		t.Fatalf("Another coach's unanswered feedback leaked: %v", todo["pending_feedback"])
+	}
+	if empty := todo["empty_weeks"].([]interface{}); len(empty) != 0 {
+		t.Fatalf("Another coach's empty program weeks leaked: %v", empty)
 	}
 }
 
@@ -448,6 +460,9 @@ func TestCoachTodo_EmptyWeeksWaitForTheConfiguredMoment(t *testing.T) {
 	if item["week_start"] != nextMonday {
 		t.Errorf("Expected the item to name next Monday, got %v", item["week_start"])
 	}
+	if item["scope"] != "next" {
+		t.Errorf("Expected the item scoped to the next week, got %v", item["scope"])
+	}
 }
 
 func TestCoachTodo_SkipsProgrammedAndFinishedWeeks(t *testing.T) {
@@ -480,6 +495,121 @@ func TestCoachTodo_SkipsProgrammedAndFinishedWeeks(t *testing.T) {
 	todo := getTodo(t, app, coachToken)
 	if len(todo["empty_weeks"].([]interface{})) != 0 {
 		t.Fatalf("Expected no empty week, got %v", todo["empty_weeks"])
+	}
+}
+
+func TestCoachTodo_ListsAnEmptyCurrentWeekBeforeTheMoment(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "currentweekcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "currentweekathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	thisMonday := mondayOfTestWeek(now, 0)
+	insertProgram(t, pool, coachID, userID, "Running block", thisMonday, 4)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	day, hour, minute, ok := momentStillAhead(now)
+	if !ok {
+		t.Skip("no moment left in this week to schedule the check at")
+	}
+	if resp := putTodoSettings(t, app, coachToken, day, hour, minute); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 saving the settings, got %d", resp.StatusCode)
+	}
+
+	todo := getTodo(t, app, coachToken)
+	if reached := todo["empty_week_check"].(map[string]interface{})["reached"]; reached != false {
+		t.Fatalf("Expected the check not reached before the moment, got %v", reached)
+	}
+
+	// The week the athlete is training now is not the moment's to hold back.
+	empty := todo["empty_weeks"].([]interface{})
+	if len(empty) != 1 {
+		t.Fatalf("Expected the unprogrammed current week, got %v", empty)
+	}
+	item := empty[0].(map[string]interface{})
+	if item["scope"] != "current" {
+		t.Errorf("Expected the item scoped to the current week, got %v", item["scope"])
+	}
+	if item["program_name"] != "Running block" {
+		t.Errorf("Expected the program named, got %v", item["program_name"])
+	}
+	if item["week_number"].(float64) != 1 {
+		t.Errorf("Expected week 1 of a program starting this Monday, got %v", item["week_number"])
+	}
+	if item["week_start"] != thisMonday {
+		t.Errorf("Expected the item to name this Monday, got %v", item["week_start"])
+	}
+}
+
+func TestCoachTodo_ListsTheCurrentWeekBeforeTheNextOne(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "bothweekscoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "bothweeksathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	thisMonday := mondayOfTestWeek(now, 0)
+	nextMonday := mondayOfTestWeek(now, 1)
+	insertProgram(t, pool, coachID, userID, "Wide open block", thisMonday, 4)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+	if resp := putTodoSettings(t, app, coachToken, 0, 0, 0); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 saving the settings, got %d", resp.StatusCode)
+	}
+
+	empty := getTodo(t, app, coachToken)["empty_weeks"].([]interface{})
+	if len(empty) != 2 {
+		t.Fatalf("Expected both unprogrammed weeks, got %v", empty)
+	}
+	current := empty[0].(map[string]interface{})
+	next := empty[1].(map[string]interface{})
+	if current["scope"] != "current" || current["week_start"] != thisMonday || current["week_number"].(float64) != 1 {
+		t.Errorf("Expected the current week first, got %v", current)
+	}
+	if next["scope"] != "next" || next["week_start"] != nextMonday || next["week_number"].(float64) != 2 {
+		t.Errorf("Expected the next week second, got %v", next)
+	}
+}
+
+func TestCoachTodo_SkipsAProgrammedCurrentWeek(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "filledcurrentcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "filledcurrentathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	thisMonday := mondayOfTestWeek(now, 0)
+	program := insertProgram(t, pool, coachID, userID, "Half written block", thisMonday, 4)
+	programWeekWithSession(t, pool, coachID, program, 1)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+	if resp := putTodoSettings(t, app, coachToken, 0, 0, 0); resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 saving the settings, got %d", resp.StatusCode)
+	}
+
+	empty := getTodo(t, app, coachToken)["empty_weeks"].([]interface{})
+	if len(empty) != 1 {
+		t.Fatalf("Expected only the unprogrammed next week, got %v", empty)
+	}
+	if scope := empty[0].(map[string]interface{})["scope"]; scope != "next" {
+		t.Errorf("Expected the programmed current week left out, got an item scoped %v", scope)
 	}
 }
 
