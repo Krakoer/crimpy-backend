@@ -68,3 +68,9 @@ preprod-logs:
 
 preprod command:
     docker compose --env-file .env.preprod -f docker-compose.preprod.yml {{command}}
+
+preprod-release *args:
+    ./scripts/preprod-release.sh {{args}}
+
+prod-release bump *args:
+    ./scripts/prod-release.sh {{bump}} {{args}}
