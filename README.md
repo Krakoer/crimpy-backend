@@ -182,6 +182,13 @@ VERSION=edge      # preproduction, tracks main
 VERSION=v1.0.0    # production, pinned to a validated release
 ```
 
+That variable also selects `krakoer/crimpy-frontend`, which is tagged out of a
+different repository on its own version numbers. A pin therefore only resolves
+when crimpy-backend and crimpy-frontend both carry the tag. When they do not,
+leave `VERSION` unset: the compose default is `:latest`, which each repo
+republishes on every one of its own tags. Krakoer/crimpy#56 tracks splitting the
+variable per image so the two repos can be pinned independently.
+
 ### Running migrations
 
 The migrate image needs no repository checkout and no bind mount. It reads
@@ -223,13 +230,24 @@ just prod-up
 
 **Release process:**
 
+Both steps are scripted and run from `dev`, with `main` acting as the promoted
+branch. `just preprod-release` fast-forwards `main` to `dev`, which is what
+publishes `:edge`. `just prod-release` refuses to run until `main` and `dev`
+match, so a version can only be tagged once preproduction has actually run it.
+
 ```bash
-# Create and push version tag
-git tag v1.0.0
-git push origin v1.0.0
+# Publish :edge, then validate it on devapi.crimpy.app
+just preprod-release
+
+# Tag the validated commit, which publishes :vX.Y.Z and :latest
+just prod-release patch    # or minor, major, or an explicit 1.4.0
 ```
 
-GitHub Actions automatically:
+The version comes from the highest existing `vX.Y.Z` tag: there is no version
+file to keep in sync, the tag is the version. Both scripts show what they are
+about to push and ask for confirmation; pass `-y` to skip the prompt.
+
+GitHub Actions then automatically:
 - Builds both images for linux/amd64 and linux/arm64
 - Pushes them to DockerHub with the version tag + `latest`
 - Creates a GitHub release
