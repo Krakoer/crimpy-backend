@@ -13,6 +13,7 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	req := TrainingItemRequest{
 		Type:            item.Type,
 		RepsIsMax:       item.RepsIsMax,
+		LoadIsMax:       item.LoadIsMax,
 		Loads:           json.RawMessage(item.Loads),
 		LeftLoads:       json.RawMessage(item.LeftLoads),
 		HandPositions:   json.RawMessage(item.HandPositions),
@@ -30,6 +31,9 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	}
 	if item.Reps.Valid {
 		req.Reps = &item.Reps.Int32
+	}
+	if item.Duration.Valid {
+		req.Duration = &item.Duration.Int32
 	}
 	if item.RestSeconds.Valid {
 		req.RestSeconds = &item.RestSeconds.Int32
@@ -350,11 +354,15 @@ func validateItemArrays(item TrainingItemRequest) error {
 type itemOverride struct {
 	Cycles           *int32          `json:"cycles"`
 	CycleRestSeconds *int32          `json:"cycle_rest_seconds"`
+	IntervalSeconds  *int32          `json:"interval_seconds"`
 	Reps             *int32          `json:"reps"`
+	RepsIsMax        *bool           `json:"reps_is_max"`
+	Duration         *int32          `json:"duration"`
 	RestSeconds      *int32          `json:"rest_seconds"`
 	WorktimeSeconds  *int32          `json:"hb_worktime_seconds"`
 	Hand             *string         `json:"hand"`
 	Granularity      *string         `json:"granularity"`
+	LoadIsMax        *bool           `json:"load_is_max"`
 	Loads            json.RawMessage `json:"loads"`
 	LeftLoads        json.RawMessage `json:"left_loads"`
 	HandPositions    json.RawMessage `json:"hand_positions"`
@@ -368,11 +376,15 @@ type itemOverride struct {
 type overridableItem struct {
 	cycles           **int32
 	cycleRestSeconds **int32
+	intervalSeconds  **int32
 	reps             **int32
+	repsIsMax        *bool
+	duration         **int32
 	restSeconds      **int32
 	worktimeSeconds  **int32
 	hand             **string
 	granularity      **string
+	loadIsMax        *bool
 	loads            *json.RawMessage
 	leftLoads        *json.RawMessage
 	handPositions    *json.RawMessage
@@ -384,11 +396,15 @@ func (i *TrainingItemRequest) overridable() overridableItem {
 	return overridableItem{
 		cycles:           &i.Cycles,
 		cycleRestSeconds: &i.CycleRestSeconds,
+		intervalSeconds:  &i.IntervalSeconds,
 		reps:             &i.Reps,
+		repsIsMax:        &i.RepsIsMax,
+		duration:         &i.Duration,
 		restSeconds:      &i.RestSeconds,
 		worktimeSeconds:  &i.WorktimeSeconds,
 		hand:             &i.Hand,
 		granularity:      &i.Granularity,
+		loadIsMax:        &i.LoadIsMax,
 		loads:            &i.Loads,
 		leftLoads:        &i.LeftLoads,
 		handPositions:    &i.HandPositions,
@@ -401,11 +417,15 @@ func (i *TrainingItemResponse) overridable() overridableItem {
 	return overridableItem{
 		cycles:           &i.Cycles,
 		cycleRestSeconds: &i.CycleRestSeconds,
+		intervalSeconds:  &i.IntervalSeconds,
 		reps:             &i.Reps,
+		repsIsMax:        &i.RepsIsMax,
+		duration:         &i.Duration,
 		restSeconds:      &i.RestSeconds,
 		worktimeSeconds:  &i.WorktimeSeconds,
 		hand:             &i.Hand,
 		granularity:      &i.Granularity,
+		loadIsMax:        &i.LoadIsMax,
 		loads:            &i.Loads,
 		leftLoads:        &i.LeftLoads,
 		handPositions:    &i.HandPositions,
@@ -437,7 +457,9 @@ func mergeItemOverride(target overridableItem, raw json.RawMessage) error {
 	}{
 		{over.Cycles, target.cycles},
 		{over.CycleRestSeconds, target.cycleRestSeconds},
+		{over.IntervalSeconds, target.intervalSeconds},
 		{over.Reps, target.reps},
+		{over.Duration, target.duration},
 		{over.RestSeconds, target.restSeconds},
 		{over.WorktimeSeconds, target.worktimeSeconds},
 	} {
@@ -454,6 +476,19 @@ func mergeItemOverride(target overridableItem, raw json.RawMessage) error {
 	} {
 		if field.override != nil {
 			*field.target = field.override
+		}
+	}
+	// The two markers are plain booleans on the item and pointers here, so an
+	// override that leaves one out is told apart from one that turns it off.
+	for _, field := range []struct {
+		override *bool
+		target   *bool
+	}{
+		{over.RepsIsMax, target.repsIsMax},
+		{over.LoadIsMax, target.loadIsMax},
+	} {
+		if field.override != nil {
+			*field.target = *field.override
 		}
 	}
 	for _, field := range []struct {
@@ -494,9 +529,10 @@ func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingI
 // configuration arrays it invalidates, shipping arrays that disagree with the
 // granularity in force once the override is applied, or reaching through the
 // override keys to a shape the direct write path refuses. An override carries
-// rest_seconds, cycle_rest_seconds and variable_targets, which is enough to put
-// a rest on an emom and a percentage on an open rep count, so the item
-// invariants are checked on the merged item and not only where it was written.
+// interval_seconds, reps_is_max, rest_seconds, cycle_rest_seconds and
+// variable_targets, which is enough to put a clock on a circuit, a rest on an
+// emom and a percentage on an open rep count, so the item invariants are checked
+// on the merged item and not only where it was written.
 func validateItemOverride(base TrainingItemRequest, raw json.RawMessage, units assessmentUnits) error {
 	if err := validateOverrideHangboardRepRepeatFields(base, raw); err != nil {
 		return err

@@ -208,6 +208,11 @@ func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
 			{"type": "emom", "cycles": 10, "interval_seconds": 60, "items": []map[string]interface{}{
 				{"type": "exercise", "reps_is_max": true},
 			}},
+			{
+				"type": "repeater", "cycles": 1, "reps": 6, "worktime_seconds": 7,
+				"rest_seconds": 3, "hand": "both", "granularity": "uniform",
+				"loads": []map[string]interface{}{{"value": 0, "unit": "bw"}},
+			},
 		},
 	})
 	if status != fiber.StatusCreated {
@@ -217,6 +222,7 @@ func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
 	emom := firstItem(t, training)
 	emomID := emom["id"].(string)
 	exerciseID := emom["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
+	repeaterID := training["items"].([]interface{})[1].(map[string]interface{})["id"].(string)
 
 	for name, override := range map[string]map[string]interface{}{
 		"a rest on an emom": {"item_id": emomID, "overrides": map[string]interface{}{"rest_seconds": 45}},
@@ -232,6 +238,12 @@ func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
 					},
 				},
 			},
+		},
+		"a clock on an exercise": {
+			"item_id": exerciseID, "overrides": map[string]interface{}{"interval_seconds": 60},
+		},
+		"an open rep count on a repeater": {
+			"item_id": repeaterID, "overrides": map[string]interface{}{"reps_is_max": true},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
