@@ -213,6 +213,7 @@ func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
 				"rest_seconds": 3, "hand": "both", "granularity": "uniform",
 				"loads": []map[string]interface{}{{"value": 0, "unit": "bw"}},
 			},
+			{"type": "exercise", "reps": 8},
 		},
 	})
 	if status != fiber.StatusCreated {
@@ -223,6 +224,7 @@ func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
 	emomID := emom["id"].(string)
 	exerciseID := emom["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
 	repeaterID := training["items"].([]interface{})[1].(map[string]interface{})["id"].(string)
+	countedID := training["items"].([]interface{})[2].(map[string]interface{})["id"].(string)
 
 	for name, override := range map[string]map[string]interface{}{
 		"a rest on an emom": {"item_id": emomID, "overrides": map[string]interface{}{"rest_seconds": 45}},
@@ -244,6 +246,23 @@ func TestTrainingAmrap_RejectsOverrideReachingAForbiddenShape(t *testing.T) {
 		},
 		"an open rep count on a repeater": {
 			"item_id": repeaterID, "overrides": map[string]interface{}{"reps_is_max": true},
+		},
+		// Both halves of the conflict in one payload, on an item that carries
+		// neither, so the refusal comes from the merged item rather than from
+		// what the targeted row already held.
+		"an open rep count and a percentage in one override": {
+			"item_id": countedID,
+			"overrides": map[string]interface{}{
+				"reps_is_max": true,
+				"variable_targets": map[string]interface{}{
+					"reps": map[string]interface{}{
+						"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+					},
+				},
+			},
+		},
+		"a clock of nothing on an emom": {
+			"item_id": emomID, "overrides": map[string]interface{}{"interval_seconds": 0},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
