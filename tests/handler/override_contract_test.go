@@ -5,10 +5,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,10 +29,6 @@ const (
 	overridableFuncName  = "overridable"
 	mergeFuncName        = "mergeItemOverride"
 )
-
-// The item shapes that expose an overridable view. Both merge the same override,
-// so both have to land every key on the column the contract names.
-var overridableReceivers = []string{"TrainingItemRequest", "TrainingItemResponse"}
 
 type contractKey struct {
 	Key       string `json:"key"`
@@ -137,24 +134,60 @@ func jsonKeys(t *testing.T, name string, structType *ast.StructType) map[string]
 	return keys
 }
 
+// receiverName returns the type a method hangs off, pointer or not.
+func receiverName(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 {
+		return ""
+	}
+	expr := fn.Recv.List[0].Type
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	if ident, ok := expr.(*ast.Ident); ok {
+		return ident.Name
+	}
+	return ""
+}
+
+// overridableShapes names every item shape exposing a view the override is
+// merged through. Read out of the package rather than listed here, since a shape
+// added later merges the same override and has to land every key on the same
+// column, and a list in this file would be the drift it exists to stop.
+func overridableShapes(t *testing.T, files []*ast.File) []string {
+	t.Helper()
+	var shapes []string
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != overridableFuncName {
+				continue
+			}
+			if name := receiverName(fn); name != "" {
+				shapes = append(shapes, name)
+			}
+		}
+	}
+	if len(shapes) == 0 {
+		t.Fatalf("Failed to find any %s method under %s", overridableFuncName, handlerDir)
+	}
+	slices.Sort(shapes)
+	return shapes
+}
+
 func findMethod(t *testing.T, files []*ast.File, receiver, name string) *ast.FuncDecl {
 	t.Helper()
 	for _, file := range files {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Name.Name != name || fn.Recv == nil || len(fn.Recv.List) != 1 {
+			if !ok || fn.Name.Name != name {
 				continue
 			}
-			star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
-			if !ok {
-				continue
-			}
-			if ident, ok := star.X.(*ast.Ident); ok && ident.Name == receiver {
+			if receiverName(fn) == receiver {
 				return fn
 			}
 		}
 	}
-	t.Fatalf("Failed to find (*%s).%s under %s", receiver, name, handlerDir)
+	t.Fatalf("Failed to find %s.%s under %s", receiver, name, handlerDir)
 	return nil
 }
 
@@ -234,34 +267,29 @@ func mergePairs(t *testing.T, files []*ast.File) map[string]string {
 		}
 		return true
 	})
+	if len(pairs) == 0 {
+		t.Fatalf("Failed to read the merge tables out of %s", mergeFuncName)
+	}
 	return pairs
-}
-
-func sorted(values []string) []string {
-	out := append([]string(nil), values...)
-	sort.Strings(out)
-	return out
 }
 
 func TestOverrideCoversEveryContractKey(t *testing.T) {
 	files := parseHandlerPackage(t)
 	keys := jsonKeys(t, overrideStructName, findStruct(t, files, overrideStructName))
 
-	structKeys := make([]string, 0, len(keys))
-	for _, key := range keys {
-		structKeys = append(structKeys, key)
-	}
+	structKeys := slices.Sorted(maps.Values(keys))
 
-	contractKeys := make([]string, 0)
+	var contractKeys []string
 	for _, entry := range readOverrideContract(t) {
 		contractKeys = append(contractKeys, entry.Key)
 	}
+	slices.Sort(contractKeys)
 
-	if !equalStrings(sorted(structKeys), sorted(contractKeys)) {
+	if !slices.Equal(structKeys, contractKeys) {
 		t.Errorf("%s and %s name different keys.\nstruct:   %v\ncontract: %v\n"+
 			"A key on one side only is dropped from the prescription by whichever client does not read it. "+
 			"Update the contract, copy it to crimpy-app and crimpy-frontend, and make their tests pass.",
-			overrideStructName, overrideContractPath, sorted(structKeys), sorted(contractKeys))
+			overrideStructName, overrideContractPath, structKeys, contractKeys)
 	}
 }
 
@@ -270,9 +298,10 @@ func TestMergeItemOverrideWritesEveryKeyToItsItemField(t *testing.T) {
 	overrideKeys := jsonKeys(t, overrideStructName, findStruct(t, files, overrideStructName))
 	pairs := mergePairs(t, files)
 
+	shapes := overridableShapes(t, files)
 	itemKeys := map[string]map[string]string{}
 	overridable := map[string]map[string]string{}
-	for _, receiver := range overridableReceivers {
+	for _, receiver := range shapes {
 		itemKeys[receiver] = jsonKeys(t, receiver, findStruct(t, files, receiver))
 		overridable[receiver] = overridableFields(t, files, receiver)
 	}
@@ -294,7 +323,7 @@ func TestMergeItemOverrideWritesEveryKeyToItsItemField(t *testing.T) {
 				mergeFuncName, overrideStructName, field, entry.Key)
 			continue
 		}
-		for _, receiver := range overridableReceivers {
+		for _, receiver := range shapes {
 			itemField, ok := overridable[receiver][target]
 			if !ok {
 				t.Errorf("(*%s).%s points nothing at %s, which %s writes %q onto",
@@ -327,8 +356,13 @@ func TestOverrideSamplesMatchTheFieldTypes(t *testing.T) {
 	}
 
 	for _, entry := range readOverrideContract(t) {
+		fieldType, named := types[entry.Key]
+		if !named {
+			// TestOverrideCoversEveryContractKey names this one.
+			continue
+		}
 		var ok bool
-		switch types[entry.Key] {
+		switch fieldType {
 		case "*int32":
 			_, ok = entry.Sample.(float64)
 		case "*bool":
@@ -340,11 +374,11 @@ func TestOverrideSamplesMatchTheFieldTypes(t *testing.T) {
 			ok = entry.Sample != nil
 		default:
 			t.Fatalf("%s.%s has type %q, which this test does not know how to check a sample against",
-				overrideStructName, entry.Key, types[entry.Key])
+				overrideStructName, entry.Key, fieldType)
 		}
 		if !ok {
 			t.Errorf("the %q sample in %s is %#v, which %s.%s (%s) cannot decode",
-				entry.Key, overrideContractPath, entry.Sample, overrideStructName, entry.Key, types[entry.Key])
+				entry.Key, overrideContractPath, entry.Sample, overrideStructName, entry.Key, fieldType)
 		}
 	}
 }
@@ -359,16 +393,4 @@ func typeName(expr ast.Expr) string {
 		return typeName(typed.X) + "." + typed.Sel.Name
 	}
 	return ""
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
