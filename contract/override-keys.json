@@ -1,0 +1,25 @@
+{
+	"doc": "Every key a program week override may carry, and the field it replaces on the training item. The set is closed: a key the backend names and a client does not read is dropped from the prescription the athlete plays, rather than merely ignored there. The canonical copy lives in crimpy-backend, next to the itemOverride struct it is asserted against; crimpy-app and crimpy-frontend vendor it byte for byte and hold their own merge to it by test. The sample is a value every client can parse, so each of them can check that a key on its own reaches the item.",
+	"keys": [
+		{ "key": "cycles", "item_field": "cycles", "sample": 4 },
+		{ "key": "cycle_rest_seconds", "item_field": "cycle_rest_seconds", "sample": 120 },
+		{ "key": "interval_seconds", "item_field": "interval_seconds", "sample": 90 },
+		{ "key": "reps", "item_field": "reps", "sample": 8 },
+		{ "key": "reps_is_max", "item_field": "reps_is_max", "sample": true },
+		{ "key": "duration", "item_field": "duration", "sample": 45 },
+		{ "key": "rest_seconds", "item_field": "rest_seconds", "sample": 60 },
+		{ "key": "hb_worktime_seconds", "item_field": "worktime_seconds", "sample": 7 },
+		{ "key": "hand", "item_field": "hand", "sample": "alternate" },
+		{ "key": "granularity", "item_field": "granularity", "sample": "rep" },
+		{ "key": "load_is_max", "item_field": "load_is_max", "sample": true },
+		{ "key": "loads", "item_field": "loads", "sample": [{ "unit": "kg", "value": 25 }] },
+		{ "key": "left_loads", "item_field": "left_loads", "sample": [{ "unit": "kg", "value": 20 }] },
+		{ "key": "hand_positions", "item_field": "hand_positions", "sample": [["HC", "FC"]] },
+		{ "key": "edge_sizes_mm", "item_field": "edge_sizes_mm", "sample": [20, 18] },
+		{
+			"key": "variable_targets",
+			"item_field": "variable_targets",
+			"sample": { "reps": { "assessment_id": "a1", "percent": 75, "fallback": 8 } }
+		}
+	]
+}

@@ -345,11 +345,12 @@ func validateItemArrays(item TrainingItemRequest) error {
 
 // itemOverride is every field a session override may replace on the item it
 // targets. It has to name the same keys the clients merge, since an override
-// key missing here is silently dropped from the prescription snapshot rather
-// than merely being ignored. Nothing enforces that today: a key added here has
-// to be added by hand to applyOverride in
-// crimpy-app/lib/models/training_item_model.dart and to ItemOverride in
-// crimpy-frontend/src/lib/api/client.ts.
+// key missing there is silently dropped from the prescription snapshot rather
+// than merely being ignored. contract/override-keys.json is the list all three
+// clients are held to: TestOverrideCoversEveryContractKey asserts these json
+// tags against it, and the app and the portal vendor the same file and assert
+// their own merge against it. A key added here is added to that file, and the
+// copy in crimpy-app and crimpy-frontend refreshed, or their suites fail.
 //
 // Note hb_worktime_seconds: the override names the item's worktime_seconds
 // field with a different key, and the clients read it that way.
