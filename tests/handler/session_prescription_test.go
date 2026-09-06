@@ -558,6 +558,11 @@ func TestSessionHandler_CreateSession_SnapshotsWidenedOverrides(t *testing.T) {
 				"granularity": "uniform", "load_is_max": true,
 				"loads": []map[string]interface{}{{"value": 0, "unit": "max"}},
 			},
+			{
+				"type": "hangboard_rep", "worktime_seconds": 7, "hand": "both",
+				"granularity": "uniform", "load_is_max": true,
+				"loads": []map[string]interface{}{{"value": 0, "unit": "max"}},
+			},
 		},
 	})
 	if status != fiber.StatusCreated {
@@ -570,6 +575,7 @@ func TestSessionHandler_CreateSession_SnapshotsWidenedOverrides(t *testing.T) {
 	emomID := emom["id"].(string)
 	roundID := emom["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
 	hangID := items[2].(map[string]interface{})["id"].(string)
+	keptID := items[3].(map[string]interface{})["id"].(string)
 
 	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
 		"overrides": []map[string]interface{}{
@@ -580,6 +586,10 @@ func TestSessionHandler_CreateSession_SnapshotsWidenedOverrides(t *testing.T) {
 				"load_is_max": false,
 				"loads":       []map[string]interface{}{{"value": 25, "unit": "kg"}},
 			}},
+			// The other half of the same contract: a marker the override leaves
+			// out is not a marker turned off, so this hang keeps the max effort
+			// the training gave it.
+			{"item_id": keptID, "overrides": map[string]interface{}{"hb_worktime_seconds": 10}},
 		},
 	})
 
@@ -604,5 +614,12 @@ func TestSessionHandler_CreateSession_SnapshotsWidenedOverrides(t *testing.T) {
 	hang := snapshot[2].(map[string]interface{})
 	if hang["load_is_max"] != false {
 		t.Errorf("Expected the max effort marker cleared in the snapshot, got %v", hang["load_is_max"])
+	}
+	kept := snapshot[3].(map[string]interface{})
+	if kept["load_is_max"] != true {
+		t.Errorf("Expected the max effort marker kept where the override omits it, got %v", kept["load_is_max"])
+	}
+	if kept["worktime_seconds"] != float64(10) {
+		t.Errorf("Expected the overridden worktime 10 in the snapshot, got %v", kept["worktime_seconds"])
 	}
 }
