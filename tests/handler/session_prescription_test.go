@@ -537,3 +537,89 @@ func TestSessionHandler_CreateSession_FreezesEmptyAssessmentResults(t *testing.T
 		t.Errorf("Expected no frozen assessments, got %v", assessments)
 	}
 }
+
+// The four keys Krakoer/crimpy#51 added to the override reach the athlete the
+// same way the timings do. A duration retimed, an emom clock moved, a rep count
+// left open and a max effort turned into a number are all part of what the week
+// asked for, so the snapshot has to carry them rather than the training values.
+func TestSessionHandler_CreateSession_SnapshotsWidenedOverrides(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "prewiden")
+
+	status, training := postJSON(t, app, "/api/trainings", coachToken, map[string]interface{}{
+		"title": "Widened blocks",
+		"items": []map[string]interface{}{
+			{"type": "exercise", "duration": 30},
+			{"type": "emom", "cycles": 10, "interval_seconds": 60, "items": []map[string]interface{}{
+				{"type": "exercise", "reps": 5},
+			}},
+			{
+				"type": "hangboard_rep", "worktime_seconds": 7, "hand": "both",
+				"granularity": "uniform", "load_is_max": true,
+				"loads": []map[string]interface{}{{"value": 0, "unit": "max"}},
+			},
+			{
+				"type": "hangboard_rep", "worktime_seconds": 7, "hand": "both",
+				"granularity": "uniform", "load_is_max": true,
+				"loads": []map[string]interface{}{{"value": 0, "unit": "max"}},
+			},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the training, got %d: %v", status, training)
+	}
+	trainingID := training["id"].(string)
+	items := training["items"].([]interface{})
+	plankID := items[0].(map[string]interface{})["id"].(string)
+	emom := items[1].(map[string]interface{})
+	emomID := emom["id"].(string)
+	roundID := emom["items"].([]interface{})[0].(map[string]interface{})["id"].(string)
+	hangID := items[2].(map[string]interface{})["id"].(string)
+	keptID := items[3].(map[string]interface{})["id"].(string)
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": plankID, "overrides": map[string]interface{}{"duration": 45}},
+			{"item_id": emomID, "overrides": map[string]interface{}{"interval_seconds": 90}},
+			{"item_id": roundID, "overrides": map[string]interface{}{"reps_is_max": true}},
+			{"item_id": hangID, "overrides": map[string]interface{}{
+				"load_is_max": false,
+				"loads":       []map[string]interface{}{{"value": 25, "unit": "kg"}},
+			}},
+			// The other half of the same contract: a marker the override leaves
+			// out is not a marker turned off, so this hang keeps the max effort
+			// the training gave it.
+			{"item_id": keptID, "overrides": map[string]interface{}{"hb_worktime_seconds": 10}},
+		},
+	})
+
+	session := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+
+	snapshot := prescriptionItems(t, sessionPrescription(t, session))
+	plank := snapshot[0].(map[string]interface{})
+	if plank["duration"] != float64(45) {
+		t.Errorf("Expected the retimed duration 45 in the snapshot, got %v", plank["duration"])
+	}
+	emomSnapshot := snapshot[1].(map[string]interface{})
+	if emomSnapshot["interval_seconds"] != float64(90) {
+		t.Errorf("Expected the moved interval 90 in the snapshot, got %v", emomSnapshot["interval_seconds"])
+	}
+	round := emomSnapshot["items"].([]interface{})[0].(map[string]interface{})
+	if round["reps_is_max"] != true {
+		t.Errorf("Expected the rep count left open in the snapshot, got %v", round["reps_is_max"])
+	}
+	hang := snapshot[2].(map[string]interface{})
+	if hang["load_is_max"] != false {
+		t.Errorf("Expected the max effort marker cleared in the snapshot, got %v", hang["load_is_max"])
+	}
+	kept := snapshot[3].(map[string]interface{})
+	if kept["load_is_max"] != true {
+		t.Errorf("Expected the max effort marker kept where the override omits it, got %v", kept["load_is_max"])
+	}
+	if kept["worktime_seconds"] != float64(10) {
+		t.Errorf("Expected the overridden worktime 10 in the snapshot, got %v", kept["worktime_seconds"])
+	}
+}
