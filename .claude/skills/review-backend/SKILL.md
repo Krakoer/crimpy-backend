@@ -21,6 +21,8 @@ commands; this file is what to check in a diff.
     schema/schema.sql      single source of truth for the schema
     migrations/            Atlas-generated
     tests/handler/         integration tests, package handler_test
+    contract/              cross-repo artefacts, canonical here and vendored by
+                           crimpy-app and crimpy-frontend, whose CI diffs them
 
 Flag any business logic that leaks into `cmd/api/main.go`, and any data access
 that bypasses `internal/db` generated queries with hand-written SQL.
