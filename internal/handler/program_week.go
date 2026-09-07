@@ -398,33 +398,32 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 // stands now. Only the athlete reads filter: the coach editor sends its week
 // back as it read it, and checkFrozenSession refuses a locked session whose
 // overrides come back changed, so hiding one there would break that round trip.
-func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, userID, coachID pgtype.UUID, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) ([]db.CoachProgramSessionOverride, error) {
+func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, athleteID, assessmentOwnerID pgtype.UUID, week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) ([]db.CoachProgramSessionOverride, error) {
 	trainingBySession := make(map[pgtype.UUID]pgtype.UUID, len(sessions))
 	for _, s := range sessions {
 		trainingBySession[s.ID] = s.TrainingID
+	}
+
+	itemsByID, err := h.weekTrainingItems(ctx, sessions)
+	if err != nil {
+		return nil, err
 	}
 
 	// Keyed by position: an item id is unique within a session, not within a week.
 	bases := make(map[int]TrainingItemRequest, len(overrides))
 	raw := make(map[int]json.RawMessage, len(overrides))
 	for i, o := range overrides {
-		item, err := h.queries.GetTrainingItemInTraining(ctx, db.GetTrainingItemInTrainingParams{
-			ID:         o.ItemID,
-			TrainingID: trainingBySession[o.SessionID],
-		})
-		if errors.Is(err, pgx.ErrNoRows) {
-			// The item is gone from the training, so the override lands on nothing
-			// on either side of the merge and is left alone.
+		item, held := itemsByID[o.ItemID]
+		if !held || item.TrainingID != trainingBySession[o.SessionID] {
+			// The item is gone from the training the session runs, so the override
+			// lands on nothing on either side of the merge and is left alone.
 			continue
-		}
-		if err != nil {
-			return nil, err
 		}
 		bases[i] = itemToRequest(item)
 		raw[i] = json.RawMessage(o.Overrides)
 	}
 
-	stale, err := staleOverrides(ctx, h.queries, coachID, bases, raw)
+	stale, err := staleOverrides(ctx, h.queries, assessmentOwnerID, bases, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -436,8 +435,10 @@ func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, userID, coa
 	for i, o := range overrides {
 		if reason, dropped := stale[i]; dropped {
 			slog.Warn("hiding a program override the training item no longer takes",
-				"user_id", userID.String(),
+				"user_id", athleteID.String(),
 				"program_session_id", o.SessionID.String(),
+				"week_id", week.ID.String(),
+				"training_id", trainingBySession[o.SessionID].String(),
 				"training_item_id", o.ItemID.String(),
 				"reason", reason)
 			continue
@@ -445,6 +446,30 @@ func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, userID, coa
 		kept = append(kept, o)
 	}
 	return kept, nil
+}
+
+// weekTrainingItems reads the items of every training the week runs, one query
+// per distinct training rather than one per override, and flattens them by id so
+// an override finds the item it targets without a query of its own. Each item
+// carries the training it belongs to, so a caller can still tell an item the
+// session's own training holds from one that merely exists elsewhere.
+func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.GetCoachProgramWeekSessionsRow) (map[pgtype.UUID]db.TrainingItem, error) {
+	itemsByID := make(map[pgtype.UUID]db.TrainingItem)
+	read := make(map[pgtype.UUID]struct{}, len(sessions))
+	for _, s := range sessions {
+		if _, done := read[s.TrainingID]; done {
+			continue
+		}
+		read[s.TrainingID] = struct{}{}
+		rows, err := h.queries.GetTrainingItems(ctx, s.TrainingID)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			itemsByID[row.ID] = trainingItemFromRow(row)
+		}
+	}
+	return itemsByID, nil
 }
 
 func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) WeekResponse {
@@ -885,7 +910,7 @@ func (h *ProgramHandler) GetMyWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	overrides, err = h.dropStaleWeekOverrides(c.Context(), userUUID, program.CoachID, sessions, overrides)
+	overrides, err = h.dropStaleWeekOverrides(c.Context(), userUUID, program.CoachID, week, sessions, overrides)
 	if err != nil {
 		slog.Error("failed to revalidate week overrides", "week_id", week.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})

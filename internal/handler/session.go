@@ -961,18 +961,18 @@ func collectOverriddenItems(items []TrainingItemResponse, byItem map[string]json
 // gets is either the coach's prescription entire or the training's own item,
 // which is a valid shape by construction. Dropping is never an error: a stale
 // override must not stop an athlete starting a session.
-func dropStaleItemOverrides(ctx context.Context, qtx *db.Queries, userID, ownerID pgtype.UUID, items []TrainingItemResponse, byItem map[string]json.RawMessage, programSession db.CoachProgramWeekSession) error {
+func dropStaleItemOverrides(ctx context.Context, qtx *db.Queries, athleteID, assessmentOwnerID pgtype.UUID, items []TrainingItemResponse, byItem map[string]json.RawMessage, programSession db.CoachProgramWeekSession) error {
 	bases := make(map[string]TrainingItemRequest, len(byItem))
 	collectOverriddenItems(items, byItem, bases)
 
-	stale, err := staleOverrides(ctx, qtx, ownerID, bases, byItem)
+	stale, err := staleOverrides(ctx, qtx, assessmentOwnerID, bases, byItem)
 	if err != nil {
 		return err
 	}
 
 	for id, reason := range stale {
 		slog.Warn("dropping a program override the training item no longer takes",
-			"user_id", userID.String(),
+			"user_id", athleteID.String(),
 			"program_session_id", programSession.ID.String(),
 			"week_id", programSession.WeekID.String(),
 			"training_id", programSession.TrainingID.String(),
