@@ -50,6 +50,32 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	return req
 }
 
+// itemResponseToRequest reads a prescription item back into the shape the
+// validators work on, so a stored override can be checked against the item as
+// it now stands. It carries the type and the overridable fields, which is
+// everything the item validators read.
+func itemResponseToRequest(item TrainingItemResponse) TrainingItemRequest {
+	return TrainingItemRequest{
+		Type:             item.Type,
+		Cycles:           item.Cycles,
+		CycleRestSeconds: item.CycleRestSeconds,
+		IntervalSeconds:  item.IntervalSeconds,
+		Reps:             item.Reps,
+		RepsIsMax:        item.RepsIsMax,
+		Duration:         item.Duration,
+		RestSeconds:      item.RestSeconds,
+		WorktimeSeconds:  item.WorktimeSeconds,
+		Hand:             item.Hand,
+		Granularity:      item.Granularity,
+		LoadIsMax:        item.LoadIsMax,
+		Loads:            item.Loads,
+		LeftLoads:        item.LeftLoads,
+		HandPositions:    item.HandPositions,
+		EdgeSizesMm:      item.EdgeSizesMm,
+		VariableTargets:  item.VariableTargets,
+	}
+}
+
 // maxItemArrayLen caps how many entries a configuration array may carry, so a
 // large declared set and rep count cannot bloat the stored row.
 const maxItemArrayLen = 1000
