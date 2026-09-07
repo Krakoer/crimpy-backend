@@ -4837,7 +4837,9 @@ paths:
   /api/user/programs/{program_id}/weeks/{week_number}:
     get:
       description: Get a specific week with sessions and overrides for a program assigned
-        to the authenticated user.
+        to the authenticated user. An override the training item no longer takes,
+        because the training was edited after the week was prescribed, is left out,
+        so what the client merges is what the session run from it will freeze.
       parameters:
       - description: Program ID
         in: path

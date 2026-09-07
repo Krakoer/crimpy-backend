@@ -798,7 +798,7 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 		for _, o := range overrides {
 			byItem[o.ItemID.String()] = json.RawMessage(o.Overrides)
 		}
-		if err := dropStaleItemOverrides(ctx, qtx, training.UserID, snapshot.Items, byItem, *programSession); err != nil {
+		if err := dropStaleItemOverrides(ctx, qtx, userID, training.UserID, snapshot.Items, byItem, *programSession); err != nil {
 			return PrescriptionSnapshot{}, err
 		}
 		if err := mergeItemOverrides(snapshot.Items, byItem); err != nil {
@@ -961,39 +961,24 @@ func collectOverriddenItems(items []TrainingItemResponse, byItem map[string]json
 // gets is either the coach's prescription entire or the training's own item,
 // which is a valid shape by construction. Dropping is never an error: a stale
 // override must not stop an athlete starting a session.
-func dropStaleItemOverrides(ctx context.Context, qtx *db.Queries, ownerID pgtype.UUID, items []TrainingItemResponse, byItem map[string]json.RawMessage, programSession db.CoachProgramWeekSession) error {
+func dropStaleItemOverrides(ctx context.Context, qtx *db.Queries, userID, ownerID pgtype.UUID, items []TrainingItemResponse, byItem map[string]json.RawMessage, programSession db.CoachProgramWeekSession) error {
 	bases := make(map[string]TrainingItemRequest, len(byItem))
 	collectOverriddenItems(items, byItem, bases)
-	if len(bases) == 0 {
-		return nil
-	}
 
-	// An override replaces the loads and the targets wholesale, so the
-	// assessments to resolve are the ones the merged items reference, as on the
-	// write path.
-	merged := make([]TrainingItemRequest, 0, len(bases))
-	for id, base := range bases {
-		applied, err := applyItemOverride(base, byItem[id])
-		if err != nil {
-			applied = base
-		}
-		merged = append(merged, applied)
-	}
-	units, err := resolveAssessmentUnits(ctx, qtx, ownerID, merged)
+	stale, err := staleOverrides(ctx, qtx, ownerID, bases, byItem)
 	if err != nil {
 		return err
 	}
 
-	for id, base := range bases {
-		if err := validateItemOverride(base, byItem[id], units); err != nil {
-			slog.Warn("dropping a program override the training item no longer takes",
-				"program_session_id", programSession.ID.String(),
-				"week_id", programSession.WeekID.String(),
-				"training_id", programSession.TrainingID.String(),
-				"training_item_id", id,
-				"reason", err)
-			delete(byItem, id)
-		}
+	for id, reason := range stale {
+		slog.Warn("dropping a program override the training item no longer takes",
+			"user_id", userID.String(),
+			"program_session_id", programSession.ID.String(),
+			"week_id", programSession.WeekID.String(),
+			"training_id", programSession.TrainingID.String(),
+			"training_item_id", id,
+			"reason", reason)
+		delete(byItem, id)
 	}
 	return nil
 }

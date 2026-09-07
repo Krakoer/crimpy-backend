@@ -1,33 +1,14 @@
 package handler_test
 
 import (
-	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 )
-
-// setupStaleOverrideApp wires a coach, an enrolled athlete and a program, plus
-// the assessment definitions a variable target needs to name something.
-func setupStaleOverrideApp(t *testing.T, prefix string) (app *fiber.App, coachToken, userToken, userID, programID string) {
-	t.Helper()
-	pool, queries := testutil.SetupTestDB(t)
-	t.Cleanup(func() { testutil.CleanupTestDB(t, pool) })
-
-	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, prefix+"coach@test.com")
-	userID, userToken = testutil.CreateTestUser(t, queries, prefix+"user@test.com")
-	enrollUserDirect(t, pool, coachID, userID)
-
-	app = testutil.SetupFiberApp(testutil.HandlerConfig{
-		SessionHandler:              handler.NewSessionHandler(queries, pool),
-		TrainingHandler:             handler.NewTrainingHandler(queries, pool),
-		ProgramHandler:              handler.NewProgramHandler(queries, pool),
-		AssessmentDefinitionHandler: handler.NewAssessmentDefinitionHandler(queries, pool),
-	})
-	programID = createTestProgram(t, coachToken, userID, app)
-	return app, coachToken, userToken, userID, programID
-}
 
 // createStaleOverrideTraining makes a training out of the items given and
 // returns its id with the id of every item, in order.
@@ -71,7 +52,7 @@ func editStaleOverrideTraining(t *testing.T, app *fiber.App, coachToken, trainin
 // holds rather than freeze a shape no client can run.
 func TestSessionHandler_CreateSession_DropsOverrideStaleAfterTrainingEdit(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, coachToken, userToken, userID, programID := setupStaleOverrideApp(t, "stalemax")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "stalemax")
 
 	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
 	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
@@ -132,7 +113,7 @@ func TestSessionHandler_CreateSession_DropsOverrideStaleAfterTrainingEdit(t *tes
 // override goes.
 func TestSessionHandler_CreateSession_DropsOverrideStaleAfterMarkerAddedToItem(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, coachToken, userToken, userID, programID := setupStaleOverrideApp(t, "stalemirror")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "stalemirror")
 
 	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
 	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
@@ -175,7 +156,7 @@ func TestSessionHandler_CreateSession_DropsOverrideStaleAfterMarkerAddedToItem(t
 // item still takes leaves that override applied.
 func TestSessionHandler_CreateSession_KeepsValidOverrideAcrossTrainingEdit(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, coachToken, userToken, userID, programID := setupStaleOverrideApp(t, "stalekeep")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "stalekeep")
 
 	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
 		{"type": "exercise", "reps": 8},
@@ -214,7 +195,7 @@ func TestSessionHandler_CreateSession_KeepsValidOverrideAcrossTrainingEdit(t *te
 // the training now prescribes.
 func TestSessionHandler_CreateSession_DropsOverrideStaleAfterBlockRetyped(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, coachToken, userToken, userID, programID := setupStaleOverrideApp(t, "staleretype")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "staleretype")
 
 	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
 		{"type": "circuit", "cycles": 3, "rest_seconds": 60, "items": []map[string]interface{}{
@@ -249,5 +230,85 @@ func TestSessionHandler_CreateSession_DropsOverrideStaleAfterBlockRetyped(t *tes
 	}
 	if item["interval_seconds"] != float64(60) {
 		t.Errorf("Expected the emom interval 60, got %v", item["interval_seconds"])
+	}
+}
+
+// weekOverrides reads the overrides of the single session of a week response,
+// keyed by the item they target.
+func weekOverrides(t *testing.T, app *fiber.App, url, token string) map[string]map[string]interface{} {
+	t.Helper()
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, url, nil, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 reading %s, got %d", url, resp.StatusCode)
+	}
+	var week map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&week); err != nil {
+		t.Fatalf("Failed to decode the week: %v", err)
+	}
+	sessions := week["sessions"].([]interface{})
+	if len(sessions) != 1 {
+		t.Fatalf("Expected 1 session in the week, got %d", len(sessions))
+	}
+	byItem := map[string]map[string]interface{}{}
+	for _, raw := range sessions[0].(map[string]interface{})["overrides"].([]interface{}) {
+		o := raw.(map[string]interface{})
+		byItem[o["item_id"].(string)] = o["overrides"].(map[string]interface{})
+	}
+	return byItem
+}
+
+// The athlete's own preview merges the overrides client side, so one the
+// training no longer takes would show a prescription the session they then start
+// refuses to freeze. The read has to hide exactly what the snapshot drops, and
+// nothing else. The coach read is left whole on purpose: the editor sends its
+// week back as it read it, and the frozen session check compares the two.
+func TestWeekHandler_GetMyWeek_HidesOverrideStaleAfterTrainingEdit(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "stalemyweek")
+
+	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
+	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
+		{"type": "exercise", "reps": 8},
+		{"type": "exercise", "reps": 6},
+	})
+	amrapID, steadyID := itemIDs[0], itemIDs[1]
+
+	prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": amrapID, "overrides": map[string]interface{}{"reps_is_max": true}},
+			{"item_id": steadyID, "overrides": map[string]interface{}{"reps": 12}},
+		},
+	})
+
+	editStaleOverrideTraining(t, app, coachToken, trainingID, []map[string]interface{}{
+		{
+			"id": amrapID, "type": "exercise", "reps": 8,
+			"variable_targets": map[string]interface{}{
+				"reps": map[string]interface{}{
+					"assessment_id": assessmentID, "percent": 50, "fallback": 10,
+				},
+			},
+		},
+		{"id": steadyID, "type": "exercise", "reps": 6},
+	})
+
+	mine := weekOverrides(t, app, fmt.Sprintf("/api/user/programs/%s/weeks/1", programID), userToken)
+	if _, present := mine[amrapID]; present {
+		t.Errorf("Expected the stale override hidden from the athlete week, got %v", mine[amrapID])
+	}
+	steady, kept := mine[steadyID]
+	if !kept {
+		t.Fatalf("Expected the still valid override kept on the athlete week, got %v", mine)
+	}
+	if steady["reps"] != float64(12) {
+		t.Errorf("Expected the valid override rep count 12, got %v", steady["reps"])
+	}
+
+	coach := weekOverrides(t, app, weekURL(userID, programID, 1), coachToken)
+	if len(coach) != 2 {
+		t.Errorf("Expected the coach week to keep both overrides, got %v", coach)
 	}
 }

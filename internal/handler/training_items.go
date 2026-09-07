@@ -2,9 +2,12 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"crimpy/backend/internal/db"
 	"encoding/json"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // itemToRequest reads a stored item back into the shape the validators work on,
@@ -577,6 +580,48 @@ func validateItemOverride(base TrainingItemRequest, raw json.RawMessage, units a
 		return err
 	}
 	return validateItemConfiguration(merged, units)
+}
+
+// staleOverrides names every override the item it targets no longer takes,
+// keyed as the caller keyed bases and raw. It is the single place the base,
+// apply, resolve and validate sequence lives, so the week write path, the
+// athlete read and the snapshot cannot drift into judging the same override
+// differently. The key is the caller's own handle on an override, an item id
+// where the overrides are already keyed by one and a position where they are
+// not, and a base with no entry in raw is checked against an absent override.
+func staleOverrides[K comparable](ctx context.Context, q *db.Queries, ownerID pgtype.UUID, bases map[K]TrainingItemRequest, raw map[K]json.RawMessage) (map[K]error, error) {
+	if len(bases) == 0 {
+		return nil, nil
+	}
+
+	// An override replaces the loads and the targets wholesale, so the
+	// assessments to resolve are the ones the merged items reference, not the
+	// ones the training already held. Reading the base instead would let an
+	// override name a definition the coach cannot reference.
+	merged := make([]TrainingItemRequest, 0, len(bases))
+	for key, base := range bases {
+		applied, err := applyItemOverride(base, raw[key])
+		if err != nil {
+			applied = base
+		}
+		merged = append(merged, applied)
+	}
+
+	units, err := resolveAssessmentUnits(ctx, q, ownerID, merged)
+	if err != nil {
+		return nil, err
+	}
+
+	var stale map[K]error
+	for key, base := range bases {
+		if err := validateItemOverride(base, raw[key], units); err != nil {
+			if stale == nil {
+				stale = make(map[K]error, len(bases))
+			}
+			stale[key] = err
+		}
+	}
+	return stale, nil
 }
 
 // validateItemConfiguration checks everything about a single item that has to
