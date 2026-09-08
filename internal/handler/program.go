@@ -477,12 +477,20 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
 	}
 
+	// Only the names of the assessments a week reads against, so a failure here
+	// costs a label and nothing else. Served without them rather than refused:
+	// the training is what the athlete came for, and the same reasoning stops a
+	// stale override refusing a session in dropStaleItemOverrides.
 	overridden, err := h.programOverrideAssessments(c.Context(), programUUID, userUUID, trainingUUID, items)
 	if err != nil {
-		slog.Error("failed to resolve program override assessments", "program_id", programUUID.String(), "training_id", trainingUUID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+		slog.Warn("failed to name the assessments a week override reads against",
+			"user_id", userUUID.String(),
+			"program_id", programUUID.String(),
+			"training_id", trainingUUID.String(),
+			"reason", err)
+	} else {
+		detail.ReferencedAssessments = appendMissingAssessments(detail.ReferencedAssessments, overridden)
 	}
-	detail.ReferencedAssessments = appendMissingAssessments(detail.ReferencedAssessments, overridden)
 
 	return c.Status(fiber.StatusOK).JSON(detail)
 }
@@ -523,6 +531,11 @@ func (h *ProgramHandler) programOverrideAssessments(ctx context.Context, program
 		}
 		var over itemOverride
 		if err := json.Unmarshal(o.Overrides, &over); err != nil {
+			slog.Warn("skipped an override that no longer parses while naming its assessments",
+				"program_id", programID.String(),
+				"training_id", trainingID.String(),
+				"training_item_id", o.ItemID.String(),
+				"reason", err)
 			continue
 		}
 		sources = append(sources, assessmentRefSource{over.VariableTargets, over.Loads, over.LeftLoads})
