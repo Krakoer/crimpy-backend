@@ -5049,7 +5049,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership.",
+                "description": "Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership. referenced_assessments names the assessments the training items read against plus the ones only a week override of this program reads against, so a percentage prescribed on a single week can be labelled.",
                 "produces": [
                     "application/json"
                 ],

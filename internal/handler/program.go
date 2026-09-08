@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -410,7 +412,7 @@ func (h *ProgramHandler) GetMyProgram(c fiber.Ctx) error {
 
 // GetMyProgramTraining godoc
 // @Summary Get a training referenced by one of my programs
-// @Description Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership.
+// @Description Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership. referenced_assessments names the assessments the training items read against plus the ones only a week override of this program reads against, so a percentage prescribed on a single week can be labelled.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -475,5 +477,58 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
 	}
 
+	overridden, err := h.programOverrideAssessments(c.Context(), programUUID, userUUID, trainingUUID, items)
+	if err != nil {
+		slog.Error("failed to resolve program override assessments", "program_id", programUUID.String(), "training_id", trainingUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
+	}
+	detail.ReferencedAssessments = appendMissingAssessments(detail.ReferencedAssessments, overridden)
+
 	return c.Status(fiber.StatusOK).JSON(detail)
+}
+
+// programOverrideAssessments names the assessments a week of this program reads
+// against that the training itself never names. A training freezes its
+// referenced assessments from its own items, and a week override replaces the
+// targets and the loads wholesale, so a coach can prescribe a percentage of an
+// assessment no item of the training references and leave the athlete a number
+// with nothing to label it. This is the program scoped read of the training,
+// not the generic one, so it carries what that program's weeks need in order to
+// be read.
+//
+// Two queries whatever the program holds, one for the overrides and one for the
+// definitions they name, and the second only when an override names one.
+func (h *ProgramHandler) programOverrideAssessments(ctx context.Context, programID, userID, trainingID pgtype.UUID, items []TrainingItemResponse) ([]AssessmentDefinitionSnapshot, error) {
+	overrides, err := h.queries.GetMyProgramTrainingOverrides(ctx, db.GetMyProgramTrainingOverridesParams{
+		ProgramID:  programID,
+		UserID:     userID,
+		TrainingID: trainingID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(overrides) == 0 {
+		return nil, nil
+	}
+
+	heldItemIDs := make(map[string]struct{})
+	collectItemIDs(items, heldItemIDs)
+
+	sources := make([]assessmentRefSource, 0, len(overrides))
+	for _, o := range overrides {
+		// An override on an item the training no longer holds lands on nothing
+		// once merged, so it prescribes nothing to name.
+		if _, held := heldItemIDs[o.ItemID.String()]; !held {
+			continue
+		}
+		var over itemOverride
+		if err := json.Unmarshal(o.Overrides, &over); err != nil {
+			continue
+		}
+		sources = append(sources, assessmentRefSource{over.VariableTargets, over.Loads, over.LeftLoads})
+	}
+
+	// Every row carries the same coach, the one the program belongs to, and the
+	// write path only let them reference their own assessments.
+	return freezeOwnedAssessmentDefinitions(ctx, h.queries, overrides[0].CoachID, sources)
 }

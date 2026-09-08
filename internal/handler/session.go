@@ -823,14 +823,7 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 // definition the reader may not own, and without a rename restating what a past
 // session was asked for.
 func freezeAssessmentDefinitions(ctx context.Context, qtx *db.Queries, items []TrainingItemResponse) ([]AssessmentDefinitionSnapshot, error) {
-	refs := collectAssessmentRefs(responseRefSources(items))
-	ids := make([]pgtype.UUID, 0, len(refs))
-	for _, ref := range refs {
-		var id pgtype.UUID
-		if err := id.Scan(ref); err == nil {
-			ids = append(ids, id)
-		}
-	}
+	ids := assessmentRefIDs(responseRefSources(items))
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -838,11 +831,55 @@ func freezeAssessmentDefinitions(ctx context.Context, qtx *db.Queries, items []T
 	if err != nil {
 		return nil, err
 	}
+	return assessmentDefinitionSnapshots(rows), nil
+}
+
+// freezeOwnedAssessmentDefinitions is freezeAssessmentDefinitions for references
+// that reach the reader from outside the training tree, where no item they were
+// handed already carries the reference. Those are resolved against the owner
+// that wrote the reference, so naming them cannot hand the reader a definition
+// belonging to anybody else.
+func freezeOwnedAssessmentDefinitions(ctx context.Context, q *db.Queries, ownerID pgtype.UUID, sources []assessmentRefSource) ([]AssessmentDefinitionSnapshot, error) {
+	ids := assessmentRefIDs(sources)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := q.GetAssessmentDefinitionsByIDs(ctx, db.GetAssessmentDefinitionsByIDsParams{
+		Ids:    ids,
+		UserID: ownerID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return assessmentDefinitionSnapshots(rows), nil
+}
+
+func assessmentDefinitionSnapshots(rows []db.AssessmentDefinition) []AssessmentDefinitionSnapshot {
 	definitions := make([]AssessmentDefinitionSnapshot, 0, len(rows))
 	for _, row := range rows {
 		definitions = append(definitions, assessmentDefinitionToSnapshot(row))
 	}
-	return definitions, nil
+	return definitions
+}
+
+// appendMissingAssessments adds every definition the list does not already name,
+// so a reader handed two sources of references does not see an assessment twice.
+func appendMissingAssessments(named, extra []AssessmentDefinitionSnapshot) []AssessmentDefinitionSnapshot {
+	if len(extra) == 0 {
+		return named
+	}
+	seen := make(map[string]struct{}, len(named)+len(extra))
+	for _, d := range named {
+		seen[d.ID] = struct{}{}
+	}
+	for _, d := range extra {
+		if _, already := seen[d.ID]; already {
+			continue
+		}
+		seen[d.ID] = struct{}{}
+		named = append(named, d)
+	}
+	return named
 }
 
 // resolveRepItemLinks turns each rep's training item link into the value to

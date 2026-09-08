@@ -357,6 +357,52 @@ func (q *Queries) GetCoachProgramWeeks(ctx context.Context, programID pgtype.UUI
 	return items, nil
 }
 
+const getMyProgramTrainingOverrides = `-- name: GetMyProgramTrainingOverrides :many
+SELECT o.item_id, o.overrides, p.coach_id
+FROM coach_program_session_overrides o
+JOIN coach_program_week_sessions s ON s.id = o.session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE p.id = $1 AND p.user_id = $2 AND s.training_id = $3
+`
+
+type GetMyProgramTrainingOverridesParams struct {
+	ProgramID  pgtype.UUID
+	UserID     pgtype.UUID
+	TrainingID pgtype.UUID
+}
+
+type GetMyProgramTrainingOverridesRow struct {
+	ItemID    pgtype.UUID
+	Overrides []byte
+	CoachID   pgtype.UUID
+}
+
+// Every override the weeks of one of my programs set on a session running this
+// training, with the coach the program belongs to so the assessments those
+// overrides reference are resolved against their owner. Scoped by the athlete
+// the program is assigned to, so it authorizes its own read rather than
+// trusting the caller to have checked.
+func (q *Queries) GetMyProgramTrainingOverrides(ctx context.Context, arg GetMyProgramTrainingOverridesParams) ([]GetMyProgramTrainingOverridesRow, error) {
+	rows, err := q.db.Query(ctx, getMyProgramTrainingOverrides, arg.ProgramID, arg.UserID, arg.TrainingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMyProgramTrainingOverridesRow
+	for rows.Next() {
+		var i GetMyProgramTrainingOverridesRow
+		if err := rows.Scan(&i.ItemID, &i.Overrides, &i.CoachID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCoachProgramWeekSessions = `-- name: LockCoachProgramWeekSessions :many
 SELECT id FROM coach_program_week_sessions
 WHERE week_id = $1
