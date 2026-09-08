@@ -735,6 +735,63 @@ func TestWeekHandler_AcceptsOverrideResizingGridWithArrays(t *testing.T) {
 	}
 }
 
+// Two overrides in one payload may name the same item, so each is checked on its
+// own rather than the last one standing for both: an invalid first override is
+// refused even when a valid second one follows it on that item.
+func TestWeekHandler_RejectsFirstOfTwoOverridesOnTheSameItem(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "wk17coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "wk17user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler: handler.NewTrainingHandler(queries, pool),
+		ProgramHandler:  handler.NewProgramHandler(queries, pool),
+	})
+
+	programID := createTestProgram(t, coachToken, userID, app)
+	trainingID, itemID := createTestPerRepCoachTraining(t, coachToken, app)
+
+	loads := make([]map[string]interface{}, 0, 8)
+	for i := 0; i < 8; i++ {
+		loads = append(loads, map[string]interface{}{"value": 20 + i, "unit": "kg"})
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 1,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id":   itemID,
+						"overrides": map[string]interface{}{"reps": 8},
+					},
+					{
+						"item_id": itemID,
+						"overrides": map[string]interface{}{
+							"reps":          8,
+							"loads":         loads,
+							"edge_sizes_mm": []interface{}{20, 20, 20, 20, 18, 18, 18, 18},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	req := testutil.NewJSONRequestWithAuth(http.MethodPut, weekURL(userID, programID, 1), body, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
 // An override carries loads through the same assessment checks as the item it
 // targets, so a session cannot store a reference the item itself would reject.
 func TestWeekHandler_RejectsOverrideWithUnreferencedAssessmentLoad(t *testing.T) {

@@ -2,9 +2,12 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"crimpy/backend/internal/db"
 	"encoding/json"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // itemToRequest reads a stored item back into the shape the validators work on,
@@ -13,6 +16,7 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	req := TrainingItemRequest{
 		Type:            item.Type,
 		RepsIsMax:       item.RepsIsMax,
+		LoadIsMax:       item.LoadIsMax,
 		Loads:           json.RawMessage(item.Loads),
 		LeftLoads:       json.RawMessage(item.LeftLoads),
 		HandPositions:   json.RawMessage(item.HandPositions),
@@ -31,6 +35,9 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 	if item.Reps.Valid {
 		req.Reps = &item.Reps.Int32
 	}
+	if item.Duration.Valid {
+		req.Duration = &item.Duration.Int32
+	}
 	if item.RestSeconds.Valid {
 		req.RestSeconds = &item.RestSeconds.Int32
 	}
@@ -44,6 +51,32 @@ func itemToRequest(item db.TrainingItem) TrainingItemRequest {
 		req.Granularity = &item.Granularity.String
 	}
 	return req
+}
+
+// itemResponseToRequest reads a prescription item back into the shape the
+// validators work on, so a stored override can be checked against the item as
+// it now stands. It carries the type and the overridable fields, which is
+// everything the item validators read.
+func itemResponseToRequest(item TrainingItemResponse) TrainingItemRequest {
+	return TrainingItemRequest{
+		Type:             item.Type,
+		Cycles:           item.Cycles,
+		CycleRestSeconds: item.CycleRestSeconds,
+		IntervalSeconds:  item.IntervalSeconds,
+		Reps:             item.Reps,
+		RepsIsMax:        item.RepsIsMax,
+		Duration:         item.Duration,
+		RestSeconds:      item.RestSeconds,
+		WorktimeSeconds:  item.WorktimeSeconds,
+		Hand:             item.Hand,
+		Granularity:      item.Granularity,
+		LoadIsMax:        item.LoadIsMax,
+		Loads:            item.Loads,
+		LeftLoads:        item.LeftLoads,
+		HandPositions:    item.HandPositions,
+		EdgeSizesMm:      item.EdgeSizesMm,
+		VariableTargets:  item.VariableTargets,
+	}
 }
 
 // maxItemArrayLen caps how many entries a configuration array may carry, so a
@@ -341,20 +374,27 @@ func validateItemArrays(item TrainingItemRequest) error {
 
 // itemOverride is every field a session override may replace on the item it
 // targets. It has to name the same keys the clients merge, since an override
-// key missing here is silently dropped from the prescription snapshot rather
-// than merely being ignored. Kept in step with the app's applyOverride by
-// TestOverrideCoversEveryClientKey.
+// key missing there is silently dropped from the prescription snapshot rather
+// than merely being ignored. contract/override-keys.json is the list all three
+// clients are held to: TestOverrideCoversEveryContractKey asserts these json
+// tags against it, and the app and the portal vendor the same file and assert
+// their own merge against it. A key added here is added to that file, and the
+// copy in crimpy-app and crimpy-frontend refreshed, or their suites fail.
 //
 // Note hb_worktime_seconds: the override names the item's worktime_seconds
 // field with a different key, and the clients read it that way.
 type itemOverride struct {
 	Cycles           *int32          `json:"cycles"`
 	CycleRestSeconds *int32          `json:"cycle_rest_seconds"`
+	IntervalSeconds  *int32          `json:"interval_seconds"`
 	Reps             *int32          `json:"reps"`
+	RepsIsMax        *bool           `json:"reps_is_max"`
+	Duration         *int32          `json:"duration"`
 	RestSeconds      *int32          `json:"rest_seconds"`
 	WorktimeSeconds  *int32          `json:"hb_worktime_seconds"`
 	Hand             *string         `json:"hand"`
 	Granularity      *string         `json:"granularity"`
+	LoadIsMax        *bool           `json:"load_is_max"`
 	Loads            json.RawMessage `json:"loads"`
 	LeftLoads        json.RawMessage `json:"left_loads"`
 	HandPositions    json.RawMessage `json:"hand_positions"`
@@ -368,11 +408,15 @@ type itemOverride struct {
 type overridableItem struct {
 	cycles           **int32
 	cycleRestSeconds **int32
+	intervalSeconds  **int32
 	reps             **int32
+	repsIsMax        *bool
+	duration         **int32
 	restSeconds      **int32
 	worktimeSeconds  **int32
 	hand             **string
 	granularity      **string
+	loadIsMax        *bool
 	loads            *json.RawMessage
 	leftLoads        *json.RawMessage
 	handPositions    *json.RawMessage
@@ -384,11 +428,15 @@ func (i *TrainingItemRequest) overridable() overridableItem {
 	return overridableItem{
 		cycles:           &i.Cycles,
 		cycleRestSeconds: &i.CycleRestSeconds,
+		intervalSeconds:  &i.IntervalSeconds,
 		reps:             &i.Reps,
+		repsIsMax:        &i.RepsIsMax,
+		duration:         &i.Duration,
 		restSeconds:      &i.RestSeconds,
 		worktimeSeconds:  &i.WorktimeSeconds,
 		hand:             &i.Hand,
 		granularity:      &i.Granularity,
+		loadIsMax:        &i.LoadIsMax,
 		loads:            &i.Loads,
 		leftLoads:        &i.LeftLoads,
 		handPositions:    &i.HandPositions,
@@ -401,11 +449,15 @@ func (i *TrainingItemResponse) overridable() overridableItem {
 	return overridableItem{
 		cycles:           &i.Cycles,
 		cycleRestSeconds: &i.CycleRestSeconds,
+		intervalSeconds:  &i.IntervalSeconds,
 		reps:             &i.Reps,
+		repsIsMax:        &i.RepsIsMax,
+		duration:         &i.Duration,
 		restSeconds:      &i.RestSeconds,
 		worktimeSeconds:  &i.WorktimeSeconds,
 		hand:             &i.Hand,
 		granularity:      &i.Granularity,
+		loadIsMax:        &i.LoadIsMax,
 		loads:            &i.Loads,
 		leftLoads:        &i.LeftLoads,
 		handPositions:    &i.HandPositions,
@@ -437,7 +489,9 @@ func mergeItemOverride(target overridableItem, raw json.RawMessage) error {
 	}{
 		{over.Cycles, target.cycles},
 		{over.CycleRestSeconds, target.cycleRestSeconds},
+		{over.IntervalSeconds, target.intervalSeconds},
 		{over.Reps, target.reps},
+		{over.Duration, target.duration},
 		{over.RestSeconds, target.restSeconds},
 		{over.WorktimeSeconds, target.worktimeSeconds},
 	} {
@@ -454,6 +508,19 @@ func mergeItemOverride(target overridableItem, raw json.RawMessage) error {
 	} {
 		if field.override != nil {
 			*field.target = field.override
+		}
+	}
+	// The two markers are plain booleans on the item and pointers here, so an
+	// override that leaves one out is told apart from one that turns it off.
+	for _, field := range []struct {
+		override *bool
+		target   *bool
+	}{
+		{over.RepsIsMax, target.repsIsMax},
+		{over.LoadIsMax, target.loadIsMax},
+	} {
+		if field.override != nil {
+			*field.target = *field.override
 		}
 	}
 	for _, field := range []struct {
@@ -494,9 +561,10 @@ func applyItemOverride(base TrainingItemRequest, raw json.RawMessage) (TrainingI
 // configuration arrays it invalidates, shipping arrays that disagree with the
 // granularity in force once the override is applied, or reaching through the
 // override keys to a shape the direct write path refuses. An override carries
-// rest_seconds, cycle_rest_seconds and variable_targets, which is enough to put
-// a rest on an emom and a percentage on an open rep count, so the item
-// invariants are checked on the merged item and not only where it was written.
+// interval_seconds, reps_is_max, rest_seconds, cycle_rest_seconds and
+// variable_targets, which is enough to put a clock on a circuit, a rest on an
+// emom and a percentage on an open rep count, so the item invariants are checked
+// on the merged item and not only where it was written.
 func validateItemOverride(base TrainingItemRequest, raw json.RawMessage, units assessmentUnits) error {
 	if err := validateOverrideHangboardRepRepeatFields(base, raw); err != nil {
 		return err
@@ -512,6 +580,48 @@ func validateItemOverride(base TrainingItemRequest, raw json.RawMessage, units a
 		return err
 	}
 	return validateItemConfiguration(merged, units)
+}
+
+// staleOverrides names every override the item it targets no longer takes,
+// keyed as the caller keyed bases and raw. It is the single place the base,
+// apply, resolve and validate sequence lives, so the week write path, the
+// athlete read and the snapshot cannot drift into judging the same override
+// differently. The key is the caller's own handle on an override, an item id
+// where the overrides are already keyed by one and a position where they are
+// not, and a base with no entry in raw is checked against an absent override.
+func staleOverrides[K comparable](ctx context.Context, q *db.Queries, ownerID pgtype.UUID, bases map[K]TrainingItemRequest, raw map[K]json.RawMessage) (map[K]error, error) {
+	if len(bases) == 0 {
+		return nil, nil
+	}
+
+	// An override replaces the loads and the targets wholesale, so the
+	// assessments to resolve are the ones the merged items reference, not the
+	// ones the training already held. Reading the base instead would let an
+	// override name a definition the coach cannot reference.
+	merged := make([]TrainingItemRequest, 0, len(bases))
+	for key, base := range bases {
+		applied, err := applyItemOverride(base, raw[key])
+		if err != nil {
+			applied = base
+		}
+		merged = append(merged, applied)
+	}
+
+	units, err := resolveAssessmentUnits(ctx, q, ownerID, merged)
+	if err != nil {
+		return nil, err
+	}
+
+	var stale map[K]error
+	for key, base := range bases {
+		if err := validateItemOverride(base, raw[key], units); err != nil {
+			if stale == nil {
+				stale = make(map[K]error, len(bases))
+			}
+			stale[key] = err
+		}
+	}
+	return stale, nil
 }
 
 // validateItemConfiguration checks everything about a single item that has to
