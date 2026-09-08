@@ -505,8 +505,10 @@ func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.Ge
 }
 
 // buildWeekResponse renders a week. stale is keyed by position in overrides, as
-// staleWeekOverrides returns it, and is nil on a read that filters its overrides
-// rather than flagging them, since the positions would no longer line up.
+// staleWeekOverrides returns it, and is nil where there is nothing to flag: a
+// read that filters its overrides rather than flagging them, since the positions
+// would no longer line up, and the upsert echo, whose rows the same transaction
+// just validated.
 func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride, stale map[int]error) WeekResponse {
 	overridesBySession := make(map[pgtype.UUID][]SessionOverrideResponse, len(overrides))
 	for i, o := range overrides {
@@ -689,13 +691,13 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	stale, err := h.staleWeekOverrides(c.Context(), coachUUID, sessions, overrides)
-	if err != nil {
-		slog.Error("failed to check the week overrides against their training items", "week_id", week.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
-	}
-
-	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, stale))
+	// Nothing echoed here can be stale: every override row of the week was
+	// written by syncSessionOverrides in the transaction just committed, which
+	// refuses the whole save if any of them is, and a row the payload left out
+	// was deleted or cascaded with its session. Checking again would only pay a
+	// query per training to rebuild an empty answer. A training edited between
+	// the commit and this read is caught on the coach's next read instead.
+	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, nil))
 }
 
 // GetWeeks godoc

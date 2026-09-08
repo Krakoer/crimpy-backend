@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -483,8 +484,10 @@ func weekUpsertPayloadFromRead(week map[string]interface{}) map[string]interface
 // The constraint the flag must not break: checkFrozenSession refuses a locked
 // session whose overrides come back changed, so the coach read has to stay
 // something the editor can send back as it read it. The flag rides beside the
-// override rather than inside it, and the write path ignores it.
-func TestWeekHandler_UpsertWeek_RoundTripsFlaggedCoachWeek(t *testing.T) {
+// override rather than inside it, and the write path ignores it. The override
+// round tripped here is a valid one, unflagged: what is pinned is that the two
+// new fields riding beside it do not count as a change.
+func TestWeekHandler_UpsertWeek_RoundTripsCoachWeekWithFlagFields(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "staleround")
 
@@ -516,5 +519,76 @@ func TestWeekHandler_UpsertWeek_RoundTripsFlaggedCoachWeek(t *testing.T) {
 	}
 	if entry["overrides"].(map[string]interface{})["reps"] != float64(12) {
 		t.Errorf("Expected the frozen override intact after the round trip, got %v", entry["overrides"])
+	}
+}
+
+// What saving a flagged week does today, pinned so it is documented rather than
+// folklore. The write path refuses the very override the read flags, with the
+// same reason the flag carries, so a week read with a stale override cannot be
+// sent back unchanged. This pins the unlocked session, which is the cheaper half
+// to set up and the one where the 400 is the intended remediation: the coach
+// answers it by dropping or rewriting the override, as the tail of this test
+// does. Krakoer/crimpy#96 is the locked variant of the same refusal, where
+// checkFrozenSession also forbids changing the override and the coach has no
+// answer left.
+func TestWeekHandler_UpsertWeek_RefusesWeekCarryingStaleOverride(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, _, userID, programID := setupAssessmentProgramApp(t, "stalesave")
+
+	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
+	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
+		{"type": "exercise", "reps": 8},
+	})
+	itemID := itemIDs[0]
+
+	prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": itemID, "overrides": map[string]interface{}{"reps_is_max": true}},
+		},
+	})
+
+	editStaleOverrideTraining(t, app, coachToken, trainingID, []map[string]interface{}{
+		{
+			"id": itemID, "type": "exercise", "reps": 8,
+			"variable_targets": map[string]interface{}{
+				"reps": map[string]interface{}{
+					"assessment_id": assessmentID, "percent": 50, "fallback": 10,
+				},
+			},
+		},
+	})
+
+	week := getWeek(t, app, coachToken, userID, programID, 1)
+	if weekSessionLocks(week)[0] {
+		t.Fatalf("Expected the session unlocked, got %v", week["sessions"])
+	}
+	flagged := staleOverrideEntry(t, weekOverrideEntries(t, app, weekURL(userID, programID, 1), coachToken), itemID)
+	if flagged["override_stale"] != true {
+		t.Fatalf("Expected the override flagged stale before the save, got %v", flagged)
+	}
+
+	status, message := upsertWeekError(t, app, coachToken, userID, programID, 1, weekUpsertPayloadFromRead(week))
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 saving the week the coach just read, got %d: %s", status, message)
+	}
+	if !strings.Contains(message, itemID) {
+		t.Errorf("Expected the refusal to name the stale override item, got %q", message)
+	}
+	if reason, told := flagged["stale_reason"].(string); !told || !strings.Contains(message, reason) {
+		t.Errorf("Expected the refusal to carry the flagged reason %v, got %q", flagged["stale_reason"], message)
+	}
+
+	sessionID := week["sessions"].([]interface{})[0].(map[string]interface{})["id"]
+	remediated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{
+			"id":          sessionID,
+			"training_id": trainingID,
+			"day_of_week": 0,
+			"overrides":   []map[string]interface{}{},
+		}},
+	})
+	kept := remediated["sessions"].([]interface{})[0].(map[string]interface{})["overrides"].([]interface{})
+	if len(kept) != 0 {
+		t.Errorf("Expected dropping the stale override to let the week save, got %v", kept)
 	}
 }
