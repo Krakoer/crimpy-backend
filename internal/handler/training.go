@@ -239,6 +239,21 @@ func collectAssessmentRefs(sources []assessmentRefSource) []string {
 	return sortedKeys(seen)
 }
 
+// assessmentRefIDs is the id of every assessment the sources reference. A
+// reference that is not a uuid names no definition and is left out, so the
+// validators refuse it as unknown and a read simply does not name it.
+func assessmentRefIDs(sources []assessmentRefSource) []pgtype.UUID {
+	refs := collectAssessmentRefs(sources)
+	ids := make([]pgtype.UUID, 0, len(refs))
+	for _, ref := range refs {
+		var id pgtype.UUID
+		if err := id.Scan(ref); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func addAssessmentRef(seen map[string]bool, id *string) {
 	if id != nil && *id != "" {
 		seen[*id] = true
@@ -259,16 +274,7 @@ func sortedKeys(set map[string]bool) []string {
 // stays absent from the map, so the validators refuse it as unknown whether it
 // does not exist or belongs to somebody else.
 func resolveAssessmentUnits(ctx context.Context, q *db.Queries, ownerID pgtype.UUID, items []TrainingItemRequest) (assessmentUnits, error) {
-	refs := collectAssessmentRefs(requestRefSources(items))
-	ids := make([]pgtype.UUID, 0, len(refs))
-	for _, ref := range refs {
-		var id pgtype.UUID
-		// Not a uuid, so it names no definition. Left out of the map and refused
-		// as unknown, with the field named, by the validators.
-		if err := id.Scan(ref); err == nil {
-			ids = append(ids, id)
-		}
-	}
+	ids := assessmentRefIDs(requestRefSources(items))
 	if len(ids) == 0 {
 		return assessmentUnits{}, nil
 	}
