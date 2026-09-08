@@ -607,7 +607,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_reason carries the refusal the write path answers with for the same override. The stored row is never touched and never hidden, so the week can be sent back unchanged.
+// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. Each override in this echo answers override_stale false: a save carrying a stale override is refused outright, so anything written here has just been validated against the training. Read the flag from GET, which computes it against the training as it now stands.
 // @Tags Programs
 // @Accept json
 // @Produce json
@@ -695,8 +695,10 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	// written by syncSessionOverrides in the transaction just committed, which
 	// refuses the whole save if any of them is, and a row the payload left out
 	// was deleted or cascaded with its session. Checking again would only pay a
-	// query per training to rebuild an empty answer. A training edited between
-	// the commit and this read is caught on the coach's next read instead.
+	// query per training to rebuild an empty answer. A training edited while
+	// this save was in flight is caught on the coach's next read instead: the
+	// validation read inside the transaction takes no row lock, so that window
+	// opens when it runs rather than at the commit.
 	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, nil))
 }
 

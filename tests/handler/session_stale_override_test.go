@@ -250,6 +250,13 @@ func weekOverrideEntries(t *testing.T, app *fiber.App, url, token string) map[st
 	if err := json.NewDecoder(resp.Body).Decode(&week); err != nil {
 		t.Fatalf("Failed to decode the week: %v", err)
 	}
+	return weekOverrideEntriesOf(t, week)
+}
+
+// weekOverrideEntriesOf reads the same entries out of a week body already in
+// hand, so an upsert echo can be read without a second request.
+func weekOverrideEntriesOf(t *testing.T, week map[string]interface{}) map[string]map[string]interface{} {
+	t.Helper()
 	sessions := week["sessions"].([]interface{})
 	if len(sessions) != 1 {
 		t.Fatalf("Expected 1 session in the week, got %d", len(sessions))
@@ -512,6 +519,14 @@ func TestWeekHandler_UpsertWeek_RoundTripsCoachWeekWithFlagFields(t *testing.T) 
 
 	if !weekSessionLocks(echoed)[0] {
 		t.Errorf("Expected the session to stay locked through the round trip, got %v", echoed["sessions"])
+	}
+	// The echo answers the flag without recomputing it, since a save carrying a
+	// stale override is refused outright. Pinned so the field cannot quietly
+	// stop being emitted there.
+	for _, echoedEntry := range weekOverrideEntriesOf(t, echoed) {
+		if echoedEntry["override_stale"] != false {
+			t.Errorf("Expected the upsert echo to answer the flag as false, got %v", echoedEntry)
+		}
 	}
 	entry := staleOverrideEntry(t, weekOverrideEntries(t, app, weekURL(userID, programID, 1), coachToken), itemID)
 	if entry["override_stale"] != false {
