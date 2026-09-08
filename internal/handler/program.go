@@ -483,11 +483,15 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 	// stale override refusing a session in dropStaleItemOverrides.
 	overridden, err := h.programOverrideAssessments(c.Context(), programUUID, userUUID, trainingUUID, items)
 	if err != nil {
-		slog.Warn("failed to name the assessments a week override reads against",
+		// Error rather than Warn, and under the error key the rest of the
+		// package uses: degrading means this line is the only signal that the
+		// athlete is reading the very shape #92 fixed, so it has to be the one
+		// a search for failures finds.
+		slog.Error("failed to name the assessments a week override reads against",
 			"user_id", userUUID.String(),
 			"program_id", programUUID.String(),
 			"training_id", trainingUUID.String(),
-			"reason", err)
+			"error", err)
 	} else {
 		detail.ReferencedAssessments = appendMissingAssessments(detail.ReferencedAssessments, overridden)
 	}
