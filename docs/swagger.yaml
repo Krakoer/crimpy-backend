@@ -845,8 +845,20 @@ definitions:
         type: string
       item_id:
         type: string
+      override_stale:
+        description: |-
+          OverrideStale marks an override the training item it targets no longer
+          takes, so the athlete is handed the item without it. Only the coach reads
+          compute it: the athlete reads leave such an override out entirely.
+        type: boolean
       overrides:
         type: object
+      stale_reason:
+        description: |-
+          StaleReason is the refusal the write path answers with when the same
+          override is sent again, so the coach reads one wording whether they are
+          told why a save was refused or why a saved override stopped applying.
+        type: string
     type: object
   handler.SessionResponse:
     properties:
@@ -2622,7 +2634,12 @@ paths:
       tags:
       - Programs
     get:
-      description: Get a specific week with its sessions and per-item overrides.
+      description: 'Get a specific week with its sessions and per-item overrides.
+        Each override carries override_stale, computed against the training as it
+        now stands: it marks an override the training item no longer takes, which
+        the athlete is therefore handed the item without, and stale_reason carries
+        the refusal the write path answers with for the same override. The stored
+        row is never touched and never hidden, so the week can be sent back unchanged.'
       parameters:
       - description: Client user ID
         in: path
@@ -2673,7 +2690,12 @@ paths:
         must be sent back unchanged and it may not be dropped from the week. The order
         of the sessions array is the order of the week: it sets the position stored
         on each session, and every read hands them back sorted by it. Position is
-        response-only, sending one is ignored.'
+        response-only, sending one is ignored. Each override carries override_stale,
+        computed against the training as it now stands: it marks an override the training
+        item no longer takes, which the athlete is therefore handed the item without,
+        and stale_reason carries the refusal the write path answers with for the same
+        override. The stored row is never touched and never hidden, so the week can
+        be sent back unchanged.'
       parameters:
       - description: Client user ID
         in: path
