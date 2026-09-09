@@ -109,6 +109,24 @@ func (r itemRefusal) Unwrap() error { return r.err }
 // rather than formatting it, so the wording every write path answers with stays
 // written where it always was, and it answers nil for a check that passed, so a
 // call site can attribute a refusal another function decided.
+//
+// Name every field the check read, not only the one that reads like the subject
+// of the wording. A check reading two sides of a disagreement, an array against
+// the row count or a granularity against the arrays that need one, is about
+// both sides: either is a field the coach can move to clear it.
+//
+// That is what keeps the invariant a reader depends on: every refusal names at
+// least one field the override row is carrying. It holds by construction rather
+// than by care. If every field a check read came from the item, the item alone
+// would have been refused when the training was written and could not be there
+// to be merged onto, so a merged item refused for nothing the row contributes
+// cannot exist. A reader skips the named fields the row does not carry, since an
+// absent field is absent again after every edit, so a refusal naming only those
+// leaves the coach a marking with no field of the row to act on and the marking
+// survives the edit that clears the refusal. An empty answer is therefore an
+// incomplete attribution here, not a refusal about the row as a whole.
+// TestWeekHandler_GetWeek_LeavesEveryRefusalAFieldOfTheRow holds it over the
+// whole refusal table, so a new validator naming too little fails there.
 func refusedFields(err error, fields ...string) error {
 	if err == nil {
 		return nil
@@ -401,16 +419,49 @@ func validateHandPositions(raw json.RawMessage, hand string, rows int) error {
 	return nil
 }
 
+// namedItemArray is one configuration array of an item beside the override key
+// that replaces it.
+type namedItemArray struct {
+	name string
+	raw  json.RawMessage
+}
+
+// itemConfigurationArrays is every hangboard configuration array an item
+// carries, named. A check reading all of them names all of them, so the names
+// and the values come from one place and cannot drift apart.
+func itemConfigurationArrays(item TrainingItemRequest) []namedItemArray {
+	return []namedItemArray{
+		{"loads", item.Loads},
+		{"left_loads", item.LeftLoads},
+		{"hand_positions", item.HandPositions},
+		{"edge_sizes_mm", item.EdgeSizesMm},
+	}
+}
+
 // hasItemConfiguration reports whether the item carries any hangboard
 // configuration array at all.
 func hasItemConfiguration(item TrainingItemRequest) bool {
-	for _, raw := range []json.RawMessage{item.Loads, item.LeftLoads, item.HandPositions, item.EdgeSizesMm} {
-		entries, err := unmarshalItemArray("", raw)
+	for _, array := range itemConfigurationArrays(item) {
+		entries, err := unmarshalItemArray("", array.raw)
 		if err != nil || entries != nil {
 			return true
 		}
 	}
 	return false
+}
+
+// missingGranularityFields names the fields the refusal about a configured item
+// declaring no granularity is read from: the granularity that is absent, and
+// every configuration array, since hasItemConfiguration reads all four and any
+// one of them being carried is the other half of the disagreement. Naming the
+// granularity alone would attribute the refusal to a field the override row
+// need not carry at all, leaving a reader nothing of the row to act on.
+func missingGranularityFields(item TrainingItemRequest) []string {
+	fields := []string{"granularity"}
+	for _, array := range itemConfigurationArrays(item) {
+		fields = append(fields, array.name)
+	}
+	return fields
 }
 
 // validateItemArrays checks that the hand and granularity are known, that an
@@ -442,7 +493,7 @@ func validateItemArrays(item TrainingItemRequest) error {
 	configured := hasItemConfiguration(item)
 	if granularity == "" {
 		if configured && hangboardItemTypes[item.Type] {
-			return refusedFields(fmt.Errorf("a configured %s item must declare its granularity", item.Type), "granularity")
+			return refusedFields(fmt.Errorf("a configured %s item must declare its granularity", item.Type), missingGranularityFields(item)...)
 		}
 		granularity = "uniform"
 	}

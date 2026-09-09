@@ -229,6 +229,29 @@ func eachRefusalCase(assessmentID string) []refusalCase {
 			fields:   []string{"cycles", "granularity", "loads", "reps"},
 		},
 		{
+			// The layout half of the same problem: the merged item carries a
+			// configuration and no granularity to read it in, and the check
+			// reads the arrays as well as the granularity, so it names them.
+			// Only the arrays can be in the row, since an item declaring no
+			// granularity and carrying an array of its own would have been
+			// refused when the coach saved it, which is what leaves a row
+			// carrying loads alone a field to act on.
+			name:     "loads on a block retyped to a hangboard block declaring no layout",
+			base:     map[string]interface{}{"type": "exercise", "loads": kgLoads(1)},
+			override: map[string]interface{}{"loads": kgLoads(1)},
+			edited:   map[string]interface{}{"type": "repeater"},
+			fields:   []string{"edge_sizes_mm", "granularity", "hand_positions", "left_loads", "loads"},
+		},
+		{
+			// The same refusal reached the other way, by the item dropping the
+			// granularity its type still asks for rather than by a retype.
+			name:     "loads on a block that dropped its layout",
+			base:     map[string]interface{}{"type": "repeater", "granularity": "uniform", "loads": kgLoads(1)},
+			override: map[string]interface{}{"loads": kgLoads(1)},
+			edited:   map[string]interface{}{"type": "repeater"},
+			fields:   []string{"edge_sizes_mm", "granularity", "hand_positions", "left_loads", "loads"},
+		},
+		{
 			name:     "left_loads against a shrunk grid",
 			base:     map[string]interface{}{"type": "repeater", "hand": "split", "granularity": "rep", "reps": 3, "loads": kgLoads(3), "left_loads": kgLoads(3)},
 			override: map[string]interface{}{"left_loads": kgLoads(3)},
@@ -344,6 +367,40 @@ func TestWeekHandler_GetWeek_AttributesEachRefusalToItsField(t *testing.T) {
 						t.Errorf("Expected a reason attributed to %s, got %q", field, reason)
 					}
 				}
+			}
+		})
+	}
+}
+
+// The invariant the reader's rule rests on, held over the whole refusal table
+// rather than case by case: every refusal names at least one field the override
+// row carries, so applying the skip rule always leaves the coach a field of the
+// row to act on. It holds by construction, since a merged item refused for
+// nothing but fields the item contributes would have been refused when the item
+// itself was written, which is why an empty answer is an incomplete attribution
+// rather than a refusal about the row as a whole. refusedFields carries the
+// reasoning; this is where a refusal attributed to too little fails, including
+// one added long after these cases, which is what no single staged case can
+// catch. TestWeekHandler_GetWeek_LeavesAnActionableFieldOnARefusalAboutTheItemsArray
+// is the one case walked all the way to the edit that clears it.
+func TestWeekHandler_GetWeek_LeavesEveryRefusalAFieldOfTheRow(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, _, userID, programID := setupAssessmentProgramApp(t, "attribrow")
+
+	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
+	cases := eachRefusalCase(assessmentID)
+
+	staged := stageRefusalCases(t, app, coachToken, userID, programID, cases)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			entry := staged[c.name]
+			if entry["override_stale"] != true {
+				t.Fatalf("Expected the override flagged stale, got %v", entry)
+			}
+			if carried := namedFieldsTheRowCarries(t, entry); len(carried) == 0 {
+				t.Errorf("Expected one of the fields named, %v, to be a field of the override row %v, or the coach is handed nothing to act on",
+					staleFieldNames(t, entry), entry["overrides"])
 			}
 		})
 	}
@@ -693,13 +750,35 @@ func TestWeekHandler_UpsertWeek_KeepsTheWordingOfAnOverrideThatIsNotAnObject(t *
 // Attribution rides beside the wording rather than replacing it, so what a
 // client is told when a write is refused does not move. Existing tests assert
 // these refusals by substring, which would not catch a rewording, so the exact
-// wording of every refusal the direct training write path answers with is
-// pinned here: this change carries a refusal's fields, and nothing about how it
-// reads.
+// wording of every refusal the item validators this change wraps answer with is
+// pinned here, reached through the direct training write path: this change
+// carries a refusal's fields, and nothing about how it reads.
 //
-// Two are left out on purpose, invalid variable_targets and invalid loads: what
-// they read past the prefix is the json decoder's message about a Go type, so
-// pinning them would pin the decoder rather than a wording of ours.
+// Those validators are the scope of the claim, and they are the whole of what
+// this change touches: the hangboard_rep repeat fields, the emom timings,
+// reps_is_max, the hand, the granularity, the configuration arrays, the
+// variable targets and the loads. Refusals the write path decides outside them,
+// the training type, the item type and the nesting depth, are not attributed by
+// this change and are not pinned here.
+//
+// A wording interpolating an item type or a field name is pinned on one of its
+// instances, since the others differ only in what is interpolated: the array
+// checks read the same for left_loads, hand_positions and edge_sizes_mm as for
+// loads, and a granularity a repeater must declare reads the same for a
+// hangboard_rep. Where one wording is reached through two call sites it is
+// pinned on both, because the two are attributed to different override keys and
+// so are two answers rather than one: every assessment reference check below is
+// pinned once through a variable target and once through a percent_assessment
+// load. Only percent must be greater than 0 is pinned on the target alone,
+// because validateLoads checks the reference and the fallback of a load and
+// never its percentage, so the load spelling of it is unreachable.
+//
+// Two of these validators' refusals are left out on purpose, invalid
+// variable_targets and invalid loads: what they read past the prefix is the json
+// decoder's message about a Go type, so pinning them would pin the decoder
+// rather than a wording of ours. One more no training payload can reach at all,
+// overrides must be an object, and is pinned where it is answered by
+// TestWeekHandler_UpsertWeek_KeepsTheWordingOfAnOverrideThatIsNotAnObject.
 func TestTrainingHandler_KeepsEveryRefusalWordingWhileAttributingIt(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	app, coachToken, _, _, _ := setupAssessmentProgramApp(t, "wording")
@@ -739,6 +818,13 @@ func TestTrainingHandler_KeepsEveryRefusalWordingWhileAttributingIt(t *testing.T
 			name:    "an emom carrying both rests",
 			item:    map[string]interface{}{"type": "emom", "interval_seconds": 60, "rest_seconds": 30, "cycle_rest_seconds": 90},
 			wording: "an emom rests for whatever is left of its interval and takes no cycle_rest_seconds",
+		},
+		{
+			// The rest the case above leaves unspoken: it answers with the
+			// first refusal, so this is where the other rest is read.
+			name:    "an emom carrying the rest of a block that paces itself",
+			item:    map[string]interface{}{"type": "emom", "interval_seconds": 60, "rest_seconds": 30},
+			wording: "an emom rests for whatever is left of its interval and takes no rest_seconds",
 		},
 		{
 			name:    "an open rep count on a block that lays its rows out",
@@ -855,6 +941,27 @@ func TestTrainingHandler_KeepsEveryRefusalWordingWhileAttributingIt(t *testing.T
 				{"unit": "percent_assessment", "assessment_id": loadAssessmentID, "percent": 50, "fallback": -1},
 			}},
 			wording: "load: fallback must be zero or more",
+		},
+		{
+			name: "a target naming no assessment",
+			item: map[string]interface{}{"type": "exercise", "reps": 8, "variable_targets": map[string]interface{}{
+				"reps": map[string]interface{}{"percent": 50, "fallback": 10},
+			}},
+			wording: "reps: missing assessment_id",
+		},
+		{
+			name: "a load naming no assessment",
+			item: map[string]interface{}{"type": "exercise", "loads": []map[string]interface{}{
+				{"unit": "percent_assessment", "percent": 50, "fallback": 10},
+			}},
+			wording: "load: missing assessment_id",
+		},
+		{
+			name: "a load reading an assessment measured in something else",
+			item: map[string]interface{}{"type": "exercise", "loads": []map[string]interface{}{
+				{"unit": "percent_assessment", "assessment_id": assessmentID, "percent": 50, "fallback": 10},
+			}},
+			wording: "load: assessment is measured in repetitions, not kilograms",
 		},
 	} {
 		t.Run(refused.name, func(t *testing.T) {
