@@ -8,12 +8,16 @@ import (
 	"strings"
 	"sync"
 
+	"reflect"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ErrInjectedFault is what a FaultyDBTX answers with in place of running a
-// statement the fault matches. Tests compare against it rather than a message.
+// statement the fault matches. Exported so a test that expects a fault to reach
+// the client can errors.Is it; the tests here assert the served response
+// instead, because the handlers they exercise swallow or wrap it.
 var ErrInjectedFault = errors.New("injected query fault")
 
 // SQLMatcher reports whether a statement is one the fault applies to. It reads
@@ -50,7 +54,10 @@ var _ db.DBTX = (*FaultyDBTX)(nil)
 // arguments are required: a fault seam with nothing behind it, or with nothing
 // to match, would quietly test the wrong thing.
 func NewFaultyDBTX(inner db.DBTX, matches SQLMatcher) *FaultyDBTX {
-	if inner == nil {
+	// A typed nil pointer is a non-nil interface, so reflect rather than == nil:
+	// otherwise the guard's message is replaced by a nil dereference on the
+	// first query.
+	if inner == nil || (reflect.ValueOf(inner).Kind() == reflect.Ptr && reflect.ValueOf(inner).IsNil()) {
 		panic("testutil: NewFaultyDBTX needs a DBTX to wrap")
 	}
 	if matches == nil {
@@ -62,6 +69,18 @@ func NewFaultyDBTX(inner db.DBTX, matches SQLMatcher) *FaultyDBTX {
 // FailingQueries is what a handler test injects: sqlc queries over the real
 // pool with one statement failing. The FaultyDBTX comes back so the test can
 // assert the fault landed.
+//
+// Only a statement the handler runs off the Queries built here is reachable. A
+// handler that opens a transaction calls Queries.WithTx, which replaces this
+// wrapper with the pgx transaction, so nothing under it can be faulted: the
+// prescription snapshot is the example, and reaching it would need the pool
+// itself wrapped, which is a production change. That is why a test asserts
+// Injected() rather than only the response. Without it, naming a query the
+// handler never runs off this wrapper passes green having exercised nothing.
+//
+// The fault lives as long as the app built on it and Injected counts across
+// the whole run, so a test issuing concurrent requests wants a range rather
+// than an exact count.
 func FailingQueries(inner db.DBTX, matches SQLMatcher) (*db.Queries, *FaultyDBTX) {
 	faulty := NewFaultyDBTX(inner, matches)
 	return db.New(faulty), faulty

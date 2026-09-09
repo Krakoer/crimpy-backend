@@ -151,6 +151,12 @@ func TestMyWeek_FailsWhenItCannotRevalidateItsOverrides(t *testing.T) {
 	if faulty.Injected() != 1 {
 		t.Fatalf("Expected the fault to land once on the read, got %d", faulty.Injected())
 	}
+	// The aim is the revalidation call specifically. This status and its body are
+	// shared with the other 500s in the handler, so what pins the target is that
+	// GetAssessmentDefinitionsByIDs is reached exactly once here, through
+	// staleWeekOverrides, plus the healthy pre-read above proving the override is
+	// held and not stale. A definitions read added earlier in this handler would
+	// mean pointing this at a query only the revalidation runs.
 	if status != fiber.StatusInternalServerError {
 		t.Fatalf("Expected 500 with the revalidation query failing, got %d: %v", status, week)
 	}
