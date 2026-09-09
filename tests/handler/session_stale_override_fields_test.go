@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -346,8 +347,9 @@ func TestWeekHandler_GetWeek_AttributesEveryReasonAMergedItemFailsFor(t *testing
 	// The write path answers with one refusal, the first, so its wording is
 	// what it always was and the coach reads the second one off the week.
 	_, message := upsertWeekError(t, app, coachToken, userID, programID, 1, weekUpsertPayloadFromRead(week))
-	if !strings.Contains(message, reasons["cycle_rest_seconds"][0]) {
-		t.Errorf("Expected the save refused with the first reason, got %q", message)
+	wanted := fmt.Sprintf("session 0 override on item %s: %s", itemID, reasons["cycle_rest_seconds"][0])
+	if message != wanted {
+		t.Errorf("Expected the save refused with %q, got %q", wanted, message)
 	}
 	if strings.Contains(message, reasons["rest_seconds"][0]) {
 		t.Errorf("Expected the save to answer with one refusal rather than both, got %q", message)
@@ -481,5 +483,126 @@ func TestAttributedFieldsAreOverrideContractKeys(t *testing.T) {
 			t.Errorf("A refusal is attributed to %q, which %s does not name, so the editor cannot find it in the override row",
 				field, overrideContractPath)
 		}
+	}
+}
+
+// Attribution rides beside the wording rather than replacing it, so what a
+// client is told when a write is refused does not move. Existing tests assert
+// these refusals by substring, which would not catch a rewording, so the exact
+// wording of one refusal per validator is pinned here: this change carries a
+// refusal's fields, and nothing about how it reads.
+func TestTrainingHandler_KeepsEveryRefusalWordingWhileAttributingIt(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, _, _, _ := setupAssessmentProgramApp(t, "wording")
+
+	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
+
+	for _, refused := range []struct {
+		name    string
+		item    map[string]interface{}
+		wording string
+	}{
+		{
+			name:    "a repeat field on a single hang",
+			item:    map[string]interface{}{"type": "hangboard_rep", "reps": 4},
+			wording: "a hangboard_rep is a single hang and takes no reps; use a repeater to repeat a hang",
+		},
+		{
+			name:    "an interval on a block that is not an emom",
+			item:    map[string]interface{}{"type": "circuit", "interval_seconds": 60},
+			wording: "only an emom takes an interval_seconds; a circuit paces itself by its rests",
+		},
+		{
+			name:    "an emom with no interval",
+			item:    map[string]interface{}{"type": "emom"},
+			wording: "an emom must declare the interval_seconds its rounds start on",
+		},
+		{
+			name:    "an emom with an interval of nothing",
+			item:    map[string]interface{}{"type": "emom", "interval_seconds": 0},
+			wording: "interval_seconds must be at least 1 second",
+		},
+		{
+			// Two rests at once, so what the write path answers with when a
+			// merged item fails twice is pinned as the first refusal alone.
+			name:    "an emom carrying both rests",
+			item:    map[string]interface{}{"type": "emom", "interval_seconds": 60, "rest_seconds": 30, "cycle_rest_seconds": 90},
+			wording: "an emom rests for whatever is left of its interval and takes no cycle_rest_seconds",
+		},
+		{
+			name:    "an open rep count on a block that lays its rows out",
+			item:    map[string]interface{}{"type": "circuit", "reps_is_max": true},
+			wording: "only an exercise takes reps_is_max; a circuit lays its configuration out one row per rep and needs the count",
+		},
+		{
+			name: "an open rep count read off an assessment",
+			item: map[string]interface{}{"type": "exercise", "reps_is_max": true, "variable_targets": map[string]interface{}{
+				"reps": map[string]interface{}{"assessment_id": assessmentID, "percent": 50, "fallback": 10},
+			}},
+			wording: "reps_is_max leaves the rep count open and cannot also be a percentage of an assessment",
+		},
+		{
+			name:    "an unknown hand",
+			item:    map[string]interface{}{"type": "repeater", "hand": "sideways"},
+			wording: `invalid hand "sideways"`,
+		},
+		{
+			name:    "an unknown granularity",
+			item:    map[string]interface{}{"type": "repeater", "granularity": "hourly"},
+			wording: `invalid granularity "hourly"`,
+		},
+		{
+			name:    "a configured block declaring no layout",
+			item:    map[string]interface{}{"type": "repeater", "loads": kgLoads(1)},
+			wording: "a configured repeater item must declare its granularity",
+		},
+		{
+			name:    "a second hand's loads under a mode that hangs both hands together",
+			item:    map[string]interface{}{"type": "repeater", "hand": "both", "granularity": "uniform", "loads": kgLoads(1), "left_loads": kgLoads(1)},
+			wording: `left_loads is set but the "both" mode hangs both hands together`,
+		},
+		{
+			name:    "an array that is not an array",
+			item:    map[string]interface{}{"type": "repeater", "granularity": "uniform", "loads": map[string]interface{}{"value": 10}},
+			wording: "loads must be an array",
+		},
+		{
+			name:    "an array that disagrees with the layout",
+			item:    map[string]interface{}{"type": "repeater", "granularity": "rep", "reps": 2, "loads": kgLoads(3)},
+			wording: "loads holds 3 entries but the granularity declares 2 rows",
+		},
+		{
+			name:    "too many grip arrays for the mode",
+			item:    map[string]interface{}{"type": "repeater", "granularity": "uniform", "hand": "both", "hand_positions": []interface{}{grips(1), grips(1)}},
+			wording: `hand_positions holds 2 hands but the "both" mode configures 1`,
+		},
+		{
+			name: "a target reading an assessment measured in something else",
+			item: map[string]interface{}{"type": "exercise", "duration": 30, "variable_targets": map[string]interface{}{
+				"duration": map[string]interface{}{"assessment_id": assessmentID, "percent": 50, "fallback": 10},
+			}},
+			wording: "duration: assessment is measured in repetitions, not seconds",
+		},
+		{
+			name: "a load reading an assessment nothing names",
+			item: map[string]interface{}{"type": "exercise", "loads": []map[string]interface{}{
+				{"unit": "percent_assessment", "assessment_id": "11111111-1111-1111-1111-111111111111", "percent": 50, "fallback": 10},
+			}},
+			wording: "load: unknown assessment_id",
+		},
+	} {
+		t.Run(refused.name, func(t *testing.T) {
+			status, body := postJSON(t, app, "/api/trainings", coachToken, map[string]interface{}{
+				"title":         "Wording",
+				"training_type": "climbing",
+				"items":         []map[string]interface{}{refused.item},
+			})
+			if status != fiber.StatusBadRequest {
+				t.Fatalf("Expected 400, got %d: %v", status, body)
+			}
+			if got := fmt.Sprint(body["error"]); got != refused.wording {
+				t.Errorf("Expected the refusal to read %q, got %q", refused.wording, got)
+			}
+		})
 	}
 }

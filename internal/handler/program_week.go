@@ -70,25 +70,6 @@ type StaleOverrideField struct {
 	Reason string `json:"reason"`
 }
 
-// staleOverrideFields spreads every refusal across the fields it is about, one
-// entry each, so a reader answers its per field question by looking a field up
-// rather than by reading prose. A refusal about two fields is repeated under
-// both, since either of them being still in the row is the refusal still
-// standing.
-func staleOverrideFields(refusals itemRefusals) []StaleOverrideField {
-	fields := make([]StaleOverrideField, 0, len(refusals))
-	for _, refusal := range refusals {
-		if len(refusal.fields) == 0 {
-			fields = append(fields, StaleOverrideField{Reason: refusal.Error()})
-			continue
-		}
-		for _, field := range refusal.fields {
-			fields = append(fields, StaleOverrideField{Field: field, Reason: refusal.Error()})
-		}
-	}
-	return fields
-}
-
 type WeekSessionResponse struct {
 	ID            string                    `json:"id"`
 	TrainingID    string                    `json:"training_id"`
@@ -588,6 +569,25 @@ func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.Ge
 		}
 	}
 	return itemsByID, nil
+}
+
+// staleOverrideFields spreads every refusal across the fields it is about, one
+// entry each, so a reader answers its per field question by looking a field up
+// rather than by reading prose. A refusal about two fields is repeated under
+// both, since either of them being still in the row is the refusal still
+// standing.
+func staleOverrideFields(refusals itemRefusals) []StaleOverrideField {
+	fields := make([]StaleOverrideField, 0, len(refusals))
+	for _, refusal := range refusals {
+		if len(refusal.fields) == 0 {
+			fields = append(fields, StaleOverrideField{Reason: refusal.Error()})
+			continue
+		}
+		for _, field := range refusal.fields {
+			fields = append(fields, StaleOverrideField{Field: field, Reason: refusal.Error()})
+		}
+	}
+	return fields
 }
 
 // buildWeekResponse renders a week. stale is keyed by position in overrides, as
