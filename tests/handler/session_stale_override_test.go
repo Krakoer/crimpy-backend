@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -394,17 +395,20 @@ func TestWeekHandler_GetWeek_FlagsStaleOverrideWithoutHidingIt(t *testing.T) {
 	if amrap["overrides"].(map[string]interface{})["reps_is_max"] != true {
 		t.Errorf("Expected the stored override returned verbatim beside the flag, got %v", amrap["overrides"])
 	}
-	reason, told := amrap["stale_reason"].(string)
-	if !told || reason == "" {
-		t.Errorf("Expected a reason on the stale override, got %v", amrap["stale_reason"])
+	// Krakoer/crimpy#100 replaced the prose reason with the same refusal
+	// attributed to the fields it is about. Here the open rep count and the
+	// percentage the item now reads it off cannot both stand, and either one
+	// going answers it, so both are named.
+	if fields := staleFieldNames(t, amrap); !slices.Equal(fields, []string{"reps_is_max", "variable_targets"}) {
+		t.Errorf("Expected the refusal attributed to the two fields it is about, got %v", fields)
 	}
 
 	steady := staleOverrideEntry(t, entries, steadyID)
 	if steady["override_stale"] != false {
 		t.Errorf("Expected the still valid override unflagged, got %v", steady)
 	}
-	if _, given := steady["stale_reason"]; given {
-		t.Errorf("Expected no reason on a valid override, got %v", steady["stale_reason"])
+	if _, given := steady["stale_fields"]; given {
+		t.Errorf("Expected no attribution on a valid override, got %v", steady["stale_fields"])
 	}
 
 	// The athlete is the one the flag is about: it says this override is not
@@ -449,8 +453,8 @@ func TestWeekHandler_GetWeek_DoesNotFlagValidOverride(t *testing.T) {
 	if edited["override_stale"] != false {
 		t.Errorf("Expected the override the edited item still takes unflagged, got %v", edited)
 	}
-	if _, given := edited["stale_reason"]; given {
-		t.Errorf("Expected no reason on a valid override, got %v", edited["stale_reason"])
+	if _, given := edited["stale_fields"]; given {
+		t.Errorf("Expected no attribution on a valid override, got %v", edited["stale_fields"])
 	}
 	if edited["overrides"].(map[string]interface{})["reps"] != float64(12) {
 		t.Errorf("Expected the override returned unchanged, got %v", edited["overrides"])
@@ -589,8 +593,16 @@ func TestWeekHandler_UpsertWeek_RefusesWeekCarryingStaleOverride(t *testing.T) {
 	if !strings.Contains(message, itemID) {
 		t.Errorf("Expected the refusal to name the stale override item, got %q", message)
 	}
-	if reason, told := flagged["stale_reason"].(string); !told || !strings.Contains(message, reason) {
-		t.Errorf("Expected the refusal to carry the flagged reason %v, got %q", flagged["stale_reason"], message)
+	// The wording is still the one the read hands over, now attributed to the
+	// field it is about rather than handed over loose: what the coach is told
+	// when a save is refused and what the week says about the same override
+	// have to stay one wording, or the two cannot be recognised as one refusal.
+	for field, reasons := range staleFieldReasons(t, flagged) {
+		for _, reason := range reasons {
+			if !strings.Contains(message, reason) {
+				t.Errorf("Expected the refusal to carry the reason attributed to %s, got %q", field, message)
+			}
+		}
 	}
 
 	sessionID := week["sessions"].([]interface{})[0].(map[string]interface{})["id"]
