@@ -853,12 +853,39 @@ definitions:
         type: boolean
       overrides:
         type: object
-      stale_reason:
+      stale_fields:
         description: |-
-          StaleReason is the refusal the write path answers with when the same
-          override is sent again, so the coach reads one wording whether they are
-          told why a save was refused or why a saved override stopped applying.
-        type: string
+          StaleFields attributes the refusal to the fields it is about, one entry
+          per field per reason. The whole row is stored and the server refuses part
+          of it, so a reader given only the reason cannot tell an edit of the
+          refused field from an edit of another field of the same row: it reasons
+          about the row as a whole, and any edit anywhere makes it drop a marking
+          the refusal has not stopped applying to. Each field is spelled as
+          contract/override-keys.json spells the key that replaces it.
+
+          The list is in the order the validators ask, and the first entry is the
+          reason a save of this same override is refused with, since the write
+          paths answer with the first refusal alone.
+
+          A named field may be absent from the override row, because attribution
+          names what the check read and a check can read the item's side of a
+          disagreement: an override resizing the grid is refused for the item's own
+          arrays, which it never carried. A reader deciding whether a refusal still
+          stands must therefore skip the named fields the row does not carry rather
+          than count them as unchanged. That clause is the whole point and not a
+          special case: an absent field is absent again after every edit, so
+          counting it as unchanged would keep the marking up forever, including
+          through the edit that actually clears the refusal. What is left after
+          skipping is the fields the coach can act on, and the marking clears when
+          one of them moves. When the row carries none of the named fields, the
+          refusal is about the row as a whole, which is the same answer the empty
+          field below stands for.
+
+          A refusal nothing could attribute carries an empty field, which stands
+          for the override as a whole. Absent unless OverrideStale.
+        items:
+          $ref: '#/definitions/handler.StaleOverrideField'
+        type: array
     type: object
   handler.SessionResponse:
     properties:
@@ -928,6 +955,13 @@ definitions:
     properties:
       is_favorite:
         type: boolean
+    type: object
+  handler.StaleOverrideField:
+    properties:
+      field:
+        type: string
+      reason:
+        type: string
     type: object
   handler.TagResponse:
     properties:
@@ -2637,9 +2671,19 @@ paths:
       description: 'Get a specific week with its sessions and per-item overrides.
         Each override carries override_stale, computed against the training as it
         now stands: it marks an override the training item no longer takes, which
-        the athlete is therefore handed the item without, and stale_reason carries
-        the refusal the write path answers with for the same override. The stored
-        row is never touched and never hidden, so the week can be sent back unchanged.'
+        the athlete is therefore handed the item without, and stale_fields attributes
+        that refusal to the fields it is about, so a reader can tell an edit of the
+        refused field from an edit of another field of the same override. stale_fields
+        is in the order the validators ask, and its first reason is the one a save
+        of the same override is refused with. A named field may be absent from the
+        override row, since a check can read the item''s side of a disagreement, so
+        a reader deciding whether a refusal still stands skips the named fields the
+        row does not carry rather than counting them as unchanged: an absent field
+        is absent again after every edit, so counting it would keep the marking up
+        through the very edit that clears the refusal. When the row carries none of
+        the named fields, the refusal is about the row as a whole, which is what an
+        empty field stands for too. The stored row is never touched and never hidden,
+        so the week can be sent back unchanged.'
       parameters:
       - description: Client user ID
         in: path

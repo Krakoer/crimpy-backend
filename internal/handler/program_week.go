@@ -49,10 +49,42 @@ type SessionOverrideResponse struct {
 	// takes, so the athlete is handed the item without it. Only the coach reads
 	// compute it: the athlete reads leave such an override out entirely.
 	OverrideStale bool `json:"override_stale"`
-	// StaleReason is the refusal the write path answers with when the same
-	// override is sent again, so the coach reads one wording whether they are
-	// told why a save was refused or why a saved override stopped applying.
-	StaleReason *string `json:"stale_reason,omitempty"`
+	// StaleFields attributes the refusal to the fields it is about, one entry
+	// per field per reason. The whole row is stored and the server refuses part
+	// of it, so a reader given only the reason cannot tell an edit of the
+	// refused field from an edit of another field of the same row: it reasons
+	// about the row as a whole, and any edit anywhere makes it drop a marking
+	// the refusal has not stopped applying to. Each field is spelled as
+	// contract/override-keys.json spells the key that replaces it.
+	//
+	// The list is in the order the validators ask, and the first entry is the
+	// reason a save of this same override is refused with, since the write
+	// paths answer with the first refusal alone.
+	//
+	// A named field may be absent from the override row, because attribution
+	// names what the check read and a check can read the item's side of a
+	// disagreement: an override resizing the grid is refused for the item's own
+	// arrays, which it never carried. A reader deciding whether a refusal still
+	// stands must therefore skip the named fields the row does not carry rather
+	// than count them as unchanged. That clause is the whole point and not a
+	// special case: an absent field is absent again after every edit, so
+	// counting it as unchanged would keep the marking up forever, including
+	// through the edit that actually clears the refusal. What is left after
+	// skipping is the fields the coach can act on, and the marking clears when
+	// one of them moves. When the row carries none of the named fields, the
+	// refusal is about the row as a whole, which is the same answer the empty
+	// field below stands for.
+	//
+	// A refusal nothing could attribute carries an empty field, which stands
+	// for the override as a whole. Absent unless OverrideStale.
+	StaleFields []StaleOverrideField `json:"stale_fields,omitempty"`
+}
+
+// StaleOverrideField is one reason a stale override is refused, attributed to
+// one of the fields that reason is about.
+type StaleOverrideField struct {
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
 }
 
 type WeekSessionResponse struct {
@@ -497,7 +529,7 @@ func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, athleteID, 
 // An override whose item the training no longer holds is not named. It merges
 // onto nothing on either side, which is what the athlete read already decided,
 // and calling it stale would ask the coach to clear a row that changes nothing.
-func (h *ProgramHandler) staleWeekOverrides(ctx context.Context, assessmentOwnerID pgtype.UUID, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) (map[int]error, error) {
+func (h *ProgramHandler) staleWeekOverrides(ctx context.Context, assessmentOwnerID pgtype.UUID, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) (map[int]itemRefusals, error) {
 	if len(overrides) == 0 {
 		return nil, nil
 	}
@@ -556,10 +588,29 @@ func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.Ge
 	return itemsByID, nil
 }
 
+// staleOverrideFields spreads every refusal across the fields it is about, one
+// entry each, so a reader answers its per field question by looking a field up
+// rather than by reading prose. A refusal about two fields is repeated under
+// both, since either of them is a field moving which clears it. What a reader
+// does with a name the override row does not carry is on StaleFields.
+func staleOverrideFields(refusals itemRefusals) []StaleOverrideField {
+	fields := make([]StaleOverrideField, 0, len(refusals))
+	for _, refusal := range refusals {
+		if len(refusal.fields) == 0 {
+			fields = append(fields, StaleOverrideField{Reason: refusal.Error()})
+			continue
+		}
+		for _, field := range refusal.fields {
+			fields = append(fields, StaleOverrideField{Field: field, Reason: refusal.Error()})
+		}
+	}
+	return fields
+}
+
 // buildWeekResponse renders a week. stale is keyed by position in overrides, as
 // staleWeekOverrides returns it, and is nil on a read that filters its overrides
 // rather than flagging them, since the positions would no longer line up.
-func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride, stale map[int]error) WeekResponse {
+func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride, stale map[int]itemRefusals) WeekResponse {
 	overridesBySession := make(map[pgtype.UUID][]SessionOverrideResponse, len(overrides))
 	for i, o := range overrides {
 		resp := SessionOverrideResponse{
@@ -567,10 +618,9 @@ func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWe
 			ItemID:    o.ItemID.String(),
 			Overrides: json.RawMessage(o.Overrides),
 		}
-		if reason, isStale := stale[i]; isStale {
+		if refusals, isStale := stale[i]; isStale {
 			resp.OverrideStale = true
-			text := reason.Error()
-			resp.StaleReason = &text
+			resp.StaleFields = staleOverrideFields(refusals)
 		}
 		overridesBySession[o.SessionID] = append(overridesBySession[o.SessionID], resp)
 	}
@@ -798,7 +848,7 @@ func (h *ProgramHandler) GetWeeks(c fiber.Ctx) error {
 
 // GetWeek godoc
 // @Summary Get a program week
-// @Description Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_reason carries the refusal the write path answers with for the same override. The stored row is never touched and never hidden, so the week can be sent back unchanged.
+// @Description Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth

@@ -1771,7 +1771,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_reason carries the refusal the write path answers with for the same override. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
+                "description": "Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
                 "produces": [
                     "application/json"
                 ],
@@ -6788,9 +6788,12 @@
                 "overrides": {
                     "type": "object"
                 },
-                "stale_reason": {
-                    "description": "StaleReason is the refusal the write path answers with when the same\noverride is sent again, so the coach reads one wording whether they are\ntold why a save was refused or why a saved override stopped applying.",
-                    "type": "string"
+                "stale_fields": {
+                    "description": "StaleFields attributes the refusal to the fields it is about, one entry\nper field per reason. The whole row is stored and the server refuses part\nof it, so a reader given only the reason cannot tell an edit of the\nrefused field from an edit of another field of the same row: it reasons\nabout the row as a whole, and any edit anywhere makes it drop a marking\nthe refusal has not stopped applying to. Each field is spelled as\ncontract/override-keys.json spells the key that replaces it.\n\nThe list is in the order the validators ask, and the first entry is the\nreason a save of this same override is refused with, since the write\npaths answer with the first refusal alone.\n\nA named field may be absent from the override row, because attribution\nnames what the check read and a check can read the item's side of a\ndisagreement: an override resizing the grid is refused for the item's own\narrays, which it never carried. A reader deciding whether a refusal still\nstands must therefore skip the named fields the row does not carry rather\nthan count them as unchanged. That clause is the whole point and not a\nspecial case: an absent field is absent again after every edit, so\ncounting it as unchanged would keep the marking up forever, including\nthrough the edit that actually clears the refusal. What is left after\nskipping is the fields the coach can act on, and the marking clears when\none of them moves. When the row carries none of the named fields, the\nrefusal is about the row as a whole, which is the same answer the empty\nfield below stands for.\n\nA refusal nothing could attribute carries an empty field, which stands\nfor the override as a whole. Absent unless OverrideStale.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.StaleOverrideField"
+                    }
                 }
             }
         },
@@ -6878,6 +6881,17 @@
             "properties": {
                 "is_favorite": {
                     "type": "boolean"
+                }
+            }
+        },
+        "handler.StaleOverrideField": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },
