@@ -150,16 +150,20 @@ func validateWeekSession(s WeekSessionRequest) error {
 // describe the prescription, so day, notes and position stay editable, but the
 // row itself must survive: dropping it would null the link the played session
 // holds.
-func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+//
+// It hands back the sessions it found locked, keyed by id, so the rest of the
+// write path reads the lock state off the rows this read already locked rather
+// than asking for it a second time.
+func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) (map[pgtype.UUID]db.GetCoachProgramWeekSessionsRow, error) {
 	// Lock the rows first: without this the athlete can play a session between
 	// this read and the delete below, and the delete then nulls the link the
 	// check would have refused.
 	if _, err := qtx.LockCoachProgramWeekSessions(ctx, weekID); err != nil {
-		return err
+		return nil, err
 	}
 	existing, err := qtx.GetCoachProgramWeekSessions(ctx, weekID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	frozen := make(map[pgtype.UUID]db.GetCoachProgramWeekSessionsRow)
 	for _, row := range existing {
@@ -168,12 +172,12 @@ func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUI
 		}
 	}
 	if len(frozen) == 0 {
-		return nil
+		return frozen, nil
 	}
 
 	weekOverrides, err := qtx.GetCoachProgramWeekOverrides(ctx, weekID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	prescribedOverrides := make(map[pgtype.UUID]map[pgtype.UUID][]byte, len(frozen))
 	for _, o := range weekOverrides {
@@ -197,15 +201,15 @@ func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUI
 			continue
 		}
 		if err := checkFrozenSession(i, sessions[i], row, prescribedOverrides[id]); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for id, row := range frozen {
 		if _, stillThere := kept[id]; !stillThere {
-			return invalidRequestf("session %s was played by the athlete and cannot be removed from the week", row.ID.String())
+			return nil, invalidRequestf("session %s was played by the athlete and cannot be removed from the week", row.ID.String())
 		}
 	}
-	return nil
+	return frozen, nil
 }
 
 func checkFrozenSession(index int, s WeekSessionRequest, row db.GetCoachProgramWeekSessionsRow, prescribed map[pgtype.UUID][]byte) error {
@@ -251,11 +255,22 @@ func sameJSON(a, b []byte) bool {
 	return reflect.DeepEqual(aValue, bValue)
 }
 
+// weekSyncScope names the two identities the week write path needs, which are
+// both UUIDs and mean opposite things: the coach whose assessments an override
+// may reference, and the athlete the week belongs to, who appears only in a log
+// line. Passed as one value so they cannot be transposed at a call site, which
+// would compile and then resolve every override against the wrong owner.
+type weekSyncScope struct {
+	coachID   pgtype.UUID
+	athleteID pgtype.UUID
+}
+
 // syncWeekSessions reconciles a week against the payload instead of recreating
 // it, so a session the client sends back by id keeps that id. Sessions played by
 // the athlete reference these ids, and recreating them nulls those references.
-func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, coachID, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
-	if err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs); err != nil {
+func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, scope weekSyncScope, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+	locked, err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs)
+	if err != nil {
 		return err
 	}
 
@@ -274,11 +289,12 @@ func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, 
 	}
 
 	for i, s := range sessions {
-		session, err := h.upsertWeekSession(ctx, qtx, coachID, weekID, sessionIDs[i], i, s)
+		session, err := h.upsertWeekSession(ctx, qtx, scope.coachID, weekID, sessionIDs[i], i, s)
 		if err != nil {
 			return err
 		}
-		if err := h.syncSessionOverrides(ctx, qtx, coachID, session, i, s.Overrides); err != nil {
+		_, isLocked := locked[session.ID]
+		if err := h.syncSessionOverrides(ctx, qtx, scope, session, isLocked, i, s.Overrides); err != nil {
 			return err
 		}
 	}
@@ -348,8 +364,10 @@ func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries,
 
 // syncSessionOverrides resolves every override against the session's own
 // training, so an item id belonging to another training, and therefore possibly
-// to another coach, is rejected rather than stored.
-func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, coachID pgtype.UUID, session db.CoachProgramWeekSession, index int, overrides []SessionOverrideRequest) error {
+// to another coach, is rejected rather than stored. On a locked session it
+// checks the item scoping but not the validity of the merge, for the reason
+// spelled out where it skips the refusal.
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, scope weekSyncScope, session db.CoachProgramWeekSession, locked bool, index int, overrides []SessionOverrideRequest) error {
 	itemIDs := make([]pgtype.UUID, len(overrides))
 	for i, o := range overrides {
 		if err := itemIDs[i].Scan(o.ItemID); err != nil {
@@ -383,14 +401,48 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 		raw[i] = o.Overrides
 	}
 
-	stale, err := staleOverrides(ctx, qtx, coachID, bases, raw)
+	stale, err := staleOverrides(ctx, qtx, scope.coachID, bases, raw)
 	if err != nil {
 		return err
 	}
 
 	for i, o := range overrides {
-		if reason, refused := stale[i]; refused {
-			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, reason)
+		if reason, isStale := stale[i]; isStale {
+			// On a locked session the two guards would otherwise close on each
+			// other: checkFrozenSession has already refused this save unless
+			// every override came back exactly as stored, so the coach cannot
+			// drop or edit the offending one, and refusing it here leaves the
+			// whole week unsaveable. What makes the refusal pointless as well
+			// as trapping is that the row prescribes nothing: Krakoer/crimpy#84
+			// leaves it out of the prescription snapshot and out of the athlete
+			// week read, so it is not what the athlete played and no merged
+			// item they receive carries it.
+			//
+			// It is not invisible, mind, and the claim is only about what is
+			// prescribed. The program scoped training read still names the
+			// assessments a stored override references, which
+			// Krakoer/crimpy#92 chose deliberately on the grounds that an
+			// unused label costs less than an unnamed chip. And
+			// CountReferencesToAssessment matches the assessment id inside the
+			// override JSON, so the row still keeps that definition
+			// undeletable and its unit locked. Neither is a prescription, and
+			// neither is new: the row was never dropped before this either.
+			//
+			// Only a verbatim echo of a stored row gets this far, since a
+			// created or edited override on a locked session is refused by
+			// checkFrozenSession before this runs, and a session created in
+			// this same request cannot be locked. An unlocked session still
+			// refuses: there the 400 is the remediation the coach can act on.
+			if !locked {
+				return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, reason)
+			}
+			slog.Warn("keeping an inert override the training item no longer takes on a played session",
+				"user_id", scope.athleteID.String(),
+				"program_session_id", session.ID.String(),
+				"week_id", session.WeekID.String(),
+				"training_id", session.TrainingID.String(),
+				"training_item_id", itemIDs[i].String(),
+				"reason", reason)
 		}
 		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
 			SessionID: session.ID,
@@ -505,10 +557,8 @@ func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.Ge
 }
 
 // buildWeekResponse renders a week. stale is keyed by position in overrides, as
-// staleWeekOverrides returns it, and is nil where there is nothing to flag: a
-// read that filters its overrides rather than flagging them, since the positions
-// would no longer line up, and the upsert echo, whose rows the same transaction
-// just validated.
+// staleWeekOverrides returns it, and is nil on a read that filters its overrides
+// rather than flagging them, since the positions would no longer line up.
 func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride, stale map[int]error) WeekResponse {
 	overridesBySession := make(map[pgtype.UUID][]SessionOverrideResponse, len(overrides))
 	for i, o := range overrides {
@@ -607,7 +657,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. Each override in this echo answers override_stale false: a save carrying a stale override is refused outright, so anything written here has just been validated against the training. Read the flag from GET, which computes it against the training as it now stands.
+// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.
 // @Tags Programs
 // @Accept json
 // @Produce json
@@ -671,7 +721,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := h.syncWeekSessions(c.Context(), qtx, coachUUID, week.ID, req.Sessions, sessionIDs); err != nil {
+	if err := h.syncWeekSessions(c.Context(), qtx, weekSyncScope{coachID: coachUUID, athleteID: clientUUID}, week.ID, req.Sessions, sessionIDs); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
@@ -691,15 +741,20 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	// Nothing echoed here can be stale: every override row of the week was
-	// written by syncSessionOverrides in the transaction just committed, which
-	// refuses the whole save if any of them is, and a row the payload left out
-	// was deleted or cascaded with its session. Checking again would only pay a
-	// query per training to rebuild an empty answer. A training edited while
-	// this save was in flight is caught on the coach's next read instead: the
-	// validation read inside the transaction takes no row lock, so that window
-	// opens when it runs rather than at the commit.
-	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, nil))
+	// A locked session keeps an override the training item no longer takes, so
+	// the echo has to answer the flag the same way a read of the same rows
+	// would: the coach sees the week they just saved, and the row that is not
+	// reaching the athlete has to still say so. Everything else written here was
+	// validated in the transaction just committed, and a training edited while
+	// the save was in flight is caught here too, since the validation read takes
+	// no row lock.
+	stale, err := h.staleWeekOverrides(c.Context(), coachUUID, sessions, overrides)
+	if err != nil {
+		slog.Error("failed to check the saved week overrides against their training items", "week_id", week.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, stale))
 }
 
 // GetWeeks godoc
