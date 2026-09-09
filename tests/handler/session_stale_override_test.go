@@ -520,9 +520,9 @@ func TestWeekHandler_UpsertWeek_RoundTripsCoachWeekWithFlagFields(t *testing.T) 
 	if !weekSessionLocks(echoed)[0] {
 		t.Errorf("Expected the session to stay locked through the round trip, got %v", echoed["sessions"])
 	}
-	// The echo answers the flag without recomputing it, since a save carrying a
-	// stale override is refused outright. Pinned so the field cannot quietly
-	// stop being emitted there.
+	// The echo answers the flag against the training as it stands, as GET does,
+	// so a valid override round tripped through a save comes back unflagged.
+	// Pinned so the field cannot quietly stop being emitted there.
 	for _, echoedEntry := range weekOverrideEntriesOf(t, echoed) {
 		if echoedEntry["override_stale"] != false {
 			t.Errorf("Expected the upsert echo to answer the flag as false, got %v", echoedEntry)
@@ -605,5 +605,184 @@ func TestWeekHandler_UpsertWeek_RefusesWeekCarryingStaleOverride(t *testing.T) {
 	kept := remediated["sessions"].([]interface{})[0].(map[string]interface{})["overrides"].([]interface{})
 	if len(kept) != 0 {
 		t.Errorf("Expected dropping the stale override to let the week save, got %v", kept)
+	}
+}
+
+// lockedStaleOverrideWeek stages the state Krakoer/crimpy#96 is about: a week
+// whose only session carries one override the training item no longer takes and
+// one it still does, played by the athlete after the training edit, so the
+// session is locked and its prescription was frozen without the stale override.
+func lockedStaleOverrideWeek(t *testing.T, app *fiber.App, coachToken, userToken, userID, programID string) (trainingID, staleItemID, validItemID string) {
+	t.Helper()
+
+	_, assessmentID := createAssessmentTraining(t, app, coachToken, "Pull up max", "repetitions", false)
+	trainingID, itemIDs := createStaleOverrideTraining(t, app, coachToken, []map[string]interface{}{
+		{"type": "exercise", "reps": 8},
+		{"type": "exercise", "reps": 6},
+	})
+	staleItemID, validItemID = itemIDs[0], itemIDs[1]
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, map[string]interface{}{
+		"overrides": []map[string]interface{}{
+			{"item_id": staleItemID, "overrides": map[string]interface{}{"reps_is_max": true}},
+			{"item_id": validItemID, "overrides": map[string]interface{}{"reps": 12}},
+		},
+	})
+
+	editStaleOverrideTraining(t, app, coachToken, trainingID, []map[string]interface{}{
+		{
+			"id": staleItemID, "type": "exercise", "reps": 8,
+			"variable_targets": map[string]interface{}{
+				"reps": map[string]interface{}{
+					"assessment_id": assessmentID, "percent": 50, "fallback": 10,
+				},
+			},
+		},
+		{"id": validItemID, "type": "exercise", "reps": 6},
+	})
+
+	played := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": programSessionID,
+	})
+	snapshot := prescriptionItems(t, sessionPrescription(t, played))
+	if len(snapshot) != 2 {
+		t.Fatalf("Expected 2 items in the frozen prescription, got %d", len(snapshot))
+	}
+	if snapshot[0].(map[string]interface{})["reps_is_max"] != false {
+		t.Fatalf("Expected the prescription frozen without the stale override, got %v", snapshot[0])
+	}
+	if snapshot[1].(map[string]interface{})["reps"] != float64(12) {
+		t.Fatalf("Expected the still valid override frozen into the prescription, got %v", snapshot[1])
+	}
+	return trainingID, staleItemID, validItemID
+}
+
+// The deadlock Krakoer/crimpy#96 describes, end to end. checkFrozenSession
+// refuses the save unless a locked session's overrides come back exactly as
+// stored, and the write path used to refuse that very echo for being stale, so
+// every save of the week failed and the coach had no move left. The stale row is
+// inert on a locked session, since the frozen prescription was taken without it
+// and the athlete week hides it, so the save goes through and the rest of the
+// week stays editable.
+func TestWeekHandler_UpsertWeek_LetsLockedSessionKeepItsStaleOverride(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "stalelocked")
+
+	trainingID, staleItemID, validItemID := lockedStaleOverrideWeek(t, app, coachToken, userToken, userID, programID)
+
+	week := getWeek(t, app, coachToken, userID, programID, 1)
+	if !weekSessionLocks(week)[0] {
+		t.Fatalf("Expected the played session locked, got %v", week["sessions"])
+	}
+	flagged := staleOverrideEntry(t, weekOverrideEntriesOf(t, week), staleItemID)
+	if flagged["override_stale"] != true {
+		t.Fatalf("Expected the override flagged stale before the save, got %v", flagged)
+	}
+
+	echoed := upsertWeekSessions(t, app, coachToken, userID, programID, 1, weekUpsertPayloadFromRead(week))
+
+	if !weekSessionLocks(echoed)[0] {
+		t.Errorf("Expected the session to stay locked through the save, got %v", echoed["sessions"])
+	}
+	// The echo answers the flag as a read of the same rows does, so saving the
+	// week cannot tell the coach the override started applying.
+	echoedEntry := staleOverrideEntry(t, weekOverrideEntriesOf(t, echoed), staleItemID)
+	if echoedEntry["override_stale"] != true {
+		t.Errorf("Expected the echo to keep flagging the override it let through, got %v", echoedEntry)
+	}
+
+	// Krakoer/crimpy#84 never touches the stored row, and letting the save
+	// through must not either.
+	entries := weekOverrideEntries(t, app, weekURL(userID, programID, 1), coachToken)
+	if len(entries) != 2 {
+		t.Fatalf("Expected both overrides still stored after the save, got %v", entries)
+	}
+	stored := staleOverrideEntry(t, entries, staleItemID)
+	if stored["override_stale"] != true {
+		t.Errorf("Expected the kept override still flagged after the save, got %v", stored)
+	}
+	if stored["overrides"].(map[string]interface{})["reps_is_max"] != true {
+		t.Errorf("Expected the stored override intact after the save, got %v", stored["overrides"])
+	}
+	valid := staleOverrideEntry(t, entries, validItemID)
+	if valid["override_stale"] != false {
+		t.Errorf("Expected the still valid override unflagged, got %v", valid)
+	}
+	if valid["overrides"].(map[string]interface{})["reps"] != float64(12) {
+		t.Errorf("Expected the still valid override intact after the save, got %v", valid["overrides"])
+	}
+
+	// The athlete is still not offered what the save let through.
+	mine := weekOverrides(t, app, fmt.Sprintf("/api/user/programs/%s/weeks/1", programID), userToken)
+	if _, present := mine[staleItemID]; present {
+		t.Errorf("Expected the kept override still left out of the athlete week, got %v", mine[staleItemID])
+	}
+	if _, kept := mine[validItemID]; !kept {
+		t.Errorf("Expected the still valid override applied for the athlete, got %v", mine)
+	}
+
+	// The point of the fix: the week is editable again around the frozen
+	// session, which is what the deadlock cost.
+	rescheduled := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{{
+			"id":          week["sessions"].([]interface{})[0].(map[string]interface{})["id"],
+			"training_id": trainingID,
+			"day_of_week": 3,
+			"notes":       "moved to Thursday",
+			"overrides":   week["sessions"].([]interface{})[0].(map[string]interface{})["overrides"],
+		}},
+	})
+	if rescheduled["sessions"].([]interface{})[0].(map[string]interface{})["day_of_week"] != float64(3) {
+		t.Errorf("Expected the frozen session rescheduled, got %v", rescheduled["sessions"])
+	}
+}
+
+// The guard that must not move: a locked session gets a pass on validity, never
+// a pass on change. The coach cannot answer the staleness by rewriting the
+// override or by dropping it, because that would rewrite the prescription the
+// athlete already played behind them.
+func TestWeekHandler_UpsertWeek_StillRefusesChangedStaleOverrideOnLockedSession(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupAssessmentProgramApp(t, "stalefrozen")
+
+	trainingID, staleItemID, validItemID := lockedStaleOverrideWeek(t, app, coachToken, userToken, userID, programID)
+
+	week := getWeek(t, app, coachToken, userID, programID, 1)
+	if !weekSessionLocks(week)[0] {
+		t.Fatalf("Expected the played session locked, got %v", week["sessions"])
+	}
+	sessionID := week["sessions"].([]interface{})[0].(map[string]interface{})["id"]
+	valid := map[string]interface{}{"item_id": validItemID, "overrides": map[string]interface{}{"reps": 12}}
+
+	for _, attempt := range []struct {
+		change    string
+		overrides []map[string]interface{}
+	}{
+		{"rewritten", []map[string]interface{}{
+			{"item_id": staleItemID, "overrides": map[string]interface{}{"reps": 5}},
+			valid,
+		}},
+		{"dropped", []map[string]interface{}{valid}},
+	} {
+		status, message := upsertWeekError(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+			"sessions": []map[string]interface{}{{
+				"id":          sessionID,
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides":   attempt.overrides,
+			}},
+		})
+		if status != fiber.StatusBadRequest {
+			t.Fatalf("Expected 400 with the stale override %s on a played session, got %d: %s", attempt.change, status, message)
+		}
+		if !strings.Contains(message, "overrides cannot be changed") {
+			t.Errorf("Expected the frozen session refusal with the override %s, got %q", attempt.change, message)
+		}
+	}
+
+	stored := staleOverrideEntry(t, weekOverrideEntries(t, app, weekURL(userID, programID, 1), coachToken), staleItemID)
+	if stored["overrides"].(map[string]interface{})["reps_is_max"] != true {
+		t.Errorf("Expected the stored override intact after the refusals, got %v", stored["overrides"])
 	}
 }
