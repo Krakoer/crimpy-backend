@@ -258,7 +258,17 @@ func sameJSON(a, b []byte) bool {
 // syncWeekSessions reconciles a week against the payload instead of recreating
 // it, so a session the client sends back by id keeps that id. Sessions played by
 // the athlete reference these ids, and recreating them nulls those references.
-func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, coachID, athleteID, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+// weekSyncScope names the two identities the week write path needs, which are
+// both UUIDs and mean opposite things: the coach whose assessments an override
+// may reference, and the athlete the week belongs to, who appears only in a log
+// line. Passed as one value so they cannot be transposed at a call site, which
+// would compile and then resolve every override against the wrong owner.
+type weekSyncScope struct {
+	coachID   pgtype.UUID
+	athleteID pgtype.UUID
+}
+
+func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, scope weekSyncScope, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
 	locked, err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs)
 	if err != nil {
 		return err
@@ -279,12 +289,12 @@ func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, 
 	}
 
 	for i, s := range sessions {
-		session, err := h.upsertWeekSession(ctx, qtx, coachID, weekID, sessionIDs[i], i, s)
+		session, err := h.upsertWeekSession(ctx, qtx, scope.coachID, weekID, sessionIDs[i], i, s)
 		if err != nil {
 			return err
 		}
 		_, isLocked := locked[session.ID]
-		if err := h.syncSessionOverrides(ctx, qtx, coachID, athleteID, session, isLocked, i, s.Overrides); err != nil {
+		if err := h.syncSessionOverrides(ctx, qtx, scope, session, isLocked, i, s.Overrides); err != nil {
 			return err
 		}
 	}
@@ -357,7 +367,7 @@ func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries,
 // to another coach, is rejected rather than stored. On a locked session it
 // checks the item scoping but not the validity of the merge, for the reason
 // spelled out where it skips the refusal.
-func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, coachID, athleteID pgtype.UUID, session db.CoachProgramWeekSession, locked bool, index int, overrides []SessionOverrideRequest) error {
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, scope weekSyncScope, session db.CoachProgramWeekSession, locked bool, index int, overrides []SessionOverrideRequest) error {
 	itemIDs := make([]pgtype.UUID, len(overrides))
 	for i, o := range overrides {
 		if err := itemIDs[i].Scan(o.ItemID); err != nil {
@@ -391,7 +401,7 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 		raw[i] = o.Overrides
 	}
 
-	stale, err := staleOverrides(ctx, qtx, coachID, bases, raw)
+	stale, err := staleOverrides(ctx, qtx, scope.coachID, bases, raw)
 	if err != nil {
 		return err
 	}
@@ -403,10 +413,15 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 			// every override came back exactly as stored, so the coach cannot
 			// drop or edit the offending one, and refusing it here leaves the
 			// whole week unsaveable. What makes the refusal pointless as well
-			// as trapping is that the row is inert: Krakoer/crimpy#84 leaves it
-			// out of the prescription snapshot and the athlete week read, so it
-			// is neither what the athlete played nor something that can reach
-			// them. Only a verbatim echo of a stored row gets this far, since a
+			// as trapping is that the row prescribes nothing: Krakoer/crimpy#84
+			// leaves it out of the prescription snapshot and out of the athlete
+			// week read, so it is not what the athlete played and no merged item
+			// they receive carries it. It is not invisible to them, mind: the
+			// program scoped training read still names the assessments a stored
+			// override references, which Krakoer/crimpy#92 chose deliberately
+			// on the grounds that an unused label costs less than an unnamed
+			// chip. A label is not a prescription. Only a verbatim echo of a
+			// stored row gets this far, since a
 			// created or edited override on a locked session is refused by
 			// checkFrozenSession before this runs, and a session created in
 			// this same request cannot be locked. An unlocked session still
@@ -415,11 +430,11 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 				return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, reason)
 			}
 			slog.Warn("keeping an inert override the training item no longer takes on a played session",
-				"user_id", athleteID.String(),
+				"user_id", scope.athleteID.String(),
 				"program_session_id", session.ID.String(),
 				"week_id", session.WeekID.String(),
 				"training_id", session.TrainingID.String(),
-				"training_item_id", o.ItemID,
+				"training_item_id", itemIDs[i].String(),
 				"reason", reason)
 		}
 		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
@@ -699,7 +714,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := h.syncWeekSessions(c.Context(), qtx, coachUUID, clientUUID, week.ID, req.Sessions, sessionIDs); err != nil {
+	if err := h.syncWeekSessions(c.Context(), qtx, weekSyncScope{coachID: coachUUID, athleteID: clientUUID}, week.ID, req.Sessions, sessionIDs); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
