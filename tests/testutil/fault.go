@@ -5,19 +5,19 @@ import (
 	"crimpy/backend/internal/db"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
-
-	"reflect"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ErrInjectedFault is what a FaultyDBTX answers with in place of running a
-// statement the fault matches. Exported so a test that expects a fault to reach
-// the client can errors.Is it; the tests here assert the served response
-// instead, because the handlers they exercise swallow or wrap it.
+// statement the fault matches. Exported so a test calling a generated query
+// directly can errors.Is it; a test driving the app over HTTP never holds the
+// error, only a status and a body, which is why the tests here assert the served
+// response instead.
 var ErrInjectedFault = errors.New("injected query fault")
 
 // SQLMatcher reports whether a statement is one the fault applies to. It reads
@@ -75,8 +75,10 @@ func NewFaultyDBTX(inner db.DBTX, matches SQLMatcher) *FaultyDBTX {
 // wrapper with the pgx transaction, so nothing under it can be faulted: the
 // prescription snapshot is the example, and reaching it would need the pool
 // itself wrapped, which is a production change. That is why a test asserts
-// Injected() rather than only the response. Without it, naming a query the
-// handler never runs off this wrapper passes green having exercised nothing.
+// Injected() rather than only the response. The two tests here would fail
+// without it, since neither asserts something a healthy read produces, so it is
+// the next test it protects: one naming a query the handler never runs off this
+// wrapper would otherwise pass green having exercised nothing.
 //
 // The fault lives as long as the app built on it and Injected counts across
 // the whole run, so a test issuing concurrent requests wants a range rather
