@@ -1774,7 +1774,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_reason carries the refusal the write path answers with for the same override. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
+                "description": "Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the override fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
                 "produces": [
                     "application/json"
                 ],
@@ -6791,9 +6791,12 @@ const docTemplate = `{
                 "overrides": {
                     "type": "object"
                 },
-                "stale_reason": {
-                    "description": "StaleReason is the refusal the write path answers with when the same\noverride is sent again, so the coach reads one wording whether they are\ntold why a save was refused or why a saved override stopped applying.",
-                    "type": "string"
+                "stale_fields": {
+                    "description": "StaleFields attributes the refusal to the fields it is about, one entry\nper field per reason. The whole row is stored and the server refuses part\nof it, so a reader given only the reason cannot tell an edit of the\nrefused field from an edit of another field of the same row: it reasons\nabout the row as a whole, and any edit anywhere makes it drop a marking\nthe refusal has not stopped applying to. Each field is spelled as\ncontract/override-keys.json spells the key that replaces it, whether or\nnot this override carries that key, since a refusal can be about a field\nthe item holds and the override leaves alone. A refusal nothing could\nattribute carries an empty field, which stands for the override as a\nwhole. Absent unless OverrideStale.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.StaleOverrideField"
+                    }
                 }
             }
         },
@@ -6881,6 +6884,17 @@ const docTemplate = `{
             "properties": {
                 "is_favorite": {
                     "type": "boolean"
+                }
+            }
+        },
+        "handler.StaleOverrideField": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },

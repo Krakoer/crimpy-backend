@@ -120,21 +120,23 @@ func (t variableTarget) validate(field string, want assessmentUnit, units assess
 
 // validateVariableTargets rejects unknown fields and malformed references so a
 // client cannot store a target the app would silently drop when resolving it.
+// Every refusal here is about variable_targets, whichever item field the target
+// inside it drives, since that is the one key an override replaces it through.
 func validateVariableTargets(raw json.RawMessage, units assessmentUnits) error {
 	if !hasJSONValue(raw) {
 		return nil
 	}
 	var targets map[string]variableTarget
 	if err := json.Unmarshal(raw, &targets); err != nil {
-		return fmt.Errorf("invalid variable_targets: %w", err)
+		return refusedFields(fmt.Errorf("invalid variable_targets: %w", err), "variable_targets")
 	}
 	for field, target := range targets {
 		want, ok := variableTargetFields[field]
 		if !ok {
-			return fmt.Errorf("invalid variable target field %q", field)
+			return refusedFields(fmt.Errorf("invalid variable target field %q", field), "variable_targets")
 		}
 		if err := target.validate(field, want, units); err != nil {
-			return err
+			return refusedFields(err, "variable_targets")
 		}
 	}
 	return nil
@@ -148,28 +150,30 @@ type loadWithTarget struct {
 }
 
 // validateLoads checks the assessment reference of every percent_assessment
-// load. Each hand carries its own flat array, one entry per row.
-func validateLoads(raw json.RawMessage, units assessmentUnits) error {
+// load. Each hand carries its own flat array, one entry per row. field is which
+// of the two arrays is being read, which the wording deliberately does not say
+// and a refusal has to be attributed to.
+func validateLoads(field string, raw json.RawMessage, units assessmentUnits) error {
 	if !hasJSONValue(raw) {
 		return nil
 	}
 	var entries []json.RawMessage
 	if err := json.Unmarshal(raw, &entries); err != nil {
-		return fmt.Errorf("invalid loads: %w", err)
+		return refusedFields(fmt.Errorf("invalid loads: %w", err), field)
 	}
 	for _, entry := range entries {
 		var load loadWithTarget
 		if err := json.Unmarshal(entry, &load); err != nil {
-			return fmt.Errorf("invalid loads: %w", err)
+			return refusedFields(fmt.Errorf("invalid loads: %w", err), field)
 		}
 		if load.Unit != percentAssessmentUnit {
 			continue
 		}
 		if err := load.checkAssessment("load", unitKilograms, units); err != nil {
-			return err
+			return refusedFields(err, field)
 		}
 		if load.Fallback == nil || *load.Fallback < 0 {
-			return fmt.Errorf("load: fallback must be zero or more")
+			return refusedFields(fmt.Errorf("load: fallback must be zero or more"), field)
 		}
 	}
 	return nil
