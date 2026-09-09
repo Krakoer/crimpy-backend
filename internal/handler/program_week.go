@@ -255,9 +255,6 @@ func sameJSON(a, b []byte) bool {
 	return reflect.DeepEqual(aValue, bValue)
 }
 
-// syncWeekSessions reconciles a week against the payload instead of recreating
-// it, so a session the client sends back by id keeps that id. Sessions played by
-// the athlete reference these ids, and recreating them nulls those references.
 // weekSyncScope names the two identities the week write path needs, which are
 // both UUIDs and mean opposite things: the coach whose assessments an override
 // may reference, and the athlete the week belongs to, who appears only in a log
@@ -268,6 +265,9 @@ type weekSyncScope struct {
 	athleteID pgtype.UUID
 }
 
+// syncWeekSessions reconciles a week against the payload instead of recreating
+// it, so a session the client sends back by id keeps that id. Sessions played by
+// the athlete reference these ids, and recreating them nulls those references.
 func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, scope weekSyncScope, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
 	locked, err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs)
 	if err != nil {
@@ -415,13 +415,20 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 			// whole week unsaveable. What makes the refusal pointless as well
 			// as trapping is that the row prescribes nothing: Krakoer/crimpy#84
 			// leaves it out of the prescription snapshot and out of the athlete
-			// week read, so it is not what the athlete played and no merged item
-			// they receive carries it. It is not invisible to them, mind: the
-			// program scoped training read still names the assessments a stored
-			// override references, which Krakoer/crimpy#92 chose deliberately
-			// on the grounds that an unused label costs less than an unnamed
-			// chip. A label is not a prescription. Only a verbatim echo of a
-			// stored row gets this far, since a
+			// week read, so it is not what the athlete played and no merged
+			// item they receive carries it.
+			//
+			// It is not invisible, mind, and the claim is only about what is
+			// prescribed. The program scoped training read still names the
+			// assessments a stored override references, which
+			// Krakoer/crimpy#92 chose deliberately on the grounds that an
+			// unused label costs less than an unnamed chip. And
+			// CountReferencesToAssessment matches the assessment id inside the
+			// override JSON, so the row still keeps that definition
+			// undeletable and its unit locked. Neither is a prescription, and
+			// neither is new: the row was never dropped before this either.
+			//
+			// Only a verbatim echo of a stored row gets this far, since a
 			// created or edited override on a locked session is refused by
 			// checkFrozenSession before this runs, and a session created in
 			// this same request cannot be locked. An unlocked session still
