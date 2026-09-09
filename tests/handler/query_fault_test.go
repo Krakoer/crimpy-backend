@@ -118,3 +118,43 @@ func TestProgramTraining_ServesTheTrainingWhenNamingOverrideAssessmentsFails(t *
 		t.Errorf("Expected the training's item served all the same, got %v", training["items"])
 	}
 }
+
+// The other half of the same read: dropStaleWeekOverrides hides an override the
+// training item no longer takes rather than refusing the week, but a query
+// failure inside that check is not degraded. The read answers 500 rather than
+// serving overrides it could not revalidate, which would promise the athlete a
+// shape the session started from them refuses to freeze. Pinned as the failure
+// it is, so the day it starts degrading is a deliberate change and not a silent
+// one.
+func TestMyWeek_FailsWhenItCannotRevalidateItsOverrides(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	s := setupAssessmentProgram(t, "weekrevalfault")
+
+	_, assessmentID := createAssessmentTraining(t, s.App, s.CoachToken, "Max pull ups", "repetitions", false)
+	trainingID, itemID := createTargetingTraining(t, s.App, s.CoachToken, "Pull day", assessmentID)
+	scheduleWithOverride(t, s.App, s.CoachToken, s.UserID, s.ProgramID, trainingID, itemID, 1, map[string]interface{}{
+		"variable_targets": map[string]interface{}{
+			"reps": map[string]interface{}{
+				"assessment_id": assessmentID, "percent": 50, "fallback": 8,
+			},
+		},
+	})
+
+	url := fmt.Sprintf("/api/user/programs/%s/weeks/1", s.ProgramID)
+	if mine := weekOverrides(t, s.App, url, s.UserToken); len(mine) != 1 {
+		t.Fatalf("Expected the healthy read to carry the one override, got %v", mine)
+	}
+
+	app, faulty := programReadAppWithFailingQuery(t, s.Pool, "GetAssessmentDefinitionsByIDs")
+	status, week := getJSON(t, app, url, s.UserToken)
+
+	if faulty.Injected() != 1 {
+		t.Fatalf("Expected the fault to land once on the read, got %d", faulty.Injected())
+	}
+	if status != fiber.StatusInternalServerError {
+		t.Fatalf("Expected 500 with the revalidation query failing, got %d: %v", status, week)
+	}
+	if _, served := week["sessions"]; served {
+		t.Errorf("Expected no week served when its overrides could not be revalidated, got %v", week)
+	}
+}
