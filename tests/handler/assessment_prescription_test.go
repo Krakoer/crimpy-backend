@@ -8,29 +8,54 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// setupAssessmentProgramApp is setupFrozenSessionApp with the assessment
-// handlers wired, so a coach can write an assessment and prescribe a training
-// that references it.
-func setupAssessmentProgramApp(t *testing.T, prefix string) (app *fiber.App, coachToken, userToken, userID, programID string) {
+// assessmentProgramSetup is a coach, an athlete enrolled with them and a
+// program of theirs, with the app the three are read and written through. It
+// carries the pool so a test can build a second app over the same rows.
+type assessmentProgramSetup struct {
+	App        *fiber.App
+	Pool       *pgxpool.Pool
+	CoachToken string
+	UserToken  string
+	UserID     string
+	ProgramID  string
+}
+
+// setupAssessmentProgram is setupFrozenSessionApp with the assessment handlers
+// wired, so a coach can write an assessment and prescribe a training that
+// references it.
+func setupAssessmentProgram(t *testing.T, prefix string) assessmentProgramSetup {
 	t.Helper()
 	pool, queries := testutil.SetupTestDB(t)
 	t.Cleanup(func() { testutil.CleanupTestDB(t, pool) })
 
 	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, prefix+"coach@test.com")
-	userID, userToken = testutil.CreateTestUser(t, queries, prefix+"user@test.com")
+	userID, userToken := testutil.CreateTestUser(t, queries, prefix+"user@test.com")
 	enrollUserDirect(t, pool, coachID, userID)
 
-	app = testutil.SetupFiberApp(testutil.HandlerConfig{
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		SessionHandler:              handler.NewSessionHandler(queries, pool),
 		TrainingHandler:             handler.NewTrainingHandler(queries, pool),
 		ProgramHandler:              handler.NewProgramHandler(queries, pool),
 		AssessmentHandler:           handler.NewAssessmentHandler(queries),
 		AssessmentDefinitionHandler: handler.NewAssessmentDefinitionHandler(queries, pool),
 	})
-	programID = createTestProgram(t, coachToken, userID, app)
-	return app, coachToken, userToken, userID, programID
+	return assessmentProgramSetup{
+		App:        app,
+		Pool:       pool,
+		CoachToken: coachToken,
+		UserToken:  userToken,
+		UserID:     userID,
+		ProgramID:  createTestProgram(t, coachToken, userID, app),
+	}
+}
+
+func setupAssessmentProgramApp(t *testing.T, prefix string) (app *fiber.App, coachToken, userToken, userID, programID string) {
+	t.Helper()
+	s := setupAssessmentProgram(t, prefix)
+	return s.App, s.CoachToken, s.UserToken, s.UserID, s.ProgramID
 }
 
 // A prescription that references a custom assessment has to name it, or the
