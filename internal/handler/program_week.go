@@ -55,11 +55,28 @@ type SessionOverrideResponse struct {
 	// refused field from an edit of another field of the same row: it reasons
 	// about the row as a whole, and any edit anywhere makes it drop a marking
 	// the refusal has not stopped applying to. Each field is spelled as
-	// contract/override-keys.json spells the key that replaces it, whether or
-	// not this override carries that key, since a refusal can be about a field
-	// the item holds and the override leaves alone. A refusal nothing could
-	// attribute carries an empty field, which stands for the override as a
-	// whole. Absent unless OverrideStale.
+	// contract/override-keys.json spells the key that replaces it.
+	//
+	// The list is in the order the validators ask, and the first entry is the
+	// reason a save of this same override is refused with, since the write
+	// paths answer with the first refusal alone.
+	//
+	// A named field may be absent from the override row, because attribution
+	// names what the check read and a check can read the item's side of a
+	// disagreement: an override resizing the grid is refused for the item's own
+	// arrays, which it never carried. A reader deciding whether a refusal still
+	// stands must therefore skip the named fields the row does not carry rather
+	// than count them as unchanged. That clause is the whole point and not a
+	// special case: an absent field is absent again after every edit, so
+	// counting it as unchanged would keep the marking up forever, including
+	// through the edit that actually clears the refusal. What is left after
+	// skipping is the fields the coach can act on, and the marking clears when
+	// one of them moves. When the row carries none of the named fields, the
+	// refusal is about the row as a whole, which is the same answer the empty
+	// field below stands for.
+	//
+	// A refusal nothing could attribute carries an empty field, which stands
+	// for the override as a whole. Absent unless OverrideStale.
 	StaleFields []StaleOverrideField `json:"stale_fields,omitempty"`
 }
 
@@ -574,8 +591,8 @@ func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.Ge
 // staleOverrideFields spreads every refusal across the fields it is about, one
 // entry each, so a reader answers its per field question by looking a field up
 // rather than by reading prose. A refusal about two fields is repeated under
-// both, since either of them being still in the row is the refusal still
-// standing.
+// both, since either of them is a field moving which clears it. What a reader
+// does with a name the override row does not carry is on StaleFields.
 func staleOverrideFields(refusals itemRefusals) []StaleOverrideField {
 	fields := make([]StaleOverrideField, 0, len(refusals))
 	for _, refusal := range refusals {
@@ -831,7 +848,7 @@ func (h *ProgramHandler) GetWeeks(c fiber.Ctx) error {
 
 // GetWeek godoc
 // @Summary Get a program week
-// @Description Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the override fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. The stored row is never touched and never hidden, so the week can be sent back unchanged.
+// @Description Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth

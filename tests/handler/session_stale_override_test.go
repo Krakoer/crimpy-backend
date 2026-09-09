@@ -597,13 +597,7 @@ func TestWeekHandler_UpsertWeek_RefusesWeekCarryingStaleOverride(t *testing.T) {
 	// field it is about rather than handed over loose: what the coach is told
 	// when a save is refused and what the week says about the same override
 	// have to stay one wording, or the two cannot be recognised as one refusal.
-	for field, reasons := range staleFieldReasons(t, flagged) {
-		for _, reason := range reasons {
-			if !strings.Contains(message, reason) {
-				t.Errorf("Expected the refusal to carry the reason attributed to %s, got %q", field, message)
-			}
-		}
-	}
+	assertRefusedWithOneAttributedReason(t, message, staleFieldReasons(t, flagged))
 
 	sessionID := week["sessions"].([]interface{})[0].(map[string]interface{})["id"]
 	remediated := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{

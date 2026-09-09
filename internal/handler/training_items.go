@@ -116,12 +116,16 @@ func refusedFields(err error, fields ...string) error {
 	return itemRefusal{fields: fields, err: err}
 }
 
-// itemRefusals is every reason one merged item is refused, in the order the
-// validators ask. Its message is the first refusal alone, because a write path
-// answers with one refusal and this is not the change that rewords them, while
-// the coach read hands over all of them: the reader's question is per field, so
-// reporting only the first would have a coach fixing one field discover the next
-// on the following save.
+// itemRefusals is every field one merged item is refused on, in the order the
+// validators ask. It collects every field rather than every reason: a validator
+// ranging over a map, as validateVariableTargets does, still answers with one
+// of the entries it finds unacceptable rather than all of them.
+//
+// Its message is the first refusal alone, because a write path answers with one
+// refusal and this is not the change that rewords them, while the coach read
+// hands over all of them: the reader's question is per field, so reporting only
+// the first would have a coach fixing one field discover the next on the
+// following save.
 type itemRefusals []itemRefusal
 
 func (rs itemRefusals) Error() string {
@@ -356,6 +360,12 @@ func unmarshalItemArray(field string, raw json.RawMessage) ([]json.RawMessage, e
 	return entries, nil
 }
 
+// rowLayoutFields names the fields the row count is read from. A refusal about
+// an array disagreeing with that count is attributed to them as well as to the
+// array, because either side of the disagreement is a field the coach can move
+// and the row count is not a field of its own.
+var rowLayoutFields = []string{"granularity", "cycles", "reps"}
+
 // validateRowArray checks a configuration array that holds one entry per row.
 func validateRowArray(field string, raw json.RawMessage, rows int) error {
 	entries, err := unmarshalItemArray(field, raw)
@@ -363,7 +373,8 @@ func validateRowArray(field string, raw json.RawMessage, rows int) error {
 		return err
 	}
 	if entries != nil && len(entries) != rows {
-		return refusedFields(fmt.Errorf("%s holds %d entries but the granularity declares %d rows", field, len(entries), rows), field)
+		return refusedFields(fmt.Errorf("%s holds %d entries but the granularity declares %d rows", field, len(entries), rows),
+			append([]string{field}, rowLayoutFields...)...)
 	}
 	return nil
 }
@@ -454,7 +465,7 @@ func validateItemArrays(item TrainingItemRequest) error {
 
 	rows := hangboardRowCount(granularity, item.Cycles, item.Reps)
 	if rows > maxItemArrayLen {
-		return refusals.add(refusedFields(fmt.Errorf("granularity declares more than %d rows", maxItemArrayLen), "granularity", "cycles", "reps")).orNil()
+		return refusals.add(refusedFields(fmt.Errorf("granularity declares more than %d rows", maxItemArrayLen), rowLayoutFields...)).orNil()
 	}
 	for _, field := range []struct {
 		name string
