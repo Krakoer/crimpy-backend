@@ -7058,10 +7058,17 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "exercise_description": {
+                    "description": "Joined from the exercise the item points at, not stored on the item: the\nathlete is refused every /api/coach/exercises route, so this is the only\nway the demo video and the movement notes reach them.",
+                    "type": "string"
+                },
                 "exercise_id": {
                     "type": "string"
                 },
                 "exercise_name": {
+                    "type": "string"
+                },
+                "exercise_video_link": {
                     "type": "string"
                 },
                 "free_text": {
