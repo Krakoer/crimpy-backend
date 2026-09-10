@@ -443,9 +443,7 @@ type TrainingItemResponse struct {
 	RestSeconds      *int32  `json:"rest_seconds,omitempty"`
 	ExerciseID       *string `json:"exercise_id,omitempty"`
 	ExerciseName     *string `json:"exercise_name,omitempty"`
-	// Joined from the exercise the item points at, not stored on the item: the
-	// athlete is refused every /api/coach/exercises route, so this is the only
-	// way the demo video and the movement notes reach them.
+	// Joined from the exercise the item points at, not stored on the item.
 	ExerciseDescription *string                `json:"exercise_description,omitempty"`
 	ExerciseVideoLink   *string                `json:"exercise_video_link,omitempty"`
 	WorktimeSeconds     *int32                 `json:"worktime_seconds,omitempty"`
@@ -858,10 +856,13 @@ func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) 
 			if row.ExerciseName.Valid {
 				resp.ExerciseName = &row.ExerciseName.String
 			}
-			if row.ExerciseDescription.Valid {
+			// Tested for emptiness rather than for NULL: the exercise write
+			// paths store a cleared field as "", and a key present but empty
+			// would hand the app a link affordance that opens nothing.
+			if row.ExerciseDescription.String != "" {
 				resp.ExerciseDescription = &row.ExerciseDescription.String
 			}
-			if row.ExerciseVideoLink.Valid {
+			if row.ExerciseVideoLink.String != "" {
 				resp.ExerciseVideoLink = &row.ExerciseVideoLink.String
 			}
 			resp.Items = buildTrainingItemTree(rows, row.ID)

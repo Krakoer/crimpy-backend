@@ -221,3 +221,49 @@ func TestTrainingHandler_ItemWithoutExerciseHasNoVideoFields(t *testing.T) {
 		t.Errorf("Expected no exercise description key on an item with no exercise, got %v", item["exercise_description"])
 	}
 }
+
+// A coach who clears the field from a form that sends "" rather than null must
+// not leave the athlete a link affordance that opens nothing: the write paths
+// store the empty string as a non-NULL column, so emptiness is what the
+// response has to be read against.
+func TestTrainingHandler_ClearedExerciseVideoHasNoFields(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, _, coachToken, _, _, _ := setupExerciseVideoApp(t, "exvid6")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":        "Pull up",
+		"description": "",
+		"video_link":  "",
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/exercises", body, coachToken))
+	if err != nil {
+		t.Fatalf("Failed to create exercise: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating exercise, got %d", resp.StatusCode)
+	}
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+
+	trainingID := createTrainingUsingExercise(t, app, coachToken, created["id"].(string))
+
+	read, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, "/api/trainings/"+trainingID, nil, coachToken))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(read.Body).Decode(&result)
+
+	item := firstItem(t, result)
+	if _, present := item["exercise_video_link"]; present {
+		t.Errorf("Expected no video link key for a cleared link, got %q", item["exercise_video_link"])
+	}
+	if _, present := item["exercise_description"]; present {
+		t.Errorf("Expected no description key for a cleared description, got %q", item["exercise_description"])
+	}
+	// The name still arrives, so the absence above is the empty fields being
+	// dropped rather than the join failing altogether.
+	if item["exercise_name"] != "Pull up" {
+		t.Errorf("Expected the exercise name to still be joined, got %v", item["exercise_name"])
+	}
+}
