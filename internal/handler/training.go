@@ -444,7 +444,11 @@ type TrainingItemResponse struct {
 	ExerciseID       *string `json:"exercise_id,omitempty"`
 	ExerciseName     *string `json:"exercise_name,omitempty"`
 	// Joined from the exercise the item points at, not stored on the item.
+	// ExerciseComment is the coach's execution notes on the movement, which is a
+	// different field from the item's own Comment above: that one is what the
+	// coach said about this step, this one is about the exercise everywhere.
 	ExerciseDescription *string                `json:"exercise_description,omitempty"`
+	ExerciseComment     *string                `json:"exercise_comment,omitempty"`
 	ExerciseVideoLink   *string                `json:"exercise_video_link,omitempty"`
 	WorktimeSeconds     *int32                 `json:"worktime_seconds,omitempty"`
 	Hand                *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
@@ -861,6 +865,9 @@ func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) 
 			// would hand the app a link affordance that opens nothing.
 			if row.ExerciseDescription.String != "" {
 				resp.ExerciseDescription = &row.ExerciseDescription.String
+			}
+			if row.ExerciseComment.String != "" {
+				resp.ExerciseComment = &row.ExerciseComment.String
 			}
 			if row.ExerciseVideoLink.String != "" {
 				resp.ExerciseVideoLink = &row.ExerciseVideoLink.String

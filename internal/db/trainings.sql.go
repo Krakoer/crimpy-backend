@@ -259,6 +259,7 @@ const getTrainingItems = `-- name: GetTrainingItems :many
 SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at,
        exercises.name AS exercise_name,
        exercises.description AS exercise_description,
+       exercises.comment AS exercise_comment,
        exercises.video_link AS exercise_video_link
 FROM training_items
 LEFT JOIN exercises ON exercises.id = training_items.exercise_id
@@ -296,6 +297,7 @@ type GetTrainingItemsRow struct {
 	UpdatedAt           pgtype.Timestamptz
 	ExerciseName        pgtype.Text
 	ExerciseDescription pgtype.Text
+	ExerciseComment     pgtype.Text
 	ExerciseVideoLink   pgtype.Text
 }
 
@@ -341,6 +343,7 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 			&i.UpdatedAt,
 			&i.ExerciseName,
 			&i.ExerciseDescription,
+			&i.ExerciseComment,
 			&i.ExerciseVideoLink,
 		); err != nil {
 			return nil, err

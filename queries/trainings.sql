@@ -61,6 +61,7 @@ RETURNING *;
 SELECT training_items.*,
        exercises.name AS exercise_name,
        exercises.description AS exercise_description,
+       exercises.comment AS exercise_comment,
        exercises.video_link AS exercise_video_link
 FROM training_items
 LEFT JOIN exercises ON exercises.id = training_items.exercise_id

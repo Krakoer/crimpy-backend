@@ -15,6 +15,7 @@ import (
 const (
 	demoVideoLink        = "https://example.com/videos/pull-up"
 	demoVideoDescription = "Start from a dead hang, chin over the bar."
+	demoVideoComment     = "Keep the shoulders engaged at the bottom."
 )
 
 // setupExerciseVideoApp wires the handlers a video link has to travel through:
@@ -45,6 +46,7 @@ func createExerciseWithVideo(t *testing.T, app *fiber.App, coachToken, name stri
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":        name,
 		"description": demoVideoDescription,
+		"comment":     demoVideoComment,
 		"video_link":  demoVideoLink,
 	})
 	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/exercises", body, coachToken))
@@ -94,6 +96,11 @@ func assertCarriesVideo(t *testing.T, item map[string]interface{}, where string)
 	}
 	if item["exercise_description"] != demoVideoDescription {
 		t.Errorf("Expected the exercise description on %s, got %v", where, item["exercise_description"])
+	}
+	// The coach's execution notes, which the athlete needs to perform the
+	// movement and which no route of theirs can fetch either.
+	if item["exercise_comment"] != demoVideoComment {
+		t.Errorf("Expected the exercise comment on %s, got %v", where, item["exercise_comment"])
 	}
 }
 
@@ -220,6 +227,9 @@ func TestTrainingHandler_ItemWithoutExerciseHasNoVideoFields(t *testing.T) {
 	if _, present := item["exercise_description"]; present {
 		t.Errorf("Expected no exercise description key on an item with no exercise, got %v", item["exercise_description"])
 	}
+	if _, present := item["exercise_comment"]; present {
+		t.Errorf("Expected no exercise comment key on an item with no exercise, got %v", item["exercise_comment"])
+	}
 }
 
 // A coach who clears the field from a form that sends "" rather than null must
@@ -233,6 +243,7 @@ func TestTrainingHandler_ClearedExerciseVideoHasNoFields(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":        "Pull up",
 		"description": "",
+		"comment":     "",
 		"video_link":  "",
 	})
 	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/exercises", body, coachToken))
@@ -260,6 +271,9 @@ func TestTrainingHandler_ClearedExerciseVideoHasNoFields(t *testing.T) {
 	}
 	if _, present := item["exercise_description"]; present {
 		t.Errorf("Expected no description key for a cleared description, got %q", item["exercise_description"])
+	}
+	if _, present := item["exercise_comment"]; present {
+		t.Errorf("Expected no comment key for a cleared comment, got %q", item["exercise_comment"])
 	}
 	// The name still arrives, so the absence above is the empty fields being
 	// dropped rather than the join failing altogether.
