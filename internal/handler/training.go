@@ -296,6 +296,14 @@ func resolveAssessmentUnits(ctx context.Context, q *db.Queries, ownerID pgtype.U
 	return units, nil
 }
 
+// errUnknownExercise is answered for an exercise that does not exist as well as
+// for one belonging to somebody else: telling them apart would say whether an id
+// the caller guessed is real. It is an invalidRequest, so the caller sees a 400
+// while a database failure on the same path stays a logged 500.
+func errUnknownExercise() error {
+	return invalidRequestf("an exercise referenced by this training does not exist")
+}
+
 // requestExerciseIDs collects every exercise the items reference, parsed and
 // deduplicated. A reference that is not a uuid is an error rather than a value
 // to drop: silently storing the item without it would leave a coach looking at
@@ -312,7 +320,7 @@ func requestExerciseIDs(items []TrainingItemRequest) ([]pgtype.UUID, error) {
 			if item.ExerciseID != nil && *item.ExerciseID != "" {
 				var id pgtype.UUID
 				if err := id.Scan(*item.ExerciseID); err != nil {
-					return fmt.Errorf("exercise_id %q is not a valid id", *item.ExerciseID)
+					return invalidRequestf("exercise_id %q is not a valid id", *item.ExerciseID)
 				}
 				if !seen[id] {
 					seen[id] = true
@@ -354,15 +362,10 @@ func validateExerciseRefs(ctx context.Context, q *db.Queries, ownerID pgtype.UUI
 	// only needs to know whether any reference is not theirs, and naming which
 	// one would confirm an id they are not allowed to ask about.
 	if int(owned) != len(ids) {
-		return errUnknownExercise
+		return errUnknownExercise()
 	}
 	return nil
 }
-
-// errUnknownExercise is answered for an exercise that does not exist as well as
-// for one belonging to somebody else: telling them apart would say whether an id
-// the caller guessed is real.
-var errUnknownExercise = errors.New("an exercise referenced by this training does not exist")
 
 // hasJSONValue reports whether raw holds something other than an absent or null
 // JSON value.
@@ -1020,10 +1023,13 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	}
 
 	if err := validateExerciseRefs(c.Context(), h.queries, userUUID, req.Items); err != nil {
-		if errors.Is(err, errUnknownExercise) {
+		var bad invalidRequest
+		if errors.As(err, &bad) {
 			slog.Warn("training references an exercise the owner does not hold", "user_id", userUUID.String())
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
 		}
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		slog.Error("failed to validate exercise references", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
 	}
 
 	trainingType, err := normalizeTrainingType(req.TrainingType)
@@ -1204,10 +1210,14 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	// person here, since the ownership check above already refused anyone else,
 	// and reading it off the row keeps that true if it ever stops being.
 	if err := validateExerciseRefs(c.Context(), h.queries, existing.UserID, req.Items); err != nil {
-		if errors.Is(err, errUnknownExercise) {
-			slog.Warn("training references an exercise the owner does not hold", "training_id", trainingUUID.String())
+		var bad invalidRequest
+		if errors.As(err, &bad) {
+			slog.Warn("training references an exercise the owner does not hold",
+				"user_id", existing.UserID.String(), "training_id", trainingUUID.String())
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
 		}
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		slog.Error("failed to validate exercise references", "training_id", trainingUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
 	trainingType, err := normalizeTrainingType(req.TrainingType)

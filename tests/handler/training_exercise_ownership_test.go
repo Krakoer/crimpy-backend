@@ -6,6 +6,7 @@ import (
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -192,5 +193,72 @@ func TestTrainingHandler_StoredUnownedExerciseDisclosesNothing(t *testing.T) {
 	// reference it can no longer resolve.
 	if item["reps"] != float64(8) {
 		t.Errorf("Expected the item to still carry its reps, got %v", item["reps"])
+	}
+}
+
+// Nesting is the obvious next thing to try, and it is the shape a real training
+// uses. Without the recursion in requestExerciseIDs the reference would be
+// stored and read back, which is the same disclosure one level down.
+func TestTrainingHandler_RefusesAnotherCoachsExerciseInsideACircuit(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, _, ownerToken, otherToken := setupExerciseOwnershipApp(t, "exown8")
+
+	exerciseID := createExerciseWithVideo(t, app, ownerToken, "Weighted pull up")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":         "Pull up session",
+		"training_type": "workout",
+		"items": []map[string]interface{}{
+			{
+				"type":     "circuit",
+				"position": 0,
+				"cycles":   3,
+				"items": []map[string]interface{}{
+					{"type": "exercise", "position": 0, "reps": 8, "exercise_id": exerciseID},
+				},
+			},
+		},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, otherToken))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for another coach's exercise nested in a circuit, got %d", resp.StatusCode)
+	}
+}
+
+// A payload error stays a 400 the client can act on; nothing on this path turns
+// a database failure into one, which would tell a coach their training is
+// malformed when the database is simply down.
+func TestTrainingHandler_MalformedNestedExerciseIDIsAPayloadError(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, _, ownerToken, _ := setupExerciseOwnershipApp(t, "exown9")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":         "Pull up session",
+		"training_type": "workout",
+		"items": []map[string]interface{}{
+			{
+				"type":     "group",
+				"position": 0,
+				"items": []map[string]interface{}{
+					{"type": "exercise", "position": 0, "reps": 8, "exercise_id": "not-a-uuid"},
+				},
+			},
+		},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, ownerToken))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for a malformed nested exercise id, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	message, _ := result["error"].(string)
+	if !strings.Contains(message, "not-a-uuid") {
+		t.Errorf("Expected the message to name the bad id, got %q", message)
 	}
 }
