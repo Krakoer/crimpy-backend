@@ -144,12 +144,11 @@ func TestExerciseHandler_UpdateValidatesTheVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	app, _, coachToken := setupExerciseLinkApp(t, "exlink6")
 
-	status, _ := postExerciseLink(t, app, coachToken, "https://example.com/pull-up")
-	if status != fiber.StatusCreated {
-		t.Fatalf("Expected 201 creating the exercise, got %d", status)
-	}
 	body, _ := json.Marshal(map[string]interface{}{"name": "Pull up", "video_link": "https://example.com/pull-up"})
-	created, _ := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/exercises", body, coachToken))
+	created, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/exercises", body, coachToken))
+	if err != nil || created.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Failed to create the exercise: err=%v status=%v", err, created.StatusCode)
+	}
 	var exercise map[string]interface{}
 	json.NewDecoder(created.Body).Decode(&exercise)
 	id := exercise["id"].(string)
@@ -172,5 +171,47 @@ func TestExerciseHandler_UpdateValidatesTheVideoLink(t *testing.T) {
 	json.NewDecoder(ok.Body).Decode(&updated)
 	if updated["video_link"] != "https://www.youtube.com/watch?v=abc" {
 		t.Errorf("Expected the update to normalize the link, got %v", updated["video_link"])
+	}
+}
+
+// A value the function accepts has to be one the database and a browser will
+// both take. A control byte used to pass the scheme-less branch untested and
+// fail at the insert, so the coach got a 500 for a payload problem.
+func TestExerciseHandler_RefusesAnUnstorableVideoLink(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, _, coachToken := setupExerciseLinkApp(t, "exlink7")
+
+	for name, link := range map[string]string{
+		"nul byte, no scheme":   "example.com/a\x00b",
+		"nul byte, with scheme": "https://example.com/a\x00b",
+		"vertical tab":          "example.com/a\vb",
+		"form feed":             "example.com/a\fb",
+		"port out of range":     "example.com:99999/v",
+	} {
+		status, _ := postExerciseLink(t, app, coachToken, link)
+		if status != fiber.StatusBadRequest {
+			t.Errorf("Expected 400 for %s, got %d", name, status)
+		}
+	}
+}
+
+// The clients test whitespace with \s, which covers more than the ASCII kinds.
+// A link this accepted and they refused to render would be a working button on
+// one surface and nothing at all on the other, with no error shown anywhere.
+func TestExerciseHandler_RefusesTheWhitespaceTheClientsRefuse(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, _, coachToken := setupExerciseLinkApp(t, "exlink8")
+
+	for name, link := range map[string]string{
+		"non breaking space": "www.youtube.com/watch?v=dQw4w9\u00a0WgXcQ",
+		"ideographic space":  "www.youtube.com/watch?v=a\u3000b",
+		"line separator":     "www.youtube.com/watch?v=a\u2028b",
+		"byte order mark":    "www.youtube.com/watch?v=a\ufeffb",
+		"zero width space":   "www.youtube.com/watch?v=a\u200bb",
+	} {
+		status, _ := postExerciseLink(t, app, coachToken, link)
+		if status != fiber.StatusBadRequest {
+			t.Errorf("Expected 400 for a %s, got %d", name, status)
+		}
 	}
 }
