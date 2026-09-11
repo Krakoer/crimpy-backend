@@ -1025,7 +1025,11 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	if err := validateExerciseRefs(c.Context(), h.queries, userUUID, req.Items); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
-			slog.Warn("training references an exercise the owner does not hold", "user_id", userUUID.String())
+			// The same branch answers a malformed id, so the reason is carried
+			// rather than asserted: an audit for cross-tenant attempts should
+			// not have to read a typo as one.
+			slog.Warn("refused a training payload's exercise reference",
+				"user_id", userUUID.String(), "reason", bad.Error())
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
 		}
 		slog.Error("failed to validate exercise references", "user_id", userUUID.String(), "error", err)
@@ -1180,6 +1184,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Training not found"
+// @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/trainings/{id} [put]
 func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	existing, trainingUUID, ok := h.ownedTraining().require(c)
@@ -1212,8 +1217,9 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	if err := validateExerciseRefs(c.Context(), h.queries, existing.UserID, req.Items); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
-			slog.Warn("training references an exercise the owner does not hold",
-				"user_id", existing.UserID.String(), "training_id", trainingUUID.String())
+			slog.Warn("refused a training payload's exercise reference",
+				"user_id", existing.UserID.String(), "training_id", trainingUUID.String(),
+				"reason", bad.Error())
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
 		}
 		slog.Error("failed to validate exercise references", "training_id", trainingUUID.String(), "error", err)
