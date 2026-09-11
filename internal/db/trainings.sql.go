@@ -262,7 +262,10 @@ SELECT training_items.id, training_items.training_id, training_items.parent_id, 
        exercises.comment AS exercise_comment,
        exercises.video_link AS exercise_video_link
 FROM training_items
-LEFT JOIN exercises ON exercises.id = training_items.exercise_id
+JOIN trainings ON trainings.id = training_items.training_id
+LEFT JOIN exercises
+  ON exercises.id = training_items.exercise_id
+ AND exercises.coach_id = trainings.user_id
 WHERE training_items.training_id = $1
 ORDER BY training_items.position
 `
@@ -304,6 +307,12 @@ type GetTrainingItemsRow struct {
 // The exercise columns travel with the item because the athlete cannot read the
 // exercise itself: every /api/coach/exercises route is coach only, so a video
 // the coach attached reaches them here or nowhere.
+//
+// The join is closed on the training's owner as well as on the id. Writes are
+// validated, so a legitimate reference always satisfies it; what this covers is
+// a row stored before they were, which would otherwise hand any reader the
+// name, notes and video of an exercise belonging to somebody else. An unowned
+// reference resolves to no exercise, exactly like an item that names none.
 func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]GetTrainingItemsRow, error) {
 	rows, err := q.db.Query(ctx, getTrainingItems, trainingID)
 	if err != nil {
