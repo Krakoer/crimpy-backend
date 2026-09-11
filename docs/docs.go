@@ -7058,10 +7058,20 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "exercise_comment": {
+                    "type": "string"
+                },
+                "exercise_description": {
+                    "description": "Joined from the exercise the item points at, not stored on the item.\nExerciseComment is the coach's execution notes on the movement, which is a\ndifferent field from the item's own Comment above: that one is what the\ncoach said about this step, this one is about the exercise everywhere.",
+                    "type": "string"
+                },
                 "exercise_id": {
                     "type": "string"
                 },
                 "exercise_name": {
+                    "type": "string"
+                },
+                "exercise_video_link": {
                     "type": "string"
                 },
                 "free_text": {

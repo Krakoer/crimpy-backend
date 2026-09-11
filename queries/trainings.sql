@@ -54,8 +54,15 @@ INSERT INTO training_items (
 )
 RETURNING *;
 
+-- The exercise columns travel with the item because the athlete cannot read the
+-- exercise itself: every /api/coach/exercises route is coach only, so a video
+-- the coach attached reaches them here or nowhere.
 -- name: GetTrainingItems :many
-SELECT training_items.*, exercises.name AS exercise_name
+SELECT training_items.*,
+       exercises.name AS exercise_name,
+       exercises.description AS exercise_description,
+       exercises.comment AS exercise_comment,
+       exercises.video_link AS exercise_video_link
 FROM training_items
 LEFT JOIN exercises ON exercises.id = training_items.exercise_id
 WHERE training_items.training_id = @training_id

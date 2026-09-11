@@ -431,31 +431,38 @@ type UpdateTrainingRequest struct {
 
 // TrainingItemResponse mirrors TrainingItemRequest with added server-assigned fields.
 type TrainingItemResponse struct {
-	ID               string                 `json:"id"`
-	Type             string                 `json:"type"`
-	Position         int32                  `json:"position"`
-	Cycles           *int32                 `json:"cycles,omitempty"`
-	CycleRestSeconds *int32                 `json:"cycle_rest_seconds,omitempty"`
-	IntervalSeconds  *int32                 `json:"interval_seconds,omitempty"`
-	Reps             *int32                 `json:"reps,omitempty"`
-	RepsIsMax        bool                   `json:"reps_is_max"`
-	Duration         *int32                 `json:"duration,omitempty"`
-	RestSeconds      *int32                 `json:"rest_seconds,omitempty"`
-	ExerciseID       *string                `json:"exercise_id,omitempty"`
-	ExerciseName     *string                `json:"exercise_name,omitempty"`
-	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
-	Hand             *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
-	Granularity      *string                `json:"granularity,omitempty" enums:"uniform,rep,set"`
-	FreeText         *string                `json:"free_text,omitempty"`
-	Comment          *string                `json:"comment,omitempty"`
-	LoadIsMax        bool                   `json:"load_is_max"`
-	Loads            json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
-	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
-	HandPositions    json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
-	EdgeSizesMm      json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
-	VariableTargets  json.RawMessage        `json:"variable_targets,omitempty" swaggertype:"object"`
-	GroupTitle       *string                `json:"group_title,omitempty"`
-	Items            []TrainingItemResponse `json:"items,omitempty"`
+	ID               string  `json:"id"`
+	Type             string  `json:"type"`
+	Position         int32   `json:"position"`
+	Cycles           *int32  `json:"cycles,omitempty"`
+	CycleRestSeconds *int32  `json:"cycle_rest_seconds,omitempty"`
+	IntervalSeconds  *int32  `json:"interval_seconds,omitempty"`
+	Reps             *int32  `json:"reps,omitempty"`
+	RepsIsMax        bool    `json:"reps_is_max"`
+	Duration         *int32  `json:"duration,omitempty"`
+	RestSeconds      *int32  `json:"rest_seconds,omitempty"`
+	ExerciseID       *string `json:"exercise_id,omitempty"`
+	ExerciseName     *string `json:"exercise_name,omitempty"`
+	// Joined from the exercise the item points at, not stored on the item.
+	// ExerciseComment is the coach's execution notes on the movement, which is a
+	// different field from the item's own Comment above: that one is what the
+	// coach said about this step, this one is about the exercise everywhere.
+	ExerciseDescription *string                `json:"exercise_description,omitempty"`
+	ExerciseComment     *string                `json:"exercise_comment,omitempty"`
+	ExerciseVideoLink   *string                `json:"exercise_video_link,omitempty"`
+	WorktimeSeconds     *int32                 `json:"worktime_seconds,omitempty"`
+	Hand                *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
+	Granularity         *string                `json:"granularity,omitempty" enums:"uniform,rep,set"`
+	FreeText            *string                `json:"free_text,omitempty"`
+	Comment             *string                `json:"comment,omitempty"`
+	LoadIsMax           bool                   `json:"load_is_max"`
+	Loads               json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
+	LeftLoads           json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
+	HandPositions       json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
+	EdgeSizesMm         json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
+	VariableTargets     json.RawMessage        `json:"variable_targets,omitempty" swaggertype:"object"`
+	GroupTitle          *string                `json:"group_title,omitempty"`
+	Items               []TrainingItemResponse `json:"items,omitempty"`
 }
 
 type TrainingResponse struct {
@@ -853,6 +860,18 @@ func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) 
 			if row.ExerciseName.Valid {
 				resp.ExerciseName = &row.ExerciseName.String
 			}
+			// Tested for emptiness rather than for NULL: the exercise write
+			// paths store a cleared field as "", and a key present but empty
+			// would hand the app a link affordance that opens nothing.
+			if row.ExerciseDescription.String != "" {
+				resp.ExerciseDescription = &row.ExerciseDescription.String
+			}
+			if row.ExerciseComment.String != "" {
+				resp.ExerciseComment = &row.ExerciseComment.String
+			}
+			if row.ExerciseVideoLink.String != "" {
+				resp.ExerciseVideoLink = &row.ExerciseVideoLink.String
+			}
 			resp.Items = buildTrainingItemTree(rows, row.ID)
 			result = append(result, resp)
 		}
@@ -860,8 +879,8 @@ func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) 
 	return result
 }
 
-// trainingItemFromRow drops the joined exercise_name so the shared response
-// mapper can be reused.
+// trainingItemFromRow drops the joined exercise columns so the shared response
+// mapper can be reused. buildTrainingItemTree puts them back on the response.
 func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 	return db.TrainingItem{
 		ID:               r.ID,

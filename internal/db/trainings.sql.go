@@ -256,7 +256,11 @@ func (q *Queries) GetTrainingItemInTraining(ctx context.Context, arg GetTraining
 }
 
 const getTrainingItems = `-- name: GetTrainingItems :many
-SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at, exercises.name AS exercise_name
+SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at,
+       exercises.name AS exercise_name,
+       exercises.description AS exercise_description,
+       exercises.comment AS exercise_comment,
+       exercises.video_link AS exercise_video_link
 FROM training_items
 LEFT JOIN exercises ON exercises.id = training_items.exercise_id
 WHERE training_items.training_id = $1
@@ -264,36 +268,42 @@ ORDER BY training_items.position
 `
 
 type GetTrainingItemsRow struct {
-	ID               pgtype.UUID
-	TrainingID       pgtype.UUID
-	ParentID         pgtype.UUID
-	Type             string
-	Position         int32
-	Cycles           pgtype.Int4
-	CycleRestSeconds pgtype.Int4
-	IntervalSeconds  pgtype.Int4
-	Reps             pgtype.Int4
-	RepsIsMax        bool
-	Duration         pgtype.Int4
-	RestSeconds      pgtype.Int4
-	ExerciseID       pgtype.UUID
-	WorktimeSeconds  pgtype.Int4
-	Hand             pgtype.Text
-	Granularity      pgtype.Text
-	FreeText         pgtype.Text
-	Comment          pgtype.Text
-	Loads            []byte
-	LeftLoads        []byte
-	HandPositions    []byte
-	EdgeSizesMm      []byte
-	LoadIsMax        bool
-	VariableTargets  []byte
-	GroupTitle       pgtype.Text
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	ExerciseName     pgtype.Text
+	ID                  pgtype.UUID
+	TrainingID          pgtype.UUID
+	ParentID            pgtype.UUID
+	Type                string
+	Position            int32
+	Cycles              pgtype.Int4
+	CycleRestSeconds    pgtype.Int4
+	IntervalSeconds     pgtype.Int4
+	Reps                pgtype.Int4
+	RepsIsMax           bool
+	Duration            pgtype.Int4
+	RestSeconds         pgtype.Int4
+	ExerciseID          pgtype.UUID
+	WorktimeSeconds     pgtype.Int4
+	Hand                pgtype.Text
+	Granularity         pgtype.Text
+	FreeText            pgtype.Text
+	Comment             pgtype.Text
+	Loads               []byte
+	LeftLoads           []byte
+	HandPositions       []byte
+	EdgeSizesMm         []byte
+	LoadIsMax           bool
+	VariableTargets     []byte
+	GroupTitle          pgtype.Text
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	ExerciseName        pgtype.Text
+	ExerciseDescription pgtype.Text
+	ExerciseComment     pgtype.Text
+	ExerciseVideoLink   pgtype.Text
 }
 
+// The exercise columns travel with the item because the athlete cannot read the
+// exercise itself: every /api/coach/exercises route is coach only, so a video
+// the coach attached reaches them here or nowhere.
 func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]GetTrainingItemsRow, error) {
 	rows, err := q.db.Query(ctx, getTrainingItems, trainingID)
 	if err != nil {
@@ -332,6 +342,9 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExerciseName,
+			&i.ExerciseDescription,
+			&i.ExerciseComment,
+			&i.ExerciseVideoLink,
 		); err != nil {
 			return nil, err
 		}
