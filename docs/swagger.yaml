@@ -3073,7 +3073,8 @@ paths:
       consumes:
       - application/json
       description: Create a new exercise in the coach's exercise library. Requires
-        a validated coach account.
+        a validated coach account. video_link must be an http or https address; one
+        written without a scheme is stored as https.
       parameters:
       - description: Exercise data
         in: body
@@ -3089,7 +3090,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ExerciseResponse'
         "400":
-          description: Invalid request body
+          description: Invalid request body or video link
           schema:
             additionalProperties:
               type: string
@@ -3288,7 +3289,8 @@ paths:
       consumes:
       - application/json
       description: Update an exercise in the coach's library. Only the owning coach
-        can update.
+        can update. video_link must be an http or https address; one written without
+        a scheme is stored as https.
       parameters:
       - description: Exercise ID
         in: path
@@ -3309,7 +3311,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ExerciseResponse'
         "400":
-          description: Invalid request
+          description: Invalid request or video link
           schema:
             additionalProperties:
               type: string

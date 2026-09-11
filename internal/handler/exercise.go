@@ -121,14 +121,14 @@ func requireValidatedCoach(c fiber.Ctx, queries *db.Queries) (pgtype.UUID, bool)
 
 // CreateExercise godoc
 // @Summary Create an exercise
-// @Description Create a new exercise in the coach's exercise library. Requires a validated coach account.
+// @Description Create a new exercise in the coach's exercise library. Requires a validated coach account. video_link must be an http or https address; one written without a scheme is stored as https.
 // @Tags Exercises
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body CreateExerciseRequest true "Exercise data"
 // @Success 201 {object} ExerciseResponse "Exercise created"
-// @Failure 400 {object} map[string]string "Invalid request body"
+// @Failure 400 {object} map[string]string "Invalid request body or video link"
 // @Failure 403 {object} map[string]string "Not a validated coach"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/coach/exercises [post]
@@ -158,7 +158,11 @@ func (h *ExerciseHandler) CreateExercise(c fiber.Ctx) error {
 		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 	if req.VideoLink != nil {
-		params.VideoLink = pgtype.Text{String: *req.VideoLink, Valid: true}
+		link, err := normalizeVideoLink(*req.VideoLink)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		params.VideoLink = pgtype.Text{String: link, Valid: true}
 	}
 
 	exercise, err := h.queries.CreateExercise(c.Context(), params)
@@ -299,7 +303,7 @@ func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
 
 // UpdateExercise godoc
 // @Summary Update an exercise
-// @Description Update an exercise in the coach's library. Only the owning coach can update.
+// @Description Update an exercise in the coach's library. Only the owning coach can update. video_link must be an http or https address; one written without a scheme is stored as https.
 // @Tags Exercises
 // @Accept json
 // @Produce json
@@ -307,7 +311,7 @@ func (h *ExerciseHandler) GetExercise(c fiber.Ctx) error {
 // @Param id path string true "Exercise ID"
 // @Param request body UpdateExerciseRequest true "Updated exercise data"
 // @Success 200 {object} ExerciseResponse "Updated exercise"
-// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 400 {object} map[string]string "Invalid request or video link"
 // @Failure 403 {object} map[string]string "Not a validated coach or not owner"
 // @Failure 404 {object} map[string]string "Exercise not found"
 // @Router /api/coach/exercises/{id} [put]
@@ -341,7 +345,11 @@ func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
 		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 	if req.VideoLink != nil {
-		params.VideoLink = pgtype.Text{String: *req.VideoLink, Valid: true}
+		link, err := normalizeVideoLink(*req.VideoLink)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		params.VideoLink = pgtype.Text{String: link, Valid: true}
 	}
 
 	updated, err := h.queries.UpdateExercise(c.Context(), params)
