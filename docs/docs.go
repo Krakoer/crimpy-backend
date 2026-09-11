@@ -2406,7 +2406,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new exercise in the coach's exercise library. Requires a validated coach account.",
+                "description": "Create a new exercise in the coach's exercise library. Requires a validated coach account. video_link must be an http or https address; one written without a scheme is stored as https.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2436,7 +2436,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request body",
+                        "description": "Invalid request body or video link",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2708,7 +2708,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update an exercise in the coach's library. Only the owning coach can update.",
+                "description": "Update an exercise in the coach's library. Only the owning coach can update. video_link must be an http or https address; one written without a scheme is stored as https.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2745,7 +2745,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request",
+                        "description": "Invalid request or video link",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
