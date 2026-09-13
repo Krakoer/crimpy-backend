@@ -13,20 +13,25 @@ import (
 
 const createSessionItemResult = `-- name: CreateSessionItemResult :one
 INSERT INTO session_item_results (
-  session_id, user_id, training_item_id, occurrence, field, value
+  session_id, user_id, training_item_id, occurrence,
+  reps, cycles, load_kg, duration_seconds, note
 ) VALUES (
-  $1, $2, $3, $4, $5, $6
+  $1, $2, $3, $4,
+  $5, $6, $7, $8, $9
 )
-RETURNING id, session_id, user_id, training_item_id, occurrence, field, value, updated_at
+RETURNING id, session_id, user_id, training_item_id, occurrence, reps, cycles, load_kg, duration_seconds, note, updated_at
 `
 
 type CreateSessionItemResultParams struct {
-	SessionID      pgtype.UUID
-	UserID         pgtype.UUID
-	TrainingItemID pgtype.UUID
-	Occurrence     int32
-	Field          string
-	Value          int32
+	SessionID       pgtype.UUID
+	UserID          pgtype.UUID
+	TrainingItemID  pgtype.UUID
+	Occurrence      int32
+	Reps            pgtype.Int4
+	Cycles          pgtype.Int4
+	LoadKg          pgtype.Float4
+	DurationSeconds pgtype.Int4
+	Note            pgtype.Text
 }
 
 func (q *Queries) CreateSessionItemResult(ctx context.Context, arg CreateSessionItemResultParams) (SessionItemResult, error) {
@@ -35,8 +40,11 @@ func (q *Queries) CreateSessionItemResult(ctx context.Context, arg CreateSession
 		arg.UserID,
 		arg.TrainingItemID,
 		arg.Occurrence,
-		arg.Field,
-		arg.Value,
+		arg.Reps,
+		arg.Cycles,
+		arg.LoadKg,
+		arg.DurationSeconds,
+		arg.Note,
 	)
 	var i SessionItemResult
 	err := row.Scan(
@@ -45,17 +53,20 @@ func (q *Queries) CreateSessionItemResult(ctx context.Context, arg CreateSession
 		&i.UserID,
 		&i.TrainingItemID,
 		&i.Occurrence,
-		&i.Field,
-		&i.Value,
+		&i.Reps,
+		&i.Cycles,
+		&i.LoadKg,
+		&i.DurationSeconds,
+		&i.Note,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getSessionItemResults = `-- name: GetSessionItemResults :many
-SELECT id, session_id, user_id, training_item_id, occurrence, field, value, updated_at FROM session_item_results
+SELECT id, session_id, user_id, training_item_id, occurrence, reps, cycles, load_kg, duration_seconds, note, updated_at FROM session_item_results
 WHERE session_id = $1
-ORDER BY training_item_id, occurrence, field
+ORDER BY training_item_id, occurrence
 `
 
 func (q *Queries) GetSessionItemResults(ctx context.Context, sessionID pgtype.UUID) ([]SessionItemResult, error) {
@@ -73,8 +84,11 @@ func (q *Queries) GetSessionItemResults(ctx context.Context, sessionID pgtype.UU
 			&i.UserID,
 			&i.TrainingItemID,
 			&i.Occurrence,
-			&i.Field,
-			&i.Value,
+			&i.Reps,
+			&i.Cycles,
+			&i.LoadKg,
+			&i.DurationSeconds,
+			&i.Note,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err

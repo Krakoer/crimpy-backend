@@ -210,14 +210,17 @@ type Session struct {
 }
 
 type SessionItemResult struct {
-	ID             pgtype.UUID
-	SessionID      pgtype.UUID
-	UserID         pgtype.UUID
-	TrainingItemID pgtype.UUID
-	Occurrence     int32
-	Field          string
-	Value          int32
-	UpdatedAt      pgtype.Timestamptz
+	ID              pgtype.UUID
+	SessionID       pgtype.UUID
+	UserID          pgtype.UUID
+	TrainingItemID  pgtype.UUID
+	Occurrence      int32
+	Reps            pgtype.Int4
+	Cycles          pgtype.Int4
+	LoadKg          pgtype.Float4
+	DurationSeconds pgtype.Int4
+	Note            pgtype.Text
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type Tag struct {

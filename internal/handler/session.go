@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -33,12 +34,11 @@ const (
 	handBoth  = "both"
 )
 
-// Which open field a session item result answers, mirroring the
-// session_item_results_field_check constraint.
-const (
-	itemResultFieldReps   = "reps"
-	itemResultFieldCycles = "cycles"
-)
+// How long a note reported against one pass through a prescribed item may be,
+// mirroring the session_item_results_note_check constraint. Long enough for the
+// paragraph an athlete writes about a hard set, short enough that the column is
+// not a document store.
+const maxItemResultNoteLength = 2000
 
 // activityCount bounds the activity label shared with the app: 0 hangboard,
 // 1 climbing, 2 stretching, 3 workout, 4 other. It mirrors the
@@ -149,9 +149,10 @@ type CreateSessionRequest struct {
 	Duration         int32               `json:"duration"`
 	RepDatas         []RepDataRequest    `json:"rep_datas,omitempty"`
 	Assessments      []AssessmentRequest `json:"assessments,omitempty"`
-	// ItemResults are the counts the run resolved for items the prescription
-	// left open: an AMRAP the athlete measured by doing it, and the rounds an
-	// emom was carried through.
+	// ItemResults is what the athlete reported about the items they were
+	// prescribed: the count an AMRAP turned out to be, the rounds an emom was
+	// carried through, and for any step at all the load, the duration and the
+	// note that nothing else records.
 	ItemResults []SessionItemResultRequest `json:"item_results,omitempty"`
 	// Samples is the force curve the sensor recorded. Accepted on an assessment
 	// only: it is what a critical force or an MVC result means, and on any other
@@ -203,14 +204,37 @@ func encodeSessionSamples(req *CreateSessionRequest) ([]byte, error) {
 	return encoded, nil
 }
 
-// SessionItemResultRequest is one count a run answered an open item with. The
-// item is named by its id in the frozen prescription, and Occurrence tells the
-// passes apart when the item sits inside a block that repeats.
+// SessionItemResultRequest is what the athlete reported about one pass through
+// a prescribed item: whichever of the counts, the load, the duration and the
+// note they had something to say about. The item is named by its id in the
+// frozen prescription, and Occurrence tells the passes apart when the item sits
+// inside a block that repeats.
+//
+// Every reported field is a pointer, so a pass that says nothing about one is
+// told from a pass that reports zero: no reps done is a result, and an absent
+// rep count is not.
 type SessionItemResultRequest struct {
 	TrainingItemID string `json:"training_item_id"`
 	Occurrence     int32  `json:"occurrence"`
-	Field          string `json:"field" enums:"reps,cycles"`
-	Value          int32  `json:"value"`
+	// Reps is how many repetitions the pass did, which an AMRAP has no other
+	// record of.
+	Reps *int32 `json:"reps,omitempty"`
+	// Cycles is how many rounds of a block the pass was carried through before
+	// the athlete dropped out, which an emom has no other record of.
+	Cycles *int32 `json:"cycles,omitempty"`
+	// LoadKg is the load the pass was actually worked at, in kilograms.
+	LoadKg *float32 `json:"load_kg,omitempty"`
+	// DurationSeconds is how long the pass actually held.
+	DurationSeconds *int32 `json:"duration_seconds,omitempty"`
+	// Note is what the athlete wrote about the pass.
+	Note *string `json:"note,omitempty"`
+}
+
+// reported says whether the request carries anything at all, which is what the
+// session_item_results_reported_check constraint refuses a row without.
+func (r SessionItemResultRequest) reported() bool {
+	return r.Reps != nil || r.Cycles != nil || r.LoadKg != nil ||
+		r.DurationSeconds != nil || r.Note != nil
 }
 
 type RepDataRequest struct {
@@ -455,30 +479,49 @@ func repDatasToResponses(rows []db.RepData) []RepDataResponse {
 	return items
 }
 
-// SessionItemResultResponse is a count the run recorded for an item the
-// prescription left open, as the endpoints return it.
+// SessionItemResultResponse is what the athlete reported about one pass through
+// a prescribed item, as the endpoints return it. A field the pass said nothing
+// about is absent rather than zero, so a coach reading it is never shown a
+// number the athlete did not give.
 type SessionItemResultResponse struct {
 	ID        string `json:"id"`
 	SessionID string `json:"session_id"`
 	// TrainingItemID keys into the session prescription items, the same way a
-	// rep does, so the count can be shown against what was asked for.
-	TrainingItemID string `json:"training_item_id"`
-	Occurrence     int32  `json:"occurrence"`
-	Field          string `json:"field" enums:"reps,cycles"`
-	Value          int32  `json:"value"`
-	UpdatedAt      string `json:"updated_at"`
+	// rep does, so what was achieved can be shown against what was asked for.
+	TrainingItemID  string   `json:"training_item_id"`
+	Occurrence      int32    `json:"occurrence"`
+	Reps            *int32   `json:"reps,omitempty"`
+	Cycles          *int32   `json:"cycles,omitempty"`
+	LoadKg          *float32 `json:"load_kg,omitempty"`
+	DurationSeconds *int32   `json:"duration_seconds,omitempty"`
+	Note            *string  `json:"note,omitempty"`
+	UpdatedAt       string   `json:"updated_at"`
 }
 
 func sessionItemResultToResponse(r db.SessionItemResult) SessionItemResultResponse {
-	return SessionItemResultResponse{
+	resp := SessionItemResultResponse{
 		ID:             r.ID.String(),
 		SessionID:      r.SessionID.String(),
 		TrainingItemID: r.TrainingItemID.String(),
 		Occurrence:     r.Occurrence,
-		Field:          r.Field,
-		Value:          r.Value,
 		UpdatedAt:      r.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
+	if r.Reps.Valid {
+		resp.Reps = &r.Reps.Int32
+	}
+	if r.Cycles.Valid {
+		resp.Cycles = &r.Cycles.Int32
+	}
+	if r.LoadKg.Valid {
+		resp.LoadKg = &r.LoadKg.Float32
+	}
+	if r.DurationSeconds.Valid {
+		resp.DurationSeconds = &r.DurationSeconds.Int32
+	}
+	if r.Note.Valid {
+		resp.Note = &r.Note.String
+	}
+	return resp
 }
 
 func sessionItemResultsToResponses(rows []db.SessionItemResult) []SessionItemResultResponse {
@@ -496,8 +539,8 @@ type SessionDetailResponse struct {
 	Session     SessionResponse      `json:"session"`
 	RepDatas    []RepDataResponse    `json:"rep_datas"`
 	Assessments []AssessmentResponse `json:"assessments"`
-	// ItemResults are the counts the run recorded for the items the
-	// prescription left open, empty for a session that had none.
+	// ItemResults is what the athlete reported about the items they were
+	// prescribed, empty for a session they reported nothing on.
 	ItemResults []SessionItemResultResponse `json:"item_results"`
 }
 
@@ -909,39 +952,69 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 	return resolved, -1
 }
 
-// resolveItemResultLinks turns each open-count result into the item id to store
-// against it. It drops a result naming an item the frozen prescription does not
-// hold, for the reason resolveRepItemLinks drops a rep link: the coach can
-// delete an item while the athlete is mid run, and a count keyed to an item
-// nothing can resolve is unreadable anyway, so refusing would trade an
-// unreadable number for a lost session. A malformed id is a client bug rather
-// than a race and still fails the request, as does a second result claiming a
-// field of an item pass that is already answered, which the unique index would
-// otherwise refuse mid transaction. The returned index names the offending
-// returned error names the offending result; kept says which ones to write.
-func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemIDs map[string]struct{}, userID string) (ids []pgtype.UUID, kept []bool, err error) {
-	ids = make([]pgtype.UUID, len(results))
-	kept = make([]bool, len(results))
+// itemResultInsert is one validated result and the prescription item it is
+// stored against, ready for the insert. A result the prescription does not hold
+// never reaches this slice, which is what replaces a "keep this one" flag
+// running alongside the request.
+type itemResultInsert struct {
+	request SessionItemResultRequest
+	itemID  pgtype.UUID
+}
+
+// resolveItemResults validates what the athlete reported against the items of
+// the frozen prescription and returns the rows to write. It drops a result
+// naming an item the prescription does not hold, for the reason
+// resolveRepItemLinks drops a rep link: the coach can delete an item while the
+// athlete is mid run, and a report keyed to an item nothing can resolve is
+// unreadable anyway, so refusing would trade an unreadable line for a lost
+// session. It also drops a result that reports nothing once its note is
+// trimmed, which is an athlete who opened a field and typed nothing in it
+// rather than an error worth losing the session over.
+//
+// A malformed id, a negative number, an overlong note and a second result
+// claiming a pass another one already answered all fail the request: each is a
+// client bug rather than a race, and the last would otherwise be the unique
+// index failing mid transaction. The returned error names the offending result.
+func resolveItemResults(results []SessionItemResultRequest, prescribedItemIDs map[string]struct{}, userID string) ([]itemResultInsert, error) {
+	inserts := make([]itemResultInsert, 0, len(results))
 	seen := map[string]struct{}{}
 	for i, r := range results {
-		switch r.Field {
-		case itemResultFieldReps, itemResultFieldCycles:
-		default:
-			return nil, nil, fmt.Errorf("item result %d: field must be %s or %s", i, itemResultFieldReps, itemResultFieldCycles)
-		}
-		if r.Value < 0 {
-			return nil, nil, fmt.Errorf("item result %d: value must be zero or more", i)
-		}
 		if r.Occurrence < 0 {
-			return nil, nil, fmt.Errorf("item result %d: occurrence must be zero or more", i)
+			return nil, fmt.Errorf("item result %d: occurrence must be zero or more", i)
+		}
+		if r.Reps != nil && *r.Reps < 0 {
+			return nil, fmt.Errorf("item result %d: reps must be zero or more", i)
+		}
+		if r.Cycles != nil && *r.Cycles < 0 {
+			return nil, fmt.Errorf("item result %d: cycles must be zero or more", i)
+		}
+		if r.LoadKg != nil && *r.LoadKg < 0 {
+			return nil, fmt.Errorf("item result %d: load must be zero or more", i)
+		}
+		if r.DurationSeconds != nil && *r.DurationSeconds < 0 {
+			return nil, fmt.Errorf("item result %d: duration must be zero or more", i)
+		}
+		if r.Note != nil {
+			trimmed := strings.TrimSpace(*r.Note)
+			if len(trimmed) > maxItemResultNoteLength {
+				return nil, fmt.Errorf("item result %d: note must be at most %d characters", i, maxItemResultNoteLength)
+			}
+			if trimmed == "" {
+				r.Note = nil
+			} else {
+				r.Note = &trimmed
+			}
 		}
 		var itemID pgtype.UUID
 		if scanErr := itemID.Scan(r.TrainingItemID); scanErr != nil {
-			return nil, nil, fmt.Errorf("item result %d: invalid training item ID", i)
+			return nil, fmt.Errorf("item result %d: invalid training item ID", i)
 		}
-		key := fmt.Sprintf("%s/%d/%s", itemID.String(), r.Occurrence, r.Field)
+		if !r.reported() {
+			continue
+		}
+		key := fmt.Sprintf("%s/%d", itemID.String(), r.Occurrence)
 		if _, dup := seen[key]; dup {
-			return nil, nil, fmt.Errorf("item result %d: %s is already answered for pass %d of this item", i, r.Field, r.Occurrence)
+			return nil, fmt.Errorf("item result %d: pass %d of this item is already answered", i, r.Occurrence)
 		}
 		seen[key] = struct{}{}
 		if _, ok := prescribedItemIDs[itemID.String()]; !ok {
@@ -949,10 +1022,38 @@ func resolveItemResultLinks(results []SessionItemResultRequest, prescribedItemID
 				"user_id", userID, "result_index", i, "training_item_id", itemID.String())
 			continue
 		}
-		ids[i] = itemID
-		kept[i] = true
+		inserts = append(inserts, itemResultInsert{request: r, itemID: itemID})
 	}
-	return ids, kept, nil
+	return inserts, nil
+}
+
+// itemResultParams turns a validated result into the row it is stored as, with
+// every field the athlete said nothing about left invalid, which is the NULL
+// the column takes.
+func itemResultParams(insert itemResultInsert, sessionID, userID pgtype.UUID) db.CreateSessionItemResultParams {
+	r := insert.request
+	params := db.CreateSessionItemResultParams{
+		SessionID:      sessionID,
+		UserID:         userID,
+		TrainingItemID: insert.itemID,
+		Occurrence:     r.Occurrence,
+	}
+	if r.Reps != nil {
+		params.Reps = pgtype.Int4{Int32: *r.Reps, Valid: true}
+	}
+	if r.Cycles != nil {
+		params.Cycles = pgtype.Int4{Int32: *r.Cycles, Valid: true}
+	}
+	if r.LoadKg != nil {
+		params.LoadKg = pgtype.Float4{Float32: *r.LoadKg, Valid: true}
+	}
+	if r.DurationSeconds != nil {
+		params.DurationSeconds = pgtype.Int4{Int32: *r.DurationSeconds, Valid: true}
+	}
+	if r.Note != nil {
+		params.Note = pgtype.Text{String: *r.Note, Valid: true}
+	}
+	return params
 }
 
 // firstInvalidRepHand names the first rep carrying a hand the schema will not
@@ -1038,7 +1139,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, the counts it resolved for items the prescription left open: the reps an AMRAP turned out to be, and the rounds an emom was carried through. Each names one of the prescribed items, an occurrence telling repeated passes apart, and the field it answers.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1164,7 +1265,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		})
 	}
 
-	itemResultIDs, keepItemResult, itemResultErr := resolveItemResultLinks(req.ItemResults, prescribedItemIDs, userID)
+	itemResultInserts, itemResultErr := resolveItemResults(req.ItemResults, prescribedItemIDs, userID)
 	if itemResultErr != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": itemResultErr.Error()})
 	}
@@ -1233,18 +1334,8 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		}
 	}
 
-	for i, r := range req.ItemResults {
-		if !keepItemResult[i] {
-			continue
-		}
-		_, err = qtx.CreateSessionItemResult(c.Context(), db.CreateSessionItemResultParams{
-			SessionID:      session.ID,
-			UserID:         userUUID,
-			TrainingItemID: itemResultIDs[i],
-			Occurrence:     r.Occurrence,
-			Field:          r.Field,
-			Value:          r.Value,
-		})
+	for _, insert := range itemResultInserts {
+		_, err = qtx.CreateSessionItemResult(c.Context(), itemResultParams(insert, session.ID, userUUID))
 		if err != nil {
 			slog.Error("failed to create session item result", "user_id", userID, "session_id", session.ID, "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create item result"})
