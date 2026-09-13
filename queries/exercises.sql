@@ -40,3 +40,11 @@ WHERE coach_id = @coach_id
   AND (array_length(@tag_ids::uuid[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM exercise_tags WHERE exercise_id = exercises.id AND tag_id = ANY(@tag_ids::uuid[])
   ));
+
+-- Counts how many of @ids the owner actually holds, so a training that
+-- references an exercise can be refused before it stores a reference to
+-- somebody else's. A missing id counts the same as an unowned one: both mean
+-- the caller cannot name it.
+-- name: CountExercisesOwnedBy :one
+SELECT COUNT(*) FROM exercises
+WHERE id = ANY(@ids::uuid[]) AND coach_id = @coach_id;
