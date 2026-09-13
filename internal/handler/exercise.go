@@ -160,7 +160,9 @@ func (h *ExerciseHandler) CreateExercise(c fiber.Ctx) error {
 	if req.VideoLink != nil {
 		link, err := normalizeVideoLink(*req.VideoLink)
 		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+			// The sentinel rather than err, so the message stays the fixed one
+			// even if the validation grows a wrapped parser error later.
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": errInvalidVideoLink.Error()})
 		}
 		params.VideoLink = pgtype.Text{String: link, Valid: true}
 	}
@@ -347,7 +349,9 @@ func (h *ExerciseHandler) UpdateExercise(c fiber.Ctx) error {
 	if req.VideoLink != nil {
 		link, err := normalizeVideoLink(*req.VideoLink)
 		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+			// The sentinel rather than err, so the message stays the fixed one
+			// even if the validation grows a wrapped parser error later.
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": errInvalidVideoLink.Error()})
 		}
 		params.VideoLink = pgtype.Text{String: link, Valid: true}
 	}

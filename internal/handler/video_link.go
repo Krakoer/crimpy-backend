@@ -25,24 +25,40 @@ var hostAndPort = regexp.MustCompile(
 	`^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?` +
 		`(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*` +
 		`\.[A-Za-z]{2,}` +
-		`|(?:\d{1,3}\.){3}\d{1,3})(?::\d{1,5})?$`)
+		`|(?:` + octet + `\.){3}` + octet +
+		`)(?::\d{1,5})?$`)
 
-// blank reports whether r is whitespace or an invisible the clients treat as
-// one. crimpy-app and crimpy-frontend both test with \s, which covers a
-// non-breaking space; a value they refuse to render must not be one this
-// accepts, or the same stored link works on one surface and is inert on the
-// other with nothing said anywhere.
-func blank(r rune) bool {
-	return unicode.IsSpace(r) ||
+// octet is 0 to 255. The clients' regexes accept any one to three digits, and a
+// value like 192.168.1.300 then divides them: the portal's URL constructor
+// refuses it and renders nothing, while the app hands it to a browser that
+// cannot resolve it. Refusing it here closes that without having to agree with
+// two other languages, because nothing reaches them that this did not store.
+const octet = `(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)`
+
+// unusable reports whether r must not appear in a stored link.
+//
+// Control bytes first, tested here on the raw string rather than left to
+// url.Parse: that only rejects them outside the fragment, so a NUL after a "#"
+// reached the insert and Postgres answered SQLSTATE 22021, turning a bad payload
+// into a 500.
+//
+// Then whitespace and the invisibles the clients treat as whitespace.
+// crimpy-app and crimpy-frontend both test with \s, which covers a non-breaking
+// space; a value they refuse to render must not be one this accepts, or the same
+// stored link works on one surface and is inert on the other with nothing said
+// anywhere.
+func unusable(r rune) bool {
+	return r < 0x20 || r == 0x7f ||
+		unicode.IsSpace(r) ||
 		r == '\ufeff' || // byte order mark
 		r == '\u200b' || // zero width space
 		r == '\u2060' // word joiner
 }
 
-// addressable reports whether s is a url a client can actually be handed. It is
-// what stops a value this function accepts from being one the database or a
-// browser then refuses: url.Parse rejects control bytes, and a port outside the
-// range throws in the URL constructors the clients use.
+// addressable reports whether s is a url a client can actually be handed: it
+// parses, it names a host, and its port is one a browser will accept. Control
+// bytes are not its job, since url.Parse lets them through in a fragment; they
+// are refused by unusable before this runs.
 func addressable(s string) bool {
 	parsed, err := url.Parse(s)
 	if err != nil || parsed.Host == "" || parsed.Hostname() == "" {
@@ -70,9 +86,9 @@ func normalizeVideoLink(raw string) (string, error) {
 	if trimmed == "" {
 		return "", nil
 	}
-	// An address has no whitespace in it. A sentence does, and url.Parse would
-	// take one rather than refuse it.
-	if strings.IndexFunc(trimmed, blank) >= 0 {
+	// An address has no whitespace and no control byte in it. A sentence has the
+	// first, and url.Parse would take one rather than refuse it.
+	if strings.IndexFunc(trimmed, unusable) >= 0 {
 		return "", errInvalidVideoLink
 	}
 

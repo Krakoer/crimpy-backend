@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func setupExerciseLinkApp(t *testing.T, prefix string) (app *fiber.App, pool *pgxpool.Pool, coachToken string) {
+func setupExerciseLinkApp(t *testing.T, prefix string) (app *fiber.App, coachToken string) {
 	t.Helper()
 	pool, queries := testutil.SetupTestDB(t)
 	t.Cleanup(func() { testutil.CleanupTestDB(t, pool) })
@@ -20,7 +19,7 @@ func setupExerciseLinkApp(t *testing.T, prefix string) (app *fiber.App, pool *pg
 	app = testutil.SetupFiberApp(testutil.HandlerConfig{
 		ExerciseHandler: handler.NewExerciseHandler(queries, pool),
 	})
-	return app, pool, coachToken
+	return app, coachToken
 }
 
 // postExerciseLink creates an exercise with the given video_link and answers the
@@ -46,7 +45,7 @@ func postExerciseLink(t *testing.T, app *fiber.App, token, link string) (int, st
 // took that athlete over. A javascript: url stored here would run in theirs.
 func TestExerciseHandler_RefusesANonHttpVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink1")
+	app, coachToken := setupExerciseLinkApp(t, "exlink1")
 
 	for _, link := range []string{
 		"javascript:alert(document.cookie)",
@@ -67,7 +66,7 @@ func TestExerciseHandler_RefusesANonHttpVideoLink(t *testing.T) {
 
 func TestExerciseHandler_RefusesProseInTheVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink2")
+	app, coachToken := setupExerciseLinkApp(t, "exlink2")
 
 	// A sentence with a full stop in it is still a sentence: without the
 	// whitespace test it would be stored as a host that resolves to nothing.
@@ -85,7 +84,7 @@ func TestExerciseHandler_RefusesProseInTheVideoLink(t *testing.T) {
 
 func TestExerciseHandler_StoresAnHttpVideoLinkAsTyped(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink3")
+	app, coachToken := setupExerciseLinkApp(t, "exlink3")
 
 	for _, link := range []string{
 		"https://example.com/pull-up",
@@ -106,7 +105,7 @@ func TestExerciseHandler_StoresAnHttpVideoLinkAsTyped(t *testing.T) {
 // field keeps working, and normalized here so every client reads one form.
 func TestExerciseHandler_NormalizesASchemeLessVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink4")
+	app, coachToken := setupExerciseLinkApp(t, "exlink4")
 
 	cases := map[string]string{
 		"www.youtube.com/watch?v=abc": "https://www.youtube.com/watch?v=abc",
@@ -127,7 +126,7 @@ func TestExerciseHandler_NormalizesASchemeLessVideoLink(t *testing.T) {
 // Clearing the field is not the same as typing something invalid into it.
 func TestExerciseHandler_TakesAnEmptyVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink5")
+	app, coachToken := setupExerciseLinkApp(t, "exlink5")
 
 	for _, link := range []string{"", "   "} {
 		status, stored := postExerciseLink(t, app, coachToken, link)
@@ -142,7 +141,7 @@ func TestExerciseHandler_TakesAnEmptyVideoLink(t *testing.T) {
 
 func TestExerciseHandler_UpdateValidatesTheVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink6")
+	app, coachToken := setupExerciseLinkApp(t, "exlink6")
 
 	body, _ := json.Marshal(map[string]interface{}{"name": "Pull up", "video_link": "https://example.com/pull-up"})
 	created, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/coach/exercises", body, coachToken))
@@ -179,7 +178,7 @@ func TestExerciseHandler_UpdateValidatesTheVideoLink(t *testing.T) {
 // fail at the insert, so the coach got a 500 for a payload problem.
 func TestExerciseHandler_RefusesAnUnstorableVideoLink(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink7")
+	app, coachToken := setupExerciseLinkApp(t, "exlink7")
 
 	for name, link := range map[string]string{
 		"nul byte, no scheme":   "example.com/a\x00b",
@@ -187,6 +186,12 @@ func TestExerciseHandler_RefusesAnUnstorableVideoLink(t *testing.T) {
 		"vertical tab":          "example.com/a\vb",
 		"form feed":             "example.com/a\fb",
 		"port out of range":     "example.com:99999/v",
+		// url.Parse cuts the fragment off before its own control byte check, so
+		// these reached the insert and came back as a 500 for a bad payload.
+		"nul in fragment, no scheme":   "example.com/v#a\x00b",
+		"nul in fragment, with scheme": "https://example.com/v#a\x00b",
+		"delete in fragment":           "https://example.com/v#a\x7fb",
+		"unit separator in query":      "example.com/v?q=a\x1fb",
 	} {
 		status, _ := postExerciseLink(t, app, coachToken, link)
 		if status != fiber.StatusBadRequest {
@@ -200,7 +205,7 @@ func TestExerciseHandler_RefusesAnUnstorableVideoLink(t *testing.T) {
 // one surface and nothing at all on the other, with no error shown anywhere.
 func TestExerciseHandler_RefusesTheWhitespaceTheClientsRefuse(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	app, _, coachToken := setupExerciseLinkApp(t, "exlink8")
+	app, coachToken := setupExerciseLinkApp(t, "exlink8")
 
 	for name, link := range map[string]string{
 		"non breaking space": "www.youtube.com/watch?v=dQw4w9\u00a0WgXcQ",
@@ -213,5 +218,32 @@ func TestExerciseHandler_RefusesTheWhitespaceTheClientsRefuse(t *testing.T) {
 		if status != fiber.StatusBadRequest {
 			t.Errorf("Expected 400 for a %s, got %d", name, status)
 		}
+	}
+}
+
+// An octet above 255 is not an address the clients agree on: the portal's URL
+// constructor refuses it and renders nothing, while the app hands it to a
+// browser that cannot resolve it. The backend decides what is stored, so
+// refusing it here is what keeps the two from diverging.
+func TestExerciseHandler_RefusesAnOutOfRangeIPv4(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken := setupExerciseLinkApp(t, "exlink9")
+
+	for _, link := range []string{
+		"192.168.1.300/demo.mp4",
+		"999.1.1.1/demo.mp4",
+		"192.168.1.256:8080/v",
+	} {
+		status, _ := postExerciseLink(t, app, coachToken, link)
+		if status != fiber.StatusBadRequest {
+			t.Errorf("Expected 400 for %q, got %d", link, status)
+		}
+	}
+
+	// The supported form still works, so the range check did not take the
+	// legitimate case with it.
+	status, stored := postExerciseLink(t, app, coachToken, "192.168.1.5:8080/demo.mp4")
+	if status != fiber.StatusCreated || stored != "https://192.168.1.5:8080/demo.mp4" {
+		t.Errorf("Expected the in-range address to be stored, got %d %q", status, stored)
 	}
 }
