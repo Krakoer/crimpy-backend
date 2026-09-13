@@ -33,6 +33,27 @@ func (q *Queries) CountCoachExercises(ctx context.Context, arg CountCoachExercis
 	return count, err
 }
 
+const countExercisesOwnedBy = `-- name: CountExercisesOwnedBy :one
+SELECT COUNT(*) FROM exercises
+WHERE id = ANY($1::uuid[]) AND coach_id = $2
+`
+
+type CountExercisesOwnedByParams struct {
+	Ids     []pgtype.UUID
+	CoachID pgtype.UUID
+}
+
+// Counts how many of @ids the owner actually holds, so a training that
+// references an exercise can be refused before it stores a reference to
+// somebody else's. A missing id counts the same as an unowned one: both mean
+// the caller cannot name it.
+func (q *Queries) CountExercisesOwnedBy(ctx context.Context, arg CountExercisesOwnedByParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countExercisesOwnedBy, arg.Ids, arg.CoachID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createExercise = `-- name: CreateExercise :one
 INSERT INTO exercises (coach_id, name, description, comment, video_link)
 VALUES ($1, $2, $3, $4, $5)
