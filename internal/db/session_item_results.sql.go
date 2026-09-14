@@ -25,7 +25,7 @@ RETURNING id, session_id, user_id, training_item_id, occurrence, reps, cycles, l
 type CreateSessionItemResultParams struct {
 	SessionID       pgtype.UUID
 	UserID          pgtype.UUID
-	TrainingItemID  pgtype.UUID
+	TrainingItemID  string
 	Occurrence      int32
 	Reps            pgtype.Int4
 	Cycles          pgtype.Int4

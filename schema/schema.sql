@@ -159,7 +159,11 @@ CREATE TABLE "rep_datas" (
   -- into the still editable "training_items" row. A reference would have to null
   -- itself when the coach deletes the item, losing the grouping the snapshot can
   -- still describe.
-  "training_item_id" UUID,
+  --
+  -- Text rather than a uuid because a snapshot names its own items: one frozen
+  -- from a training carries the row ids it was resolved with, while one a client
+  -- sent for a run of nothing it owns carries the keys that client generated.
+  "training_item_id" TEXT,
   -- Whether the step prescribed a load nothing measured, which is a sensor that
   -- dropped while a hang it was meant to read was running. Such a rep stores no
   -- target, exactly as a step nothing was ever going to measure does (a both
@@ -170,7 +174,11 @@ CREATE TABLE "rep_datas" (
   "target_unmeasured" BOOLEAN NOT NULL DEFAULT FALSE,
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
-  CONSTRAINT "rep_datas_hand_check" CHECK (hand IN ('left', 'right', 'both'))
+  CONSTRAINT "rep_datas_hand_check" CHECK (hand IN ('left', 'right', 'both')),
+  CONSTRAINT "rep_datas_item_check" CHECK (
+    training_item_id IS NULL
+    OR (training_item_id <> '' AND char_length(training_item_id) <= 200)
+  )
 );
 
 -- Stores the IDs of pinned builtin trainings
@@ -420,11 +428,11 @@ CREATE TABLE "session_item_results" (
   "session_id"       UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
   "user_id"          UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
   -- Which item of the prescription the row answers. Deliberately not a
-  -- foreign key, for the reason "rep_datas"."training_item_id" is not one
-  -- either: it points into the session frozen prescription snapshot, which
-  -- keeps the item ids it was resolved with, not into the still editable
-  -- "training_items" row.
-  "training_item_id" UUID        NOT NULL,
+  -- foreign key, and text rather than a uuid, for the reasons
+  -- "rep_datas"."training_item_id" is neither: it points into the session
+  -- frozen prescription snapshot, which names its own items, not into the still
+  -- editable "training_items" row.
+  "training_item_id" TEXT        NOT NULL,
   "occurrence"       INTEGER     NOT NULL DEFAULT 0,
   -- How many repetitions the pass actually did, which an AMRAP has no other
   -- record of.
@@ -453,6 +461,9 @@ CREATE TABLE "session_item_results" (
     OR duration_seconds IS NOT NULL OR note IS NOT NULL
   ),
   CONSTRAINT "session_item_results_occurrence_check" CHECK (occurrence >= 0),
+  CONSTRAINT "session_item_results_item_check" CHECK (
+    training_item_id <> '' AND char_length(training_item_id) <= 200
+  ),
   CONSTRAINT "session_item_results_unique" UNIQUE ("session_id", "training_item_id", "occurrence")
 );
 
