@@ -253,6 +253,80 @@ func TestClientPrescription_RefusesAnItemIDTheColumnCannotHold(t *testing.T) {
 	}
 }
 
+// A client that prescribed nothing may still spell the field. Every other
+// optional link in this handler reads a null as absent, and reading this one as
+// a prescription would lose an ordinary session upload.
+func TestClientPrescription_TreatsAnExplicitNullAsAbsent(t *testing.T) {
+	app, token := openItemsApp(t, "clientpres12@test.com")
+	trainingID, _, _ := createOpenTraining(t, app, token)
+
+	resp := postGeneratedSession(t, app, token, map[string]interface{}{
+		"training_id":  trainingID,
+		"prescription": nil,
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected a null prescription to be ignored, got %d", resp.StatusCode)
+	}
+
+	plain := postGeneratedSession(t, app, token, map[string]interface{}{
+		"prescription": nil,
+	})
+	if plain.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected a null prescription with no training to be ignored, got %d", plain.StatusCode)
+	}
+}
+
+// Two items under one name is the collision the blank id check prevents, spelled
+// out: reporting both reads as a second answer to one pass and fails the whole
+// request, so the run would be lost rather than the second report.
+func TestClientPrescription_RefusesTheSameItemTwice(t *testing.T) {
+	app, token := openItemsApp(t, "clientpres13@test.com")
+
+	resp := postGeneratedSession(t, app, token, map[string]interface{}{
+		"prescription": generatedPrescription("builtin:max-hangs:0", "builtin:max-hangs:0"),
+	})
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for a repeated item id, got %d", resp.StatusCode)
+	}
+}
+
+// jsonb takes no NUL. Letting one through turns a client bug into a 500 the
+// client can never correct by retrying, and an Error log line per attempt.
+func TestClientPrescription_RefusesWhatTheStoreCannotKeep(t *testing.T) {
+	app, token := openItemsApp(t, "clientpres14@test.com")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"name": "Max hangs", "notes": "", "activity": 3,
+		"origin": "played", "duration": 600,
+		"prescription": json.RawMessage(
+			`{"title":"x\u0000y","items":[{"id":"builtin:max-hangs:0","type":"repeater","position":0}]}`,
+		),
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+	if err != nil {
+		t.Fatalf("Failed to play session: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for a prescription the store cannot keep, got %d", resp.StatusCode)
+	}
+}
+
+// An id the column would hold is not refused for being written in accented
+// text, which counting bytes rather than characters would do.
+func TestClientPrescription_CountsAnItemIDInCharacters(t *testing.T) {
+	app, token := openItemsApp(t, "clientpres15@test.com")
+
+	resp := postGeneratedSession(t, app, token, map[string]interface{}{
+		"prescription": generatedPrescription(strings.Repeat("\u00e9", 120)),
+	})
+
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected a 120 character id to be accepted, got %d", resp.StatusCode)
+	}
+}
+
 func TestClientPrescription_RefusesAPrescriptionWithNoItems(t *testing.T) {
 	app, token := openItemsApp(t, "clientpres9@test.com")
 

@@ -67,8 +67,13 @@ CREATE TABLE "sessions" (
   -- The prescription resolved at create time: the training as it read then,
   -- with the program session overrides already merged into its items. The
   -- template it was resolved from stays editable, so only this snapshot still
-  -- describes what the athlete was actually asked to do. Null exactly when the
-  -- session was not run from a training, see the check below.
+  -- describes what the athlete was actually asked to do.
+  --
+  -- Also set, with no "training_id" beside it, on a run of a training the
+  -- server cannot read: one the client generates on the device and hands over
+  -- with the session. So this is not null exactly when the session answers a
+  -- prescription, which is weaker than naming a training; the check below is
+  -- the implication that still holds.
   "prescription"        JSONB,
   -- The force curve the sensor recorded, on an assessment session only: the
   -- samples are what a critical force or an MVC result means, while on an

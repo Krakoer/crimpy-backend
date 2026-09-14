@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
@@ -187,6 +188,12 @@ func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error
 	if len(raw) > maxClientPrescriptionBytes {
 		return nil, nil, errors.New("Prescription is too large")
 	}
+	// jsonb takes no NUL, and the column would refuse this after the session
+	// row is already being written, which turns a client bug into a 500 the
+	// client can never correct by retrying.
+	if bytes.Contains(raw, []byte(`\u0000`)) {
+		return nil, nil, errors.New("Prescription holds a character the store cannot keep")
+	}
 	var snapshot PrescriptionSnapshot
 	if err := json.Unmarshal(raw, &snapshot); err != nil {
 		return nil, nil, errors.New("Invalid prescription")
@@ -195,23 +202,46 @@ func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error
 		return nil, nil, errors.New("Prescription prescribes no items")
 	}
 	ids := map[string]struct{}{}
-	collectItemIDs(snapshot.Items, ids)
-	// A step the athlete cannot be asked about is a step a report could only
-	// name by guessing, and a blank id would let every unnamed step collide on
-	// one row of session_item_results.
-	if _, unnamed := ids[""]; unnamed {
-		return nil, nil, errors.New("Prescription holds an item with no id")
-	}
-	for id := range ids {
-		if len(id) > maxItemIDLength {
-			return nil, nil, errors.New("Prescription holds an item id that is too long")
-		}
+	if err := collectPrescribedItemIDs(snapshot.Items, ids); err != nil {
+		return nil, nil, err
 	}
 	return raw, ids, nil
 }
 
-// maxItemIDLength matches the check on both link columns, so an id the database
-// would refuse is turned away with a message rather than a failed insert.
+// collectPrescribedItemIDs gathers the id of every item of a client's
+// prescription, nested ones included, refusing the ones that would cost the
+// session later rather than the report they name.
+//
+// A blank id would let every unnamed step collide on one row of
+// session_item_results. A repeated one is the same collision spelled out: the
+// second report of it reads as a second answer to a pass already answered,
+// which fails the whole request, so a prescription whose only outcome is that
+// 400 is turned away while nothing has been written.
+func collectPrescribedItemIDs(items []TrainingItemResponse, ids map[string]struct{}) error {
+	for _, item := range items {
+		if item.ID == "" {
+			return errors.New("Prescription holds an item with no id")
+		}
+		// Counted in characters rather than bytes, the way the char_length
+		// constraint counts it, so a key written in accented text is not cut
+		// short of one written in ASCII.
+		if utf8.RuneCountInString(item.ID) > maxItemIDLength {
+			return errors.New("Prescription holds an item id that is too long")
+		}
+		if _, repeated := ids[item.ID]; repeated {
+			return errors.New("Prescription names the same item twice")
+		}
+		ids[item.ID] = struct{}{}
+		if err := collectPrescribedItemIDs(item.Items, ids); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// maxItemIDLength matches the check on both link columns, counted the same way
+// the database counts it, so an id it would refuse is turned away with a
+// message rather than a failed insert.
 const maxItemIDLength = 200
 
 // SessionSamplesRequest is a force curve as the app records it: one start
@@ -352,9 +382,11 @@ type SessionResponse struct {
 	TrainingID       *string `json:"training_id,omitempty"`
 	ProgramSessionID *string `json:"program_session_id,omitempty"`
 	// Prescription is what the athlete was asked to do, frozen when the session
-	// was created. Absent on a session run from nothing. The list endpoints
-	// leave it out, since it is a whole training per row and only the detail
-	// screen reads it.
+	// was created: from the training or the program slot the session names, or
+	// from the copy the client sent for a run of a training the server cannot
+	// read. Absent only on a session that answers no prescription at all. The
+	// list endpoints leave it out, since it is a whole training per row and only
+	// the detail screen reads it.
 	Prescription json.RawMessage `json:"prescription,omitempty" swaggertype:"object"`
 	// Samples is the force curve the sensor recorded, carried on an assessment
 	// session only. Absent everywhere else, and left out by the list endpoints
@@ -1008,7 +1040,7 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 			continue
 		}
 		itemID := *rd.TrainingItemID
-		if itemID == "" || len(itemID) > maxItemIDLength {
+		if itemID == "" || utf8.RuneCountInString(itemID) > maxItemIDLength {
 			return nil, i
 		}
 		if _, ok := prescribedItemIDs[itemID]; !ok {
@@ -1082,7 +1114,7 @@ func resolveItemResults(results []SessionItemResultRequest, prescribedItemIDs ma
 			}
 		}
 		itemID := r.TrainingItemID
-		if itemID == "" || len(itemID) > maxItemIDLength {
+		if itemID == "" || utf8.RuneCountInString(itemID) > maxItemIDLength {
 			return nil, fmt.Errorf("item result %d: invalid training item ID", i)
 		}
 		if !r.reported() {
@@ -1219,7 +1251,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1320,15 +1352,27 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		programSession = &ps
 	}
 
+	// A client that prescribed nothing may still spell the field, and every
+	// other optional link in this handler reads a null as absent rather than
+	// failing to parse over it.
+	sentPrescription := req.Prescription
+	if bytes.Equal(bytes.TrimSpace(sentPrescription), []byte("null")) {
+		sentPrescription = nil
+	}
+
 	var prescription []byte
 	prescribedItemIDs := map[string]struct{}{}
 	switch {
 	case trainingID.Valid:
 		// The server can read the training, so it writes the snapshot itself and
 		// a client copy would only be a second opinion about what was prescribed.
-		if len(req.Prescription) > 0 {
+		if len(sentPrescription) > 0 {
+			named := "a training"
+			if programSession != nil {
+				named = "a program session"
+			}
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "Prescription is not accepted on a session that names a training",
+				"error": fmt.Sprintf("Prescription is not accepted on a session that names %s", named),
 			})
 		}
 		snapshot, err := buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
@@ -1342,9 +1386,9 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 		}
 		collectItemIDs(snapshot.Items, prescribedItemIDs)
-	case len(req.Prescription) > 0:
+	case len(sentPrescription) > 0:
 		var err error
-		prescription, prescribedItemIDs, err = clientPrescription(req.Prescription)
+		prescription, prescribedItemIDs, err = clientPrescription(sentPrescription)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 		}
