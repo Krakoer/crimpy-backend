@@ -186,6 +186,34 @@ func TestSessionItemResults_OmitsFieldsTheAthleteLeftAlone(t *testing.T) {
 	}
 }
 
+// The other half of the same invariant, and the reason every reported field is
+// a pointer: a set the athlete failed outright is a result, and it has to read
+// back as the zero they reported rather than as a field they never answered.
+// Storing these as plain integers would collapse the two and the suite would
+// stay green, so the zero is asserted present as well as correct.
+func TestSessionItemResults_KeepsAReportedZero(t *testing.T) {
+	app, token := openItemsApp(t, "itemres9@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 0, "note": "could not do a single one today"},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	stored := sessionItemResults(t, app, token, session["id"].(string))[0].(map[string]interface{})
+	reps, present := stored["reps"]
+	if !present {
+		t.Fatalf("Expected a reported zero to be carried back, got %v", stored)
+	}
+	if reps != float64(0) {
+		t.Errorf("Expected the reported zero to read back as 0, got %v", reps)
+	}
+}
+
 // An athlete who opens a note field and types nothing in it reports nothing,
 // which is a blank row rather than an error worth losing the session over.
 func TestSessionItemResults_DropsAReportThatSaysNothing(t *testing.T) {
