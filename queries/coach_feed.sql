@@ -86,7 +86,20 @@ SELECT
   s.name       AS session_name,
   s.date       AS session_date,
   s.activity   AS activity,
-  s.notes      AS notes
+  -- The athlete's first written line, wherever they wrote it. A session raised
+  -- by an item note alone carries an empty "notes", and the row is a preview
+  -- the coach clicks through, so handing them a blank line would list the
+  -- session and say nothing about why.
+  COALESCE(
+    NULLIF(s.notes, ''),
+    (
+      SELECT r.note FROM session_item_results r
+      WHERE r.session_id = s.id AND r.note IS NOT NULL
+      ORDER BY r.occurrence, r.training_item_id
+      LIMIT 1
+    ),
+    ''
+  )::text AS notes
 FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 JOIN users u ON u.id = s.user_id

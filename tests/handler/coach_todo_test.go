@@ -420,8 +420,15 @@ func TestCoachTodo_ListsASessionAnnotatedOnlyOnItsItems(t *testing.T) {
 	if len(pending) != 1 {
 		t.Fatalf("Expected the session annotated on its items alone, got %v", pending)
 	}
-	if pending[0].(map[string]interface{})["session_name"] != "Annotated per exercise" {
-		t.Errorf("Expected the annotated session, got %v", pending[0])
+	item := pending[0].(map[string]interface{})
+	if item["session_name"] != "Annotated per exercise" {
+		t.Errorf("Expected the annotated session, got %v", item)
+	}
+	// The row is a preview the coach clicks through, so it carries the line the
+	// athlete wrote even though they wrote it against an item rather than the
+	// session. Without this the entry lists a session and says nothing.
+	if item["notes"] != "failed at 8 reps on the last set but no pain" {
+		t.Errorf("Expected the item note to stand in as the preview, got %v", item["notes"])
 	}
 	// The badge counts what the list holds, or the two disagree about what is
 	// waiting.
@@ -452,6 +459,12 @@ func TestCoachTodo_LeavesOutASessionReportingOnlyNumbers(t *testing.T) {
 	todo := getTodo(t, app, coachToken)
 	if pending := todo["pending_feedback"].([]interface{}); len(pending) != 0 {
 		t.Fatalf("Expected a session with numbers and no note to wait on nothing, got %v", pending)
+	}
+	// Asserted on the badge too: the list and the count run off two predicates
+	// written out separately, and widening one without the other is exactly the
+	// drift that would otherwise pass the suite.
+	if todo["pending_feedback_total"].(float64) != 0 {
+		t.Errorf("Expected the badge to agree with the empty list, got %v", todo["pending_feedback_total"])
 	}
 }
 
