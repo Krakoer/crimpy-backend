@@ -3,6 +3,7 @@ package handler_test
 import (
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -291,25 +292,38 @@ func TestClientPrescription_RefusesTheSameItemTwice(t *testing.T) {
 	}
 }
 
-// jsonb takes no NUL. Letting one through turns a client bug into a 500 the
-// client can never correct by retrying, and an Error log line per attempt.
+// Go accepts JSON that jsonb refuses, and the prescription is the one body on a
+// session the server does not encode itself. Letting one through turns a client
+// bug into a 500 the client can only repeat, and an Error log line per attempt.
+//
+// Round 2 of the review found the first shape of this check, a scan for the NUL
+// escape, covering one of these three: the modelled numeric fields are raw
+// JSON, so nothing parses a number inside them.
 func TestClientPrescription_RefusesWhatTheStoreCannotKeep(t *testing.T) {
-	app, token := openItemsApp(t, "clientpres14@test.com")
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"name": "Max hangs", "notes": "", "activity": 3,
-		"origin": "played", "duration": 600,
-		"prescription": json.RawMessage(
-			`{"title":"x\u0000y","items":[{"id":"builtin:max-hangs:0","type":"repeater","position":0}]}`,
-		),
-	})
-	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
-	if err != nil {
-		t.Fatalf("Failed to play session: %v", err)
+	cases := map[string]string{
+		"a NUL escape":             `{"title":"x\u0000y","items":[{"id":"s-1","type":"repeater","position":0}]}`,
+		"an unpaired surrogate":    `{"items":[{"id":"s-1","type":"repeater","position":0,"free_text":"\ud83d"}]}`,
+		"a number no column holds": `{"items":[{"id":"s-1","type":"repeater","position":0,"loads":[1e1000000]}]}`,
 	}
-
-	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected 400 for a prescription the store cannot keep, got %d", resp.StatusCode)
+	index := 0
+	for name, prescription := range cases {
+		index++
+		email := fmt.Sprintf("clientpresbad%d@test.com", index)
+		t.Run(name, func(t *testing.T) {
+			app, token := openItemsApp(t, email)
+			body, _ := json.Marshal(map[string]interface{}{
+				"name": "Max hangs", "notes": "", "activity": 3,
+				"origin": "played", "duration": 600,
+				"prescription": json.RawMessage(prescription),
+			})
+			resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, token))
+			if err != nil {
+				t.Fatalf("Failed to play session: %v", err)
+			}
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Fatalf("Expected 400 for %s, got %d", name, resp.StatusCode)
+			}
+		})
 	}
 }
 

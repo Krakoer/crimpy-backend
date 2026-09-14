@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -187,12 +188,6 @@ const maxClientPrescriptionBytes = 256 * 1024
 func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error) {
 	if len(raw) > maxClientPrescriptionBytes {
 		return nil, nil, errors.New("Prescription is too large")
-	}
-	// jsonb takes no NUL, and the column would refuse this after the session
-	// row is already being written, which turns a client bug into a 500 the
-	// client can never correct by retrying.
-	if bytes.Contains(raw, []byte(`\u0000`)) {
-		return nil, nil, errors.New("Prescription holds a character the store cannot keep")
 	}
 	var snapshot PrescriptionSnapshot
 	if err := json.Unmarshal(raw, &snapshot); err != nil {
@@ -1053,6 +1048,24 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 	return resolved, -1
 }
 
+// storeRejectedInput says whether a write failed because of what the client
+// sent rather than because of anything the server did: a NUL, an unpaired
+// surrogate, invalid UTF-8, a number no numeric type holds. Go accepts all of
+// them as JSON and jsonb accepts none, and the only body on a session the server
+// does not encode itself is the prescription a client hands over.
+//
+// Enumerating them before the insert cannot work, since Go's JSON is strictly
+// wider than jsonb's; asking the database what it refused is the one check that
+// covers the whole difference. Class 22 is "data exception", which is that
+// difference and nothing the server is responsible for.
+func storeRejectedInput(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return strings.HasPrefix(pgErr.Code, "22")
+}
+
 // itemResultInsert is one validated result and the prescription item it is
 // stored against, ready for the insert. A result the prescription does not hold
 // never reaches this slice, which is what replaces a "keep this one" flag
@@ -1441,6 +1454,14 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		Duration:         req.Duration,
 	})
 	if err != nil {
+		// A retry of the same body would fail the same way, so the client is
+		// told what to change rather than being handed a 500 it can only repeat.
+		if storeRejectedInput(err) {
+			slog.Warn("refusing a session the store cannot keep", "user_id", userID, "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Prescription holds something the store cannot keep",
+			})
+		}
 		slog.Error("failed to create session", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 	}
