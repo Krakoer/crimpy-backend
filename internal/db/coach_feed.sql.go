@@ -268,10 +268,16 @@ SELECT
   s.name       AS session_name,
   s.date       AS session_date,
   s.activity   AS activity,
-  -- The athlete's first written line, wherever they wrote it. A session raised
-  -- by an item note alone carries an empty "notes", and the row is a preview
-  -- the coach clicks through, so handing them a blank line would list the
-  -- session and say nothing about why.
+  -- One of the lines the athlete wrote, lowest pass first, preferring the note
+  -- on the session itself when there is one. A session raised by an item note
+  -- alone carries an empty "notes", and the row is a preview the coach clicks
+  -- through, so handing them a blank line would list the session and say
+  -- nothing about why.
+  --
+  -- Which item's line surfaces is not the prescription order: that lives in the
+  -- frozen snapshot and not in a column, and every row of one batch shares an
+  -- "updated_at", so there is no better key to sort on. The key is unique
+  -- within a session, so the pick is at least stable between reads.
   COALESCE(
     NULLIF(s.notes, ''),
     (
