@@ -471,7 +471,7 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 
 // GetClientSession godoc
 // @Summary Get a client's session details
-// @Description Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.
+// @Description Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth

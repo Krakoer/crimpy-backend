@@ -15,13 +15,20 @@ const countCoachPendingSessionFeedback = `-- name: CountCoachPendingSessionFeedb
 SELECT COUNT(*) FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 WHERE e.coach_id = $1
-  AND s.notes <> ''
+  AND (
+    s.notes <> ''
+    OR EXISTS (
+      SELECT 1 FROM session_item_results r
+      WHERE r.session_id = s.id AND r.note IS NOT NULL
+    )
+  )
   AND s.coach_reply IS NULL
 `
 
 // How many sessions are waiting on an answer in all. The list above is capped,
 // so without this the badge counting it would stop rising at the cap and read as
-// a total it is not.
+// a total it is not. Counts the same sessions the list holds, item notes
+// included, or the badge and the list would disagree about what is waiting.
 func (q *Queries) CountCoachPendingSessionFeedback(ctx context.Context, coachID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countCoachPendingSessionFeedback, coachID)
 	var count int64
@@ -266,7 +273,13 @@ FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 JOIN users u ON u.id = s.user_id
 WHERE e.coach_id = $1
-  AND s.notes <> ''
+  AND (
+    s.notes <> ''
+    OR EXISTS (
+      SELECT 1 FROM session_item_results r
+      WHERE r.session_id = s.id AND r.note IS NOT NULL
+    )
+  )
   AND s.coach_reply IS NULL
 ORDER BY s.date DESC
 LIMIT $2
@@ -290,6 +303,13 @@ type GetCoachPendingSessionFeedbackRow struct {
 
 // The sessions whose notes the coach has not answered. The athlete wrote
 // something and is waiting, which is the first thing the TODO owes them.
+//
+// "Wrote something" is either of the two places they can write it: the note on
+// the session, and a note against one of the items they were prescribed. The
+// second is the line per exercise the whole coaching loop runs on, and an
+// athlete who annotates their sets and leaves the session box empty is the
+// ordinary case rather than a corner one, so a feed reading only the session
+// note would quietly never mention them.
 func (q *Queries) GetCoachPendingSessionFeedback(ctx context.Context, arg GetCoachPendingSessionFeedbackParams) ([]GetCoachPendingSessionFeedbackRow, error) {
 	rows, err := q.db.Query(ctx, getCoachPendingSessionFeedback, arg.CoachID, arg.RowLimit)
 	if err != nil {

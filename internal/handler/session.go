@@ -1422,7 +1422,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 
 // GetSession godoc
 // @Summary Get a session by ID
-// @Description Retrieve a specific session by ID with all related rep data, assessments and the counts the run recorded for the items the prescription left open. User must own the session unless they are an admin.
+// @Description Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json

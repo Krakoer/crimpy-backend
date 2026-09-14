@@ -2044,7 +2044,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.",
+                "description": "Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach.",
                 "produces": [
                     "application/json"
                 ],
@@ -4083,7 +4083,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session by ID with all related rep data, assessments and the counts the run recorded for the items the prescription left open. User must own the session unless they are an admin.",
+                "description": "Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
