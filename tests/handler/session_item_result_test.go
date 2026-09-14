@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -263,6 +264,55 @@ func TestSessionItemResults_RejectsInvalidInput(t *testing.T) {
 				t.Fatalf("Expected 400 for %s, got %d", name, resp.StatusCode)
 			}
 		})
+	}
+}
+
+// The note limit is a character count in the schema, so counting bytes here
+// would cut an athlete writing in French off at about half the length one
+// writing in ASCII gets, and lose the whole session to a 400 over a note the
+// database would have taken.
+func TestSessionItemResults_MeasuresTheNoteInCharactersNotBytes(t *testing.T) {
+	app, token := openItemsApp(t, "itemres7@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	// Two bytes per rune, so this is 1500 characters and 3000 bytes.
+	note := strings.Repeat("é", 1500)
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": exerciseID, "occurrence": 0, "note": note},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 for a 1500 character accented note, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	stored := sessionItemResults(t, app, token, session["id"].(string))[0].(map[string]interface{})
+	if stored["note"] != note {
+		t.Errorf("Expected the accented note stored whole, got %d characters", utf8.RuneCountInString(stored["note"].(string)))
+	}
+}
+
+// A result the prescription cannot place is dropped, so a second one naming the
+// same vanished pass has nothing to collide with: failing the request would lose
+// the session over a pair of rows neither of which is ever written.
+func TestSessionItemResults_DropsTwoResultsOutsideThePrescription(t *testing.T) {
+	app, token := openItemsApp(t, "itemres8@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": "11111111-1111-1111-1111-111111111111", "occurrence": 0, "reps": 9},
+		{"training_item_id": "11111111-1111-1111-1111-111111111111", "occurrence": 0, "note": "and a line about it"},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	results := sessionItemResults(t, app, token, session["id"].(string))
+	if len(results) != 1 {
+		t.Fatalf("Expected only the result naming a prescribed item, got %v", results)
 	}
 }
 

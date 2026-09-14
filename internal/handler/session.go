@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -996,7 +997,10 @@ func resolveItemResults(results []SessionItemResultRequest, prescribedItemIDs ma
 		}
 		if r.Note != nil {
 			trimmed := strings.TrimSpace(*r.Note)
-			if len(trimmed) > maxItemResultNoteLength {
+			// Counted in characters rather than bytes, the way the
+			// char_length constraint counts it, so an accented note is not cut
+			// short of one written in ASCII.
+			if utf8.RuneCountInString(trimmed) > maxItemResultNoteLength {
 				return nil, fmt.Errorf("item result %d: note must be at most %d characters", i, maxItemResultNoteLength)
 			}
 			if trimmed == "" {
@@ -1012,16 +1016,20 @@ func resolveItemResults(results []SessionItemResultRequest, prescribedItemIDs ma
 		if !r.reported() {
 			continue
 		}
-		key := fmt.Sprintf("%s/%d", itemID.String(), r.Occurrence)
-		if _, dup := seen[key]; dup {
-			return nil, fmt.Errorf("item result %d: pass %d of this item is already answered", i, r.Occurrence)
-		}
-		seen[key] = struct{}{}
+		// Membership is settled before the pass is booked as answered, so a
+		// result the prescription cannot place costs nothing at all: booking it
+		// first would let two dropped results collide with each other and fail
+		// the request over a pair of rows neither of which is ever written.
 		if _, ok := prescribedItemIDs[itemID.String()]; !ok {
 			slog.Warn("dropping item result naming an item the prescription does not hold",
 				"user_id", userID, "result_index", i, "training_item_id", itemID.String())
 			continue
 		}
+		key := fmt.Sprintf("%s/%d", itemID.String(), r.Occurrence)
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("item result %d: pass %d of this item is already answered", i, r.Occurrence)
+		}
+		seen[key] = struct{}{}
 		inserts = append(inserts, itemResultInsert{request: r, itemID: itemID})
 	}
 	return inserts, nil
