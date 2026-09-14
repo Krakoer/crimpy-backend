@@ -29,7 +29,7 @@ type CreateRepDataParams struct {
 	Index            int32
 	GripPosition     int32
 	EdgeSizeMm       pgtype.Int4
-	TrainingItemID   pgtype.UUID
+	TrainingItemID   pgtype.Text
 	TargetUnmeasured bool
 }
 

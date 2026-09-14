@@ -4011,7 +4011,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6095,6 +6095,10 @@ const docTemplate = `{
                 "origin": {
                     "type": "string"
                 },
+                "prescription": {
+                    "description": "Prescription is what the run was asked to do, sent by the client for a run\nthe server cannot describe: one played from a training Crimpy generates on\nthe device rather than from a stored one. The server freezes its own copy\nwhenever a training or a program slot names one, so sending this alongside\neither is refused rather than ignored, and without one it is the only thing\nthe reps and the item reports have to name their steps against.",
+                    "type": "object"
+                },
                 "program_session_id": {
                     "type": "string"
                 },
@@ -6764,7 +6768,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prescription": {
-                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created: from the training or the program slot the session names, or\nfrom the copy the client sent for a run of a training the server cannot\nread. Absent only on a session that answers no prescription at all. The\nlist endpoints leave it out, since it is a whole training per row and only\nthe detail screen reads it.",
                     "type": "object"
                 },
                 "program_session_id": {
@@ -6862,7 +6866,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prescription": {
-                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created: from the training or the program slot the session names, or\nfrom the copy the client sent for a run of a training the server cannot\nread. Absent only on a session that answers no prescription at all. The\nlist endpoints leave it out, since it is a whole training per row and only\nthe detail screen reads it.",
                     "type": "object"
                 },
                 "program_session_id": {

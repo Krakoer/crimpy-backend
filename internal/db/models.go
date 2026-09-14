@@ -174,7 +174,7 @@ type RepData struct {
 	Index            int32
 	GripPosition     int32
 	EdgeSizeMm       pgtype.Int4
-	TrainingItemID   pgtype.UUID
+	TrainingItemID   pgtype.Text
 	TargetUnmeasured bool
 	UpdatedAt        pgtype.Timestamptz
 }
@@ -213,7 +213,7 @@ type SessionItemResult struct {
 	ID              pgtype.UUID
 	SessionID       pgtype.UUID
 	UserID          pgtype.UUID
-	TrainingItemID  pgtype.UUID
+	TrainingItemID  string
 	Occurrence      int32
 	Reps            pgtype.Int4
 	Cycles          pgtype.Int4
