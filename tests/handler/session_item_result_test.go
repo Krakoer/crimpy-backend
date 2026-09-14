@@ -4,8 +4,11 @@ import (
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -74,14 +77,26 @@ func sessionItemResults(t *testing.T, app *fiber.App, token, sessionID string) [
 	return results
 }
 
+// resultsByPass keys the stored results the way the unique constraint does, so
+// a test can name one pass through one item and read every field off it.
+func resultsByPass(results []interface{}) map[string]map[string]interface{} {
+	byPass := map[string]map[string]interface{}{}
+	for _, raw := range results {
+		r := raw.(map[string]interface{})
+		key := fmt.Sprintf("%s/%v", r["training_item_id"], r["occurrence"])
+		byPass[key] = r
+	}
+	return byPass
+}
+
 func TestSessionItemResults_RecordsAndReadsBackOpenCounts(t *testing.T) {
 	app, token := openItemsApp(t, "itemres1@test.com")
 	trainingID, emomID, exerciseID := createOpenTraining(t, app, token)
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
-		{"training_item_id": exerciseID, "occurrence": 0, "field": "reps", "value": 23},
-		{"training_item_id": exerciseID, "occurrence": 1, "field": "reps", "value": 18},
-		{"training_item_id": emomID, "occurrence": 0, "field": "cycles", "value": 7},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23},
+		{"training_item_id": exerciseID, "occurrence": 1, "reps": 18},
+		{"training_item_id": emomID, "occurrence": 0, "cycles": 7},
 	})
 	if resp.StatusCode != fiber.StatusCreated {
 		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
@@ -91,26 +106,136 @@ func TestSessionItemResults_RecordsAndReadsBackOpenCounts(t *testing.T) {
 
 	results := sessionItemResults(t, app, token, session["id"].(string))
 	if len(results) != 3 {
-		t.Fatalf("Expected the three counts to be stored, got %v", results)
+		t.Fatalf("Expected the three reports to be stored, got %v", results)
 	}
 
-	byKey := map[string]float64{}
-	for _, raw := range results {
-		r := raw.(map[string]interface{})
-		key := r["training_item_id"].(string) + "/" + r["field"].(string)
-		if r["occurrence"].(float64) == 1 {
-			key += "/1"
+	byPass := resultsByPass(results)
+	if got := byPass[exerciseID+"/0"]["reps"]; got != float64(23) {
+		t.Errorf("Expected the first AMRAP to read back as 23, got %v", got)
+	}
+	if got := byPass[exerciseID+"/1"]["reps"]; got != float64(18) {
+		t.Errorf("Expected the second pass to read back as 18, got %v", got)
+	}
+	if got := byPass[emomID+"/0"]["cycles"]; got != float64(7) {
+		t.Errorf("Expected the emom to read back as 7 rounds, got %v", got)
+	}
+}
+
+// The point of the issue this shape came from: an ordinary exercise the sensor
+// never sees carries what the athlete actually did and what they wrote about
+// it, all on the one row that names the pass.
+func TestSessionItemResults_RecordsNoteLoadAndDurationOnAnyItem(t *testing.T) {
+	app, token := openItemsApp(t, "itemres4@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{
+			"training_item_id": exerciseID,
+			"occurrence":       0,
+			"reps":             8,
+			"load_kg":          17.5,
+			"duration_seconds": 42,
+			"note":             "  failed at 8 reps on the last set but no pain  ",
+		},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	results := sessionItemResults(t, app, token, session["id"].(string))
+	if len(results) != 1 {
+		t.Fatalf("Expected the one report to be stored, got %v", results)
+	}
+	stored := results[0].(map[string]interface{})
+	if stored["reps"] != float64(8) {
+		t.Errorf("Expected 8 reps, got %v", stored["reps"])
+	}
+	if stored["load_kg"] != 17.5 {
+		t.Errorf("Expected 17.5 kg, got %v", stored["load_kg"])
+	}
+	if stored["duration_seconds"] != float64(42) {
+		t.Errorf("Expected 42 seconds, got %v", stored["duration_seconds"])
+	}
+	if stored["note"] != "failed at 8 reps on the last set but no pain" {
+		t.Errorf("Expected the note trimmed and stored, got %v", stored["note"])
+	}
+}
+
+// A field the athlete said nothing about is absent rather than zero, so a coach
+// is never shown a number that was never reported.
+func TestSessionItemResults_OmitsFieldsTheAthleteLeftAlone(t *testing.T) {
+	app, token := openItemsApp(t, "itemres5@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": exerciseID, "occurrence": 0, "note": "did it with a band"},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	stored := sessionItemResults(t, app, token, session["id"].(string))[0].(map[string]interface{})
+	for _, field := range []string{"reps", "cycles", "load_kg", "duration_seconds"} {
+		if _, present := stored[field]; present {
+			t.Errorf("Expected %s to be absent on a report that only carried a note, got %v", field, stored[field])
 		}
-		byKey[key] = r["value"].(float64)
 	}
-	if byKey[exerciseID+"/reps"] != 23 {
-		t.Errorf("Expected the first AMRAP to read back as 23, got %v", byKey[exerciseID+"/reps"])
+}
+
+// The other half of the same invariant, and the reason every reported field is
+// a pointer: a set the athlete failed outright is a result, and it has to read
+// back as the zero they reported rather than as a field they never answered.
+// Storing these as plain integers would collapse the two and the suite would
+// stay green, so the zero is asserted present as well as correct.
+func TestSessionItemResults_KeepsAReportedZero(t *testing.T) {
+	app, token := openItemsApp(t, "itemres9@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 0, "note": "could not do a single one today"},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
 	}
-	if byKey[exerciseID+"/reps/1"] != 18 {
-		t.Errorf("Expected the second pass to read back as 18, got %v", byKey[exerciseID+"/reps/1"])
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	stored := sessionItemResults(t, app, token, session["id"].(string))[0].(map[string]interface{})
+	reps, present := stored["reps"]
+	if !present {
+		t.Fatalf("Expected a reported zero to be carried back, got %v", stored)
 	}
-	if byKey[emomID+"/cycles"] != 7 {
-		t.Errorf("Expected the emom to read back as 7 rounds, got %v", byKey[emomID+"/cycles"])
+	if reps != float64(0) {
+		t.Errorf("Expected the reported zero to read back as 0, got %v", reps)
+	}
+}
+
+// An athlete who opens a note field and types nothing in it reports nothing,
+// which is a blank row rather than an error worth losing the session over.
+func TestSessionItemResults_DropsAReportThatSaysNothing(t *testing.T) {
+	app, token := openItemsApp(t, "itemres6@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": exerciseID, "occurrence": 0, "note": "   "},
+		{"training_item_id": exerciseID, "occurrence": 1, "reps": 12},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	results := sessionItemResults(t, app, token, session["id"].(string))
+	if len(results) != 1 {
+		t.Fatalf("Expected only the report that said something, got %v", results)
+	}
+	if results[0].(map[string]interface{})["reps"] != float64(12) {
+		t.Errorf("Expected the kept report to be the rep count, got %v", results[0])
 	}
 }
 
@@ -122,8 +247,8 @@ func TestSessionItemResults_DropsResultOutsideThePrescription(t *testing.T) {
 	trainingID, _, exerciseID := createOpenTraining(t, app, token)
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
-		{"training_item_id": exerciseID, "occurrence": 0, "field": "reps", "value": 23},
-		{"training_item_id": "11111111-1111-1111-1111-111111111111", "occurrence": 0, "field": "reps", "value": 9},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23},
+		{"training_item_id": "11111111-1111-1111-1111-111111111111", "occurrence": 0, "reps": 9},
 	})
 	if resp.StatusCode != fiber.StatusCreated {
 		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
@@ -142,13 +267,21 @@ func TestSessionItemResults_DropsResultOutsideThePrescription(t *testing.T) {
 
 func TestSessionItemResults_RejectsInvalidInput(t *testing.T) {
 	cases := map[string]map[string]interface{}{
-		"unknown field":  {"occurrence": 0, "field": "seconds", "value": 5},
-		"negative value": {"occurrence": 0, "field": "reps", "value": -1},
-		"malformed id":   {"training_item_id": "not-a-uuid", "occurrence": 0, "field": "reps", "value": 5},
+		"negative reps":     {"occurrence": 0, "reps": -1},
+		"negative cycles":   {"occurrence": 0, "cycles": -1},
+		"negative load":     {"occurrence": 0, "load_kg": -0.5},
+		"negative duration": {"occurrence": 0, "duration_seconds": -1},
+		"overlong note":     {"occurrence": 0, "note": strings.Repeat("a", 2001)},
+		"malformed id":      {"training_item_id": "not-a-uuid", "occurrence": 0, "reps": 5},
 	}
+	// The email has to differ per case, since the cleanup deletes on it, and
+	// several of the names share their first words.
+	index := 0
 	for name, result := range cases {
+		index++
+		email := fmt.Sprintf("itemresbad%d@test.com", index)
 		t.Run(name, func(t *testing.T) {
-			app, token := openItemsApp(t, "itemresbad"+name[:4]+"@test.com")
+			app, token := openItemsApp(t, email)
 			trainingID, _, exerciseID := createOpenTraining(t, app, token)
 			if _, present := result["training_item_id"]; !present {
 				result["training_item_id"] = exerciseID
@@ -162,6 +295,55 @@ func TestSessionItemResults_RejectsInvalidInput(t *testing.T) {
 	}
 }
 
+// The note limit is a character count in the schema, so counting bytes here
+// would cut an athlete writing in French off at about half the length one
+// writing in ASCII gets, and lose the whole session to a 400 over a note the
+// database would have taken.
+func TestSessionItemResults_MeasuresTheNoteInCharactersNotBytes(t *testing.T) {
+	app, token := openItemsApp(t, "itemres7@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	// Two bytes per rune, so this is 1500 characters and 3000 bytes.
+	note := strings.Repeat("é", 1500)
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": exerciseID, "occurrence": 0, "note": note},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 for a 1500 character accented note, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	stored := sessionItemResults(t, app, token, session["id"].(string))[0].(map[string]interface{})
+	if stored["note"] != note {
+		t.Errorf("Expected the accented note stored whole, got %d characters", utf8.RuneCountInString(stored["note"].(string)))
+	}
+}
+
+// A result the prescription cannot place is dropped, so a second one naming the
+// same vanished pass has nothing to collide with: failing the request would lose
+// the session over a pair of rows neither of which is ever written.
+func TestSessionItemResults_DropsTwoResultsOutsideThePrescription(t *testing.T) {
+	app, token := openItemsApp(t, "itemres8@test.com")
+	trainingID, _, exerciseID := createOpenTraining(t, app, token)
+
+	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
+		{"training_item_id": "11111111-1111-1111-1111-111111111111", "occurrence": 0, "reps": 9},
+		{"training_item_id": "11111111-1111-1111-1111-111111111111", "occurrence": 0, "note": "and a line about it"},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23},
+	})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
+	}
+	var session map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&session)
+
+	results := sessionItemResults(t, app, token, session["id"].(string))
+	if len(results) != 1 {
+		t.Fatalf("Expected only the result naming a prescribed item, got %v", results)
+	}
+}
+
 // The unique index would otherwise refuse the second row mid transaction, which
 // costs a 500 rather than telling the client what it sent twice.
 func TestSessionItemResults_RejectsTwoAnswersForOnePass(t *testing.T) {
@@ -169,11 +351,11 @@ func TestSessionItemResults_RejectsTwoAnswersForOnePass(t *testing.T) {
 	trainingID, _, exerciseID := createOpenTraining(t, app, token)
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
-		{"training_item_id": exerciseID, "occurrence": 0, "field": "reps", "value": 23},
-		{"training_item_id": exerciseID, "occurrence": 0, "field": "reps", "value": 24},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23},
+		{"training_item_id": exerciseID, "occurrence": 0, "note": "and a second line about it"},
 	})
 	if resp.StatusCode != fiber.StatusBadRequest {
-		t.Fatalf("Expected 400 for two counts answering one pass, got %d", resp.StatusCode)
+		t.Fatalf("Expected 400 for two reports answering one pass, got %d", resp.StatusCode)
 	}
 }
 
@@ -196,7 +378,7 @@ func TestSessionItemResults_CoachReadsClientCounts(t *testing.T) {
 
 	trainingID, _, exerciseID := createOpenTraining(t, app, userToken)
 	resp := postSessionWithItemResults(t, app, userToken, trainingID, []map[string]interface{}{
-		{"training_item_id": exerciseID, "occurrence": 0, "field": "reps", "value": 23},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23, "note": "hard on the shoulders"},
 	})
 	if resp.StatusCode != fiber.StatusCreated {
 		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
@@ -219,7 +401,10 @@ func TestSessionItemResults_CoachReadsClientCounts(t *testing.T) {
 	if !ok || len(results) != 1 {
 		t.Fatalf("Expected the coach to see the recorded count, got %v", detail["item_results"])
 	}
-	if results[0].(map[string]interface{})["value"] != float64(23) {
+	if results[0].(map[string]interface{})["reps"] != float64(23) {
 		t.Errorf("Expected the coach to read 23 reps, got %v", results[0])
+	}
+	if results[0].(map[string]interface{})["note"] != "hard on the shoulders" {
+		t.Errorf("Expected the coach to read the athlete note, got %v", results[0])
 	}
 }

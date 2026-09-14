@@ -29,6 +29,32 @@ func insertSession(t *testing.T, pool *pgxpool.Pool, userID, name, notes string,
 	return id
 }
 
+// Writes a note against one item of a session, the way the review pass does.
+// The item id points into the session's frozen prescription and is deliberately
+// not a foreign key, so any uuid stands in here.
+func insertItemNote(t *testing.T, pool *pgxpool.Pool, userID, sessionID, note string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO session_item_results (session_id, user_id, training_item_id, occurrence, note)
+		 VALUES ($1, $2, gen_random_uuid(), 0, $3)`,
+		sessionID, userID, note)
+	if err != nil {
+		t.Fatalf("Failed to insert an item note: %v", err)
+	}
+}
+
+// Writes a count against one item and no note at all.
+func insertItemCount(t *testing.T, pool *pgxpool.Pool, userID, sessionID string, reps int32) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO session_item_results (session_id, user_id, training_item_id, occurrence, reps)
+		 VALUES ($1, $2, gen_random_uuid(), 0, $3)`,
+		sessionID, userID, reps)
+	if err != nil {
+		t.Fatalf("Failed to insert an item count: %v", err)
+	}
+}
+
 func insertDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) {
 	t.Helper()
 	for day := 0; day < 7; day++ {
@@ -363,6 +389,82 @@ func TestCoachTodo_ListsOnlyUnansweredFeedback(t *testing.T) {
 	}
 	if item["user_id"] != userID {
 		t.Errorf("Expected the item to name the coachee, got %v", item["user_id"])
+	}
+}
+
+// An athlete who annotates their sets and leaves the session box empty is the
+// ordinary case once the review pass exists, and it is the line per exercise the
+// coaching loop runs on. A feed reading only the session note would never
+// mention them, so the coach would answer the loud sessions and silently miss
+// the ones written where the feature asks for them.
+func TestCoachTodo_ListsASessionAnnotatedOnlyOnItsItems(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "itemnotecoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "itemnoteathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	annotated := insertSession(t, pool, userID, "Annotated per exercise", "", now, nil)
+	insertSession(t, pool, userID, "Nothing to say at all", "", now, nil)
+	insertItemNote(t, pool, userID, annotated, "failed at 8 reps on the last set but no pain")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	todo := getTodo(t, app, coachToken)
+	pending := todo["pending_feedback"].([]interface{})
+	if len(pending) != 1 {
+		t.Fatalf("Expected the session annotated on its items alone, got %v", pending)
+	}
+	item := pending[0].(map[string]interface{})
+	if item["session_name"] != "Annotated per exercise" {
+		t.Errorf("Expected the annotated session, got %v", item)
+	}
+	// The row is a preview the coach clicks through, so it carries the line the
+	// athlete wrote even though they wrote it against an item rather than the
+	// session. Without this the entry lists a session and says nothing.
+	if item["notes"] != "failed at 8 reps on the last set but no pain" {
+		t.Errorf("Expected the item note to stand in as the preview, got %v", item["notes"])
+	}
+	// The badge counts what the list holds, or the two disagree about what is
+	// waiting.
+	if todo["pending_feedback_total"].(float64) != 1 {
+		t.Errorf("Expected the annotated session counted in all, got %v", todo["pending_feedback_total"])
+	}
+}
+
+// A report carrying numbers and no note is not the athlete asking for an
+// answer, so it does not raise the TODO the way a written line does.
+func TestCoachTodo_LeavesOutASessionReportingOnlyNumbers(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "numonlycoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "numonlyathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	counted := insertSession(t, pool, userID, "Counted, not written about", "", now, nil)
+	insertItemCount(t, pool, userID, counted, 23)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	todo := getTodo(t, app, coachToken)
+	if pending := todo["pending_feedback"].([]interface{}); len(pending) != 0 {
+		t.Fatalf("Expected a session with numbers and no note to wait on nothing, got %v", pending)
+	}
+	// Asserted on the badge too: the list and the count run off two predicates
+	// written out separately, and widening one without the other is exactly the
+	// drift that would otherwise pass the suite.
+	if todo["pending_feedback_total"].(float64) != 0 {
+		t.Errorf("Expected the badge to agree with the empty list, got %v", todo["pending_feedback_total"])
 	}
 }
 

@@ -316,8 +316,8 @@ func TestTrainingUpdate_KeepsOpenCountsRecordedAgainstItsItems(t *testing.T) {
 	}
 
 	resp := postSessionWithItemResults(t, app, token, trainingID, []map[string]interface{}{
-		{"training_item_id": exerciseID, "occurrence": 0, "field": "reps", "value": 23},
-		{"training_item_id": emomID, "occurrence": 0, "field": "cycles", "value": 7},
+		{"training_item_id": exerciseID, "occurrence": 0, "reps": 23},
+		{"training_item_id": emomID, "occurrence": 0, "cycles": 7},
 	})
 	if resp.StatusCode != fiber.StatusCreated {
 		t.Fatalf("Expected 201 playing the session, got %d", resp.StatusCode)
