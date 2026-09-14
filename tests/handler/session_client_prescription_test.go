@@ -341,6 +341,32 @@ func TestClientPrescription_CountsAnItemIDInCharacters(t *testing.T) {
 	}
 }
 
+// The same class on the endpoint that first stored a client's arrays raw. Not
+// introduced by this ticket, but it is the same helper and the same failure:
+// a 500 no retry corrects, where the client could have been told what to change.
+func TestTrainingItems_RefuseWhatTheStoreCannotKeep(t *testing.T) {
+	app, token := openItemsApp(t, "traineditems1@test.com")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title": "Weighted pulls",
+		"items": []map[string]interface{}{
+			{
+				"type":     "repeater",
+				"position": 0,
+				"loads":    []interface{}{json.RawMessage(`{"value":1e1000000,"unit":"kg"}`)},
+			},
+		},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/trainings", body, token))
+	if err != nil {
+		t.Fatalf("Failed to create training: %v", err)
+	}
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for an item the store cannot keep, got %d", resp.StatusCode)
+	}
+}
+
 func TestClientPrescription_RefusesAPrescriptionWithNoItems(t *testing.T) {
 	app, token := openItemsApp(t, "clientpres9@test.com")
 
