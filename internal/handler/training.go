@@ -1075,6 +1075,12 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	var zeroParent pgtype.UUID
 	items, err := insertTrainingItemsRecursive(c.Context(), qtx, training.ID, zeroParent, req.Items)
 	if err != nil {
+		// The per-item arrays are stored as the client wrote them, so a body Go
+		// parses and jsonb will not take is the client's to correct.
+		if storeRejectedInput(err) {
+			slog.Warn("refusing training items the store cannot keep", "user_id", userUUID.String(), "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item holds something the store cannot keep"})
+		}
 		slog.Error("failed to insert training items", "training_id", training.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training items"})
 	}
@@ -1269,6 +1275,10 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
+		}
+		if storeRejectedInput(err) {
+			slog.Warn("refusing training items the store cannot keep", "training_id", trainingUUID.String(), "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item holds something the store cannot keep"})
 		}
 		slog.Error("failed to sync training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})

@@ -272,7 +272,10 @@ func TestSessionItemResults_RejectsInvalidInput(t *testing.T) {
 		"negative load":     {"occurrence": 0, "load_kg": -0.5},
 		"negative duration": {"occurrence": 0, "duration_seconds": -1},
 		"overlong note":     {"occurrence": 0, "note": strings.Repeat("a", 2001)},
-		"malformed id":      {"training_item_id": "not-a-uuid", "occurrence": 0, "reps": 5},
+		// An id is a name in the snapshot now, not a uuid, so what is refused is
+		// one the column could not hold rather than one that does not parse.
+		"blank id":    {"training_item_id": "", "occurrence": 0, "reps": 5},
+		"overlong id": {"training_item_id": strings.Repeat("k", 201), "occurrence": 0, "reps": 5},
 	}
 	// The email has to differ per case, since the cleanup deletes on it, and
 	// several of the names share their first words.
