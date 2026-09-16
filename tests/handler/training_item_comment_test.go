@@ -38,6 +38,24 @@ func TestTrainingItemComment_AllowsPastOldLimit(t *testing.T) {
 	}
 }
 
+// The limit is counted in runes, not bytes, so a comment written in accented
+// characters gets the same 2000 characters as one written in ASCII, and the
+// boundary itself (exactly 2000) must be accepted rather than refused.
+func TestTrainingItemComment_AllowsExactlyTheLimitInMultibyteRunes(t *testing.T) {
+	comment := strings.Repeat("é", 2000)
+	status, result := createTrainingWithItems(t, "itemcommentexactlimit@test.com", []map[string]interface{}{
+		{"type": "exercise", "comment": comment},
+	})
+
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 for a comment at exactly the limit, got %d: %v", status, result)
+	}
+	item := firstItem(t, result)
+	if item["comment"] != comment {
+		t.Errorf("Expected the comment to round trip in full, got %v", item["comment"])
+	}
+}
+
 // The column is type agnostic: a coach comment matters most on the types that
 // repeat, not only on exercise.
 func TestTrainingItemComment_RoundTripsOnRepeaterHangboardRepAndEmom(t *testing.T) {

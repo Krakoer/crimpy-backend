@@ -6,16 +6,9 @@ import (
 	"crimpy/backend/internal/db"
 	"encoding/json"
 	"fmt"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-// maxItemCommentLen caps the per-item coach comment, the execution note shown
-// to the athlete. It applies to every item type: the column is type agnostic,
-// and the coach comment matters most on the types that repeat, not only on
-// exercise.
-const maxItemCommentLen = 2000
 
 // itemToRequest reads a stored item back into the shape the validators work on,
 // so an override can be checked against the item it targets.
@@ -791,25 +784,11 @@ func staleOverrides[K comparable](ctx context.Context, q *db.Queries, ownerID pg
 	return stale, nil
 }
 
-// validateItemComment rejects a comment past maxItemCommentLen rather than
-// truncating it: a coach whose note gets cut silently only finds out when the
-// athlete reads half a sentence.
-func validateItemComment(comment *string) error {
-	if comment == nil {
-		return nil
-	}
-	if utf8.RuneCountInString(*comment) > maxItemCommentLen {
-		return refusedFields(fmt.Errorf("comment must be at most %d characters", maxItemCommentLen), "comment")
-	}
-	return nil
-}
-
 // validateItemConfiguration checks everything about a single item that has to
 // hold however the item was written, whether directly on the training or
 // through a session override merged onto it.
 func validateItemConfiguration(item TrainingItemRequest, units assessmentUnits) error {
 	refusals := itemRefusalsOf(validateItemArrays(item))
-	refusals = refusals.add(validateItemComment(item.Comment))
 	refusals = refusals.add(validateVariableTargets(item.VariableTargets, units))
 	for _, loads := range []struct {
 		field string

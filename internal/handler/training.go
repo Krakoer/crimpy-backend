@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,15 @@ import (
 
 // maxItemDepth caps how deeply items may nest, bounding recursion on untrusted input.
 const maxItemDepth = 10
+
+// maxItemCommentLen caps the per-item coach comment, the execution note shown
+// to the athlete. It applies to every item type: the column is type agnostic,
+// and the coach comment matters most on the types that repeat, not only on
+// exercise. Comment is not an override key (contract/override-keys.json), so
+// this belongs here rather than in validateItemConfiguration, which also runs
+// on merged session overrides: a refusal from there has to name a field the
+// override row carries, and comment never can.
+const maxItemCommentLen = 2000
 
 // validItemTypes is the set of accepted training item discriminators.
 var validItemTypes = map[string]bool{
@@ -391,6 +401,19 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
+// validateItemComment rejects a comment past maxItemCommentLen rather than
+// truncating it: a coach whose note gets cut silently only finds out when the
+// athlete reads half a sentence.
+func validateItemComment(comment *string) error {
+	if comment == nil {
+		return nil
+	}
+	if utf8.RuneCountInString(*comment) > maxItemCommentLen {
+		return fmt.Errorf("comment must be at most %d characters", maxItemCommentLen)
+	}
+	return nil
+}
+
 // validateTrainingItems rejects unknown item types, over-deep trees, rep counts
 // on a type that does not repeat and malformed configuration arrays before any
 // row is written.
@@ -409,6 +432,9 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 			return err
 		}
 		if err := validateRepsIsMax(item); err != nil {
+			return err
+		}
+		if err := validateItemComment(item.Comment); err != nil {
 			return err
 		}
 		if err := validateItemConfiguration(item, units); err != nil {
