@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -19,11 +20,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// maxItemCommentLen caps the per-item coach comment length, matching the client input limit.
-const maxItemCommentLen = 200
-
 // maxItemDepth caps how deeply items may nest, bounding recursion on untrusted input.
 const maxItemDepth = 10
+
+// maxItemCommentLen caps the per-item coach comment, the execution note shown
+// to the athlete. It applies to every item type: the column is type agnostic,
+// and the coach comment matters most on the types that repeat, not only on
+// exercise. Comment is not an override key (contract/override-keys.json), so
+// this belongs here rather than in validateItemConfiguration, which also runs
+// on merged session overrides: a refusal from there has to name a field the
+// override row carries, and comment never can.
+const maxItemCommentLen = 2000
 
 // validItemTypes is the set of accepted training item discriminators.
 var validItemTypes = map[string]bool{
@@ -394,6 +401,19 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
+// validateItemComment rejects a comment past maxItemCommentLen rather than
+// truncating it: a coach whose note gets cut silently only finds out when the
+// athlete reads half a sentence.
+func validateItemComment(comment *string) error {
+	if comment == nil {
+		return nil
+	}
+	if utf8.RuneCountInString(*comment) > maxItemCommentLen {
+		return fmt.Errorf("comment must be at most %d characters", maxItemCommentLen)
+	}
+	return nil
+}
+
 // validateTrainingItems rejects unknown item types, over-deep trees, rep counts
 // on a type that does not repeat and malformed configuration arrays before any
 // row is written.
@@ -414,6 +434,9 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 		if err := validateRepsIsMax(item); err != nil {
 			return err
 		}
+		if err := validateItemComment(item.Comment); err != nil {
+			return err
+		}
 		if err := validateItemConfiguration(item, units); err != nil {
 			return err
 		}
@@ -422,15 +445,6 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 		}
 	}
 	return nil
-}
-
-// truncateRunes shortens s to at most n runes, preserving multi-byte characters.
-func truncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n])
 }
 
 type TrainingHandler struct {
@@ -671,7 +685,7 @@ func trainingItemParams(trainingID, parentID pgtype.UUID, position int32, req Tr
 		params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
 	}
 	if req.Comment != nil {
-		params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
+		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 	params.LoadIsMax = req.LoadIsMax
 	if hasJSONValue(req.Loads) {
@@ -986,7 +1000,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 
 // CreateCoachTraining godoc
 // @Summary Create a training template
-// @Description Create a new training template with a structured item tree.
+// @Description Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters.
 // @Tags Trainings
 // @Accept json
 // @Produce json
@@ -1179,7 +1193,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 
 // UpdateCoachTraining godoc
 // @Summary Update a training template
-// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted.
+// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters.
 // @Tags Trainings
 // @Accept json
 // @Produce json
