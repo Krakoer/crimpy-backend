@@ -19,9 +19,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// maxItemCommentLen caps the per-item coach comment length, matching the client input limit.
-const maxItemCommentLen = 200
-
 // maxItemDepth caps how deeply items may nest, bounding recursion on untrusted input.
 const maxItemDepth = 10
 
@@ -424,15 +421,6 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 	return nil
 }
 
-// truncateRunes shortens s to at most n runes, preserving multi-byte characters.
-func truncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n])
-}
-
 type TrainingHandler struct {
 	queries *db.Queries
 	pool    *pgxpool.Pool
@@ -671,7 +659,7 @@ func trainingItemParams(trainingID, parentID pgtype.UUID, position int32, req Tr
 		params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
 	}
 	if req.Comment != nil {
-		params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
+		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
 	}
 	params.LoadIsMax = req.LoadIsMax
 	if hasJSONValue(req.Loads) {
@@ -986,7 +974,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 
 // CreateCoachTraining godoc
 // @Summary Create a training template
-// @Description Create a new training template with a structured item tree.
+// @Description Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters.
 // @Tags Trainings
 // @Accept json
 // @Produce json
@@ -1179,7 +1167,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 
 // UpdateCoachTraining godoc
 // @Summary Update a training template
-// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted.
+// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters.
 // @Tags Trainings
 // @Accept json
 // @Produce json

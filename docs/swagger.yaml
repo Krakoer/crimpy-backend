@@ -4459,7 +4459,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new training template with a structured item tree.
+      description: Create a new training template with a structured item tree. Each
+        item's comment must be at most 2000 characters.
       parameters:
       - description: Training data
         in: body
@@ -4584,7 +4585,7 @@ paths:
         update. An item sent back with the id it was read under keeps that id, so
         the rep data, results and program overrides pointing at it survive the edit;
         an item sent without one is added, and a stored item the payload no longer
-        carries is deleted.
+        carries is deleted. Each item's comment must be at most 2000 characters.
       parameters:
       - description: Training ID
         in: path
