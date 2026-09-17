@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -33,8 +35,35 @@ type WeekSessionRequest struct {
 }
 
 type UpsertWeekRequest struct {
+	Name     *string              `json:"name"`
 	Notes    *string              `json:"notes"`
 	Sessions []WeekSessionRequest `json:"sessions"`
+}
+
+// maxWeekNameLen caps the week name, which labels the training phase the week
+// belongs to ("capacity", "deload", "tests") rather than describing it. It is
+// short because a coach scans a column of them down the program page, and a
+// sentence there would be a note written in the wrong field. Refused rather
+// than cut, like the item comment and goal: a coach only finds out about a
+// silent truncation once the athlete reads half of it.
+const maxWeekNameLen = 60
+
+// validateWeekName refuses a name past maxWeekNameLen, and a name that is only
+// whitespace, which reads as a set name everywhere it is shown while holding
+// nothing. Absent and blank mean the same thing, so a blank one is stored as
+// absent instead of being refused.
+func validateWeekName(name *string) (*string, error) {
+	if name == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*name)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if utf8.RuneCountInString(trimmed) > maxWeekNameLen {
+		return nil, fmt.Errorf("name must be at most %d characters", maxWeekNameLen)
+	}
+	return &trimmed, nil
 }
 
 // SessionOverrideResponse carries a stored override back to the reader. The
@@ -105,6 +134,7 @@ type WeekResponse struct {
 	ID         string                `json:"id"`
 	ProgramID  string                `json:"program_id"`
 	WeekNumber int32                 `json:"week_number"`
+	Name       *string               `json:"name,omitempty"`
 	Notes      *string               `json:"notes,omitempty"`
 	Sessions   []WeekSessionResponse `json:"sessions"`
 	CreatedAt  string                `json:"created_at"`
@@ -115,6 +145,7 @@ type WeekListItem struct {
 	ID         string  `json:"id"`
 	ProgramID  string  `json:"program_id"`
 	WeekNumber int32   `json:"week_number"`
+	Name       *string `json:"name,omitempty"`
 	Notes      *string `json:"notes,omitempty"`
 	CreatedAt  string  `json:"created_at"`
 	UpdatedAt  string  `json:"updated_at"`
@@ -665,6 +696,9 @@ func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWe
 	if resp.Sessions == nil {
 		resp.Sessions = []WeekSessionResponse{}
 	}
+	if week.Name.Valid {
+		resp.Name = &week.Name.String
+	}
 	if week.Notes.Valid {
 		resp.Notes = &week.Notes.String
 	}
@@ -678,6 +712,9 @@ func weekToListItem(w db.CoachProgramWeek) WeekListItem {
 		WeekNumber: w.WeekNumber,
 		CreatedAt:  w.CreatedAt.Time.UTC().Format(time.RFC3339),
 		UpdatedAt:  w.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if w.Name.Valid {
+		item.Name = &w.Name.String
 	}
 	if w.Notes.Valid {
 		item.Notes = &w.Notes.String
@@ -707,7 +744,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.
+// @Description Upsert a week's sessions and overrides. The week's name labels its training phase ("capacity", "deload") and must be at most 60 characters, refused rather than cut; a blank one is stored as no name. It is distinct from notes, which is a message about this particular week. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.
 // @Tags Programs
 // @Accept json
 // @Produce json
@@ -744,6 +781,10 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
+	weekName, err := validateWeekName(req.Name)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 	sessionIDs, err := validateWeekSessions(req.Sessions)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -761,6 +802,9 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	upsertParams := db.UpsertCoachProgramWeekParams{
 		ProgramID:  programUUID,
 		WeekNumber: weekNum,
+	}
+	if weekName != nil {
+		upsertParams.Name = pgtype.Text{String: *weekName, Valid: true}
 	}
 	if req.Notes != nil {
 		upsertParams.Notes = pgtype.Text{String: *req.Notes, Valid: true}
@@ -809,7 +853,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 
 // GetWeeks godoc
 // @Summary List weeks of a program
-// @Description Get all explicitly defined weeks for a program (summary, no sessions).
+// @Description Get all explicitly defined weeks for a program (summary, no sessions). Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -848,7 +892,7 @@ func (h *ProgramHandler) GetWeeks(c fiber.Ctx) error {
 
 // GetWeek godoc
 // @Summary Get a program week
-// @Description Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.
+// @Description Get a specific week with its sessions and per-item overrides. The week carries its name, the label of the training phase it belongs to, absent when the week has none. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -967,7 +1011,7 @@ func (h *ProgramHandler) DeleteWeek(c fiber.Ctx) error {
 
 // GetMyWeeks godoc
 // @Summary List weeks of one of my programs
-// @Description Get all defined weeks for a program assigned to the authenticated user.
+// @Description Get all defined weeks for a program assigned to the authenticated user. Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -1015,7 +1059,7 @@ func (h *ProgramHandler) GetMyWeeks(c fiber.Ctx) error {
 
 // GetMyWeek godoc
 // @Summary Get a week from one of my programs
-// @Description Get a specific week with sessions and overrides for a program assigned to the authenticated user. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.
+// @Description Get a specific week with sessions and overrides for a program assigned to the authenticated user. The week carries its name, the label of the training phase it belongs to, absent when the week has none. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth

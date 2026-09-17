@@ -82,6 +82,7 @@ type CoachProgramWeek struct {
 	ID         pgtype.UUID
 	ProgramID  pgtype.UUID
 	WeekNumber int32
+	Name       pgtype.Text
 	Notes      pgtype.Text
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz

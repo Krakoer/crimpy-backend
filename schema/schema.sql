@@ -526,6 +526,11 @@ CREATE TABLE "coach_program_weeks" (
   "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
   "program_id"  UUID        NOT NULL REFERENCES "coach_programs"("id") ON DELETE CASCADE,
   "week_number" INTEGER     NOT NULL,
+  -- Short label for the training phase this week belongs to (e.g. "capacity",
+  -- "deload", "tests"). Reused across the weeks of one block, which is how a
+  -- coach scans the arc of a program. Distinct from "notes" below: the name is
+  -- what the week is, the notes are a message about this particular week.
+  "name"        TEXT,
   "notes"       TEXT,
   "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),

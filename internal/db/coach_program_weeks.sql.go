@@ -166,7 +166,7 @@ func (q *Queries) GetCoachProgramSessionOverrides(ctx context.Context, sessionID
 }
 
 const getCoachProgramWeek = `-- name: GetCoachProgramWeek :one
-SELECT id, program_id, week_number, notes, created_at, updated_at FROM coach_program_weeks
+SELECT id, program_id, week_number, name, notes, created_at, updated_at FROM coach_program_weeks
 WHERE program_id = $1 AND week_number = $2
 `
 
@@ -182,6 +182,7 @@ func (q *Queries) GetCoachProgramWeek(ctx context.Context, arg GetCoachProgramWe
 		&i.ID,
 		&i.ProgramID,
 		&i.WeekNumber,
+		&i.Name,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -325,7 +326,7 @@ func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype
 }
 
 const getCoachProgramWeeks = `-- name: GetCoachProgramWeeks :many
-SELECT id, program_id, week_number, notes, created_at, updated_at FROM coach_program_weeks
+SELECT id, program_id, week_number, name, notes, created_at, updated_at FROM coach_program_weeks
 WHERE program_id = $1
 ORDER BY week_number
 `
@@ -343,6 +344,7 @@ func (q *Queries) GetCoachProgramWeeks(ctx context.Context, programID pgtype.UUI
 			&i.ID,
 			&i.ProgramID,
 			&i.WeekNumber,
+			&i.Name,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -512,26 +514,33 @@ func (q *Queries) UpsertCoachProgramSessionOverride(ctx context.Context, arg Ups
 }
 
 const upsertCoachProgramWeek = `-- name: UpsertCoachProgramWeek :one
-INSERT INTO coach_program_weeks (program_id, week_number, notes)
-VALUES ($1, $2, $3)
+INSERT INTO coach_program_weeks (program_id, week_number, name, notes)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (program_id, week_number) DO UPDATE
-  SET notes = EXCLUDED.notes, updated_at = now()
-RETURNING id, program_id, week_number, notes, created_at, updated_at
+  SET name = EXCLUDED.name, notes = EXCLUDED.notes, updated_at = now()
+RETURNING id, program_id, week_number, name, notes, created_at, updated_at
 `
 
 type UpsertCoachProgramWeekParams struct {
 	ProgramID  pgtype.UUID
 	WeekNumber int32
+	Name       pgtype.Text
 	Notes      pgtype.Text
 }
 
 func (q *Queries) UpsertCoachProgramWeek(ctx context.Context, arg UpsertCoachProgramWeekParams) (CoachProgramWeek, error) {
-	row := q.db.QueryRow(ctx, upsertCoachProgramWeek, arg.ProgramID, arg.WeekNumber, arg.Notes)
+	row := q.db.QueryRow(ctx, upsertCoachProgramWeek,
+		arg.ProgramID,
+		arg.WeekNumber,
+		arg.Name,
+		arg.Notes,
+	)
 	var i CoachProgramWeek
 	err := row.Scan(
 		&i.ID,
 		&i.ProgramID,
 		&i.WeekNumber,
+		&i.Name,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
