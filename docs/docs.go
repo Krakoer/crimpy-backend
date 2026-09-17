@@ -4408,7 +4408,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters.",
+                "description": "Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters and its goal at most 200.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4524,7 +4524,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters.",
+                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters and its goal at most 200.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6990,6 +6990,9 @@ const docTemplate = `{
                 "free_text": {
                     "type": "string"
                 },
+                "goal": {
+                    "type": "string"
+                },
                 "granularity": {
                     "type": "string",
                     "enum": [
@@ -7103,6 +7106,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "free_text": {
+                    "type": "string"
+                },
+                "goal": {
                     "type": "string"
                 },
                 "granularity": {

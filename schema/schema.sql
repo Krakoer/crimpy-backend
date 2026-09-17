@@ -366,6 +366,12 @@ CREATE TABLE "training_items" (
   "free_text"            TEXT,
   -- Optional coach comment shown to the athlete (e.g. "first rep in pronation")
   "comment"              TEXT,
+  -- Why the exercise is in the program (e.g. "resi doigts", "explo jambes").
+  -- Distinct from "comment" above and deliberately not an override key: a goal
+  -- is what the block is for and holds across the weeks that retune it, while a
+  -- comment says how to execute this instance. A week that really trains
+  -- something else is a different block, not the same one relabelled.
+  "goal"                 TEXT,
   -- Configurable fields (JSONB arrays, see the layout note above the table).
   -- Each holds exactly one entry per configuration row.
   -- loads: [{value: float, unit: string}]. Right hand of a two-handed mode,
