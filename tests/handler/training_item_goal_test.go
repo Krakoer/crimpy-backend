@@ -146,3 +146,64 @@ func TestTrainingItemGoal_IsHeldApartFromTheComment(t *testing.T) {
 		t.Errorf("Expected the comment to round trip, got %v", item["comment"])
 	}
 }
+
+// The payoff of the whole ticket is the athlete reading why the block is in
+// their program, and what they read is the frozen prescription, not the
+// training: the training stays editable behind it. So the goal has to survive
+// into the snapshot.
+//
+// The same test pins the decision that goal is not an override key, on the one
+// read where being wrong about it would show: a week that sends one is accepted
+// and ignored, so the block keeps the goal the training gave it while its
+// numbers are retuned around it.
+func TestTrainingItemGoal_ReachesTheFrozenPrescription(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "goalpresc")
+	trainingID, itemID := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	replaceTrainingItems(t, app, coachToken, trainingID, []map[string]interface{}{
+		{
+			"id":                  itemID,
+			"type":                "repeater",
+			"reps":                6,
+			"hb_worktime_seconds": 7,
+			"rest_seconds":        60,
+			"hand":                "both",
+			"granularity":         "uniform",
+			"loads":               []map[string]interface{}{{"value": 0, "unit": "bw"}},
+			"goal":                "resi doigts",
+		},
+	})
+
+	created := upsertWeekSessions(t, app, coachToken, userID, programID, 1, map[string]interface{}{
+		"sessions": []map[string]interface{}{
+			{
+				"training_id": trainingID,
+				"day_of_week": 0,
+				"overrides": []map[string]interface{}{
+					{
+						"item_id":   itemID,
+						"overrides": map[string]interface{}{"reps": 5, "goal": "explo jambes"},
+					},
+				},
+			},
+		},
+	})
+
+	session := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":        trainingID,
+		"program_session_id": weekSessionIDs(created)[0],
+	})
+
+	items := prescriptionItems(t, sessionPrescription(t, session))
+	if len(items) != 1 {
+		t.Fatalf("Expected 1 prescription item, got %d", len(items))
+	}
+	item := items[0].(map[string]interface{})
+	if item["goal"] != "resi doigts" {
+		t.Errorf("Expected the training's goal in the snapshot, got %v", item["goal"])
+	}
+	if item["reps"] != float64(5) {
+		t.Errorf("Expected the override to retune the reps to 5, got %v", item["reps"])
+	}
+}
