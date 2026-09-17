@@ -60,7 +60,7 @@ INSERT INTO training_items (
   reps, reps_is_max, duration, rest_seconds,
   exercise_id,
   worktime_seconds, hand, granularity,
-  free_text, comment, load_is_max,
+  free_text, comment, goal, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
   variable_targets,
   group_title
@@ -70,12 +70,12 @@ INSERT INTO training_items (
   $8, $9, $10, $11,
   $12,
   $13, $14, $15,
-  $16, $17, $18,
-  $19, $20, $21, $22,
-  $23,
-  $24
+  $16, $17, $18, $19,
+  $20, $21, $22, $23,
+  $24,
+  $25
 )
-RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
+RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, goal, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
 `
 
 type CreateTrainingItemParams struct {
@@ -96,6 +96,7 @@ type CreateTrainingItemParams struct {
 	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
+	Goal             pgtype.Text
 	LoadIsMax        bool
 	Loads            []byte
 	LeftLoads        []byte
@@ -124,6 +125,7 @@ func (q *Queries) CreateTrainingItem(ctx context.Context, arg CreateTrainingItem
 		arg.Granularity,
 		arg.FreeText,
 		arg.Comment,
+		arg.Goal,
 		arg.LoadIsMax,
 		arg.Loads,
 		arg.LeftLoads,
@@ -152,6 +154,7 @@ func (q *Queries) CreateTrainingItem(ctx context.Context, arg CreateTrainingItem
 		&i.Granularity,
 		&i.FreeText,
 		&i.Comment,
+		&i.Goal,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,
@@ -212,7 +215,7 @@ func (q *Queries) GetTraining(ctx context.Context, id pgtype.UUID) (Training, er
 }
 
 const getTrainingItemInTraining = `-- name: GetTrainingItemInTraining :one
-SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at FROM training_items WHERE id = $1 AND training_id = $2
+SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, goal, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at FROM training_items WHERE id = $1 AND training_id = $2
 `
 
 type GetTrainingItemInTrainingParams struct {
@@ -242,6 +245,7 @@ func (q *Queries) GetTrainingItemInTraining(ctx context.Context, arg GetTraining
 		&i.Granularity,
 		&i.FreeText,
 		&i.Comment,
+		&i.Goal,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,
@@ -256,7 +260,7 @@ func (q *Queries) GetTrainingItemInTraining(ctx context.Context, arg GetTraining
 }
 
 const getTrainingItems = `-- name: GetTrainingItems :many
-SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at,
+SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.goal, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at,
        exercises.name AS exercise_name,
        exercises.description AS exercise_description,
        exercises.comment AS exercise_comment,
@@ -289,6 +293,7 @@ type GetTrainingItemsRow struct {
 	Granularity         pgtype.Text
 	FreeText            pgtype.Text
 	Comment             pgtype.Text
+	Goal                pgtype.Text
 	Loads               []byte
 	LeftLoads           []byte
 	HandPositions       []byte
@@ -341,6 +346,7 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 			&i.Granularity,
 			&i.FreeText,
 			&i.Comment,
+			&i.Goal,
 			&i.Loads,
 			&i.LeftLoads,
 			&i.HandPositions,
@@ -505,14 +511,15 @@ SET parent_id = $1, type = $2, position = $3,
     rest_seconds = $10,
     exercise_id = $11,
     worktime_seconds = $12, hand = $13, granularity = $14,
-    free_text = $15, comment = $16, load_is_max = $17,
-    loads = $18, left_loads = $19, hand_positions = $20,
-    edge_sizes_mm = $21,
-    variable_targets = $22,
-    group_title = $23,
+    free_text = $15, comment = $16, goal = $17,
+    load_is_max = $18,
+    loads = $19, left_loads = $20, hand_positions = $21,
+    edge_sizes_mm = $22,
+    variable_targets = $23,
+    group_title = $24,
     updated_at = now()
-WHERE id = $24 AND training_id = $25
-RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
+WHERE id = $25 AND training_id = $26
+RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, goal, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
 `
 
 type UpdateTrainingItemParams struct {
@@ -532,6 +539,7 @@ type UpdateTrainingItemParams struct {
 	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
+	Goal             pgtype.Text
 	LoadIsMax        bool
 	Loads            []byte
 	LeftLoads        []byte
@@ -563,6 +571,7 @@ func (q *Queries) UpdateTrainingItem(ctx context.Context, arg UpdateTrainingItem
 		arg.Granularity,
 		arg.FreeText,
 		arg.Comment,
+		arg.Goal,
 		arg.LoadIsMax,
 		arg.Loads,
 		arg.LeftLoads,
@@ -593,6 +602,7 @@ func (q *Queries) UpdateTrainingItem(ctx context.Context, arg UpdateTrainingItem
 		&i.Granularity,
 		&i.FreeText,
 		&i.Comment,
+		&i.Goal,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,

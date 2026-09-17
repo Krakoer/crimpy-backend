@@ -265,6 +265,7 @@ type TrainingItem struct {
 	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
+	Goal             pgtype.Text
 	Loads            []byte
 	LeftLoads        []byte
 	HandPositions    []byte
