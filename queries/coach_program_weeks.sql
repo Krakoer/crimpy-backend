@@ -1,8 +1,8 @@
 -- name: UpsertCoachProgramWeek :one
-INSERT INTO coach_program_weeks (program_id, week_number, notes)
-VALUES (@program_id, @week_number, @notes)
+INSERT INTO coach_program_weeks (program_id, week_number, name, notes)
+VALUES (@program_id, @week_number, @name, @notes)
 ON CONFLICT (program_id, week_number) DO UPDATE
-  SET notes = EXCLUDED.notes, updated_at = now()
+  SET name = EXCLUDED.name, notes = EXCLUDED.notes, updated_at = now()
 RETURNING *;
 
 -- name: GetCoachProgramWeek :one

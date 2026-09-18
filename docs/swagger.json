@@ -1709,7 +1709,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all explicitly defined weeks for a program (summary, no sessions).",
+                "description": "Get all explicitly defined weeks for a program (summary, no sessions). Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.",
                 "produces": [
                     "application/json"
                 ],
@@ -1771,7 +1771,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a specific week with its sessions and per-item overrides. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
+                "description": "Get a specific week with its sessions and per-item overrides. The week carries its name, the label of the training phase it belongs to, absent when the week has none. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
                 "produces": [
                     "application/json"
                 ],
@@ -1835,7 +1835,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.",
+                "description": "Upsert a week's sessions and overrides. The week's name labels its training phase (\"capacity\", \"deload\") and must be at most 60 characters, refused rather than cut; a blank one is stored as no name. It is distinct from notes, which is a message about this particular week. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5123,7 +5123,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all defined weeks for a program assigned to the authenticated user.",
+                "description": "Get all defined weeks for a program assigned to the authenticated user. Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.",
                 "produces": [
                     "application/json"
                 ],
@@ -5178,7 +5178,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a specific week with sessions and overrides for a program assigned to the authenticated user. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.",
+                "description": "Get a specific week with sessions and overrides for a program assigned to the authenticated user. The week carries its name, the label of the training phase it belongs to, absent when the week has none. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.",
                 "produces": [
                     "application/json"
                 ],
@@ -7443,6 +7443,9 @@
         "handler.UpsertWeekRequest": {
             "type": "object",
             "properties": {
+                "name": {
+                    "type": "string"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -7557,6 +7560,9 @@
                 "id": {
                     "type": "string"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -7578,6 +7584,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 },
                 "notes": {
