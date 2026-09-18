@@ -893,6 +893,10 @@ type AssessmentDefinitionSnapshot struct {
 	Prompt  *string `json:"prompt,omitempty"`
 	Unit    string  `json:"unit" enums:"kilograms,seconds,repetitions"`
 	PerHand bool    `json:"per_hand"`
+	// Whether the result is drawn as a ratio to the bodyweight it was pulled at.
+	// Display only, and read by nothing that resolves a percentage: a
+	// prescription is resolved against the raw kilograms whatever this says.
+	BodyweightRelative bool `json:"bodyweight_relative"`
 	// The training the assessment is run from, absent on the ones Crimpy ships.
 	TrainingID *string `json:"training_id,omitempty"`
 	// Set once the unit and the hands can no longer move, because results were
@@ -904,10 +908,11 @@ type AssessmentDefinitionSnapshot struct {
 
 func assessmentDefinitionToSnapshot(d db.AssessmentDefinition) AssessmentDefinitionSnapshot {
 	snapshot := AssessmentDefinitionSnapshot{
-		ID:      d.ID.String(),
-		Label:   d.Label,
-		Unit:    d.Unit,
-		PerHand: d.PerHand,
+		ID:                 d.ID.String(),
+		Label:              d.Label,
+		Unit:               d.Unit,
+		PerHand:            d.PerHand,
+		BodyweightRelative: d.BodyweightRelative,
 	}
 	if d.Prompt.Valid {
 		snapshot.Prompt = &d.Prompt.String

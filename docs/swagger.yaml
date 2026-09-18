@@ -43,6 +43,12 @@ definitions:
     type: object
   handler.AssessmentDefinitionSnapshot:
     properties:
+      bodyweight_relative:
+        description: |-
+          Whether the result is drawn as a ratio to the bodyweight it was pulled at.
+          Display only, and read by nothing that resolves a percentage: a
+          prescription is resolved against the raw kilograms whatever this says.
+        type: boolean
       id:
         type: string
       label:

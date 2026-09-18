@@ -388,7 +388,7 @@ func (q *Queries) GetTrainingOwnedBy(ctx context.Context, arg GetTrainingOwnedBy
 }
 
 const getTrainings = `-- name: GetTrainings :many
-SELECT t.id, t.user_id, t.title, t.description, t.training_type, t.goal, t.comment, t.is_favorite, t.created_at, t.updated_at, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand
+SELECT t.id, t.user_id, t.title, t.description, t.training_type, t.goal, t.comment, t.is_favorite, t.created_at, t.updated_at, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand, d.bodyweight_relative
 FROM trainings t
 LEFT JOIN assessment_definitions d ON d.training_id = t.id
 WHERE t.user_id = $1
@@ -403,21 +403,22 @@ type GetTrainingsParams struct {
 }
 
 type GetTrainingsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Title        string
-	Description  pgtype.Text
-	TrainingType string
-	Goal         pgtype.Text
-	Comment      pgtype.Text
-	IsFavorite   bool
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	AssessmentID pgtype.UUID
-	Label        pgtype.Text
-	Prompt       pgtype.Text
-	Unit         pgtype.Text
-	PerHand      pgtype.Bool
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	Title              string
+	Description        pgtype.Text
+	TrainingType       string
+	Goal               pgtype.Text
+	Comment            pgtype.Text
+	IsFavorite         bool
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	AssessmentID       pgtype.UUID
+	Label              pgtype.Text
+	Prompt             pgtype.Text
+	Unit               pgtype.Text
+	PerHand            pgtype.Bool
+	BodyweightRelative pgtype.Bool
 }
 
 // @is_assessment is null for the whole library, true for the assessments alone
@@ -447,6 +448,7 @@ func (q *Queries) GetTrainings(ctx context.Context, arg GetTrainingsParams) ([]G
 			&i.Prompt,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 		); err != nil {
 			return nil, err
 		}

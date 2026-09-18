@@ -6027,6 +6027,10 @@ const docTemplate = `{
         "handler.AssessmentDefinitionSnapshot": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Whether the result is drawn as a ratio to the bodyweight it was pulled at.\nDisplay only, and read by nothing that resolves a percentage: a\nprescription is resolved against the raw kilograms whatever this says.",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
