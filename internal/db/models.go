@@ -294,3 +294,11 @@ type User struct {
 	CreatedAt                  pgtype.Timestamptz
 	LastSeenAt                 pgtype.Timestamptz
 }
+
+type UserBodyweight struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	WeightKg   float32
+	MeasuredAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}

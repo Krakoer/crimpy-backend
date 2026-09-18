@@ -189,6 +189,12 @@ type HandlerConfig struct {
 		GetAvailabilityReminder(fiber.Ctx) error
 		SetAvailabilityReminder(fiber.Ctx) error
 	}
+	BodyweightHandler interface {
+		CreateMyBodyweight(fiber.Ctx) error
+		GetMyBodyweights(fiber.Ctx) error
+		DeleteMyBodyweight(fiber.Ctx) error
+		GetClientBodyweights(fiber.Ctx) error
+	}
 	CoachTodoHandler interface {
 		GetCoachFeed(fiber.Ctx) error
 		GetCoachTodo(fiber.Ctx) error
@@ -313,6 +319,13 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/coach/clients/:user_id/availability", config.AvailabilityHandler.GetClientAvailability)
 		api.Get("/coach/availability-reminder", config.AvailabilityHandler.GetAvailabilityReminder)
 		api.Put("/coach/availability-reminder", config.AvailabilityHandler.SetAvailabilityReminder)
+	}
+
+	if config.BodyweightHandler != nil {
+		api.Post("/user/bodyweights", config.BodyweightHandler.CreateMyBodyweight)
+		api.Get("/user/bodyweights", config.BodyweightHandler.GetMyBodyweights)
+		api.Delete("/user/bodyweights/:id", config.BodyweightHandler.DeleteMyBodyweight)
+		api.Get("/coach/clients/:user_id/bodyweights", config.BodyweightHandler.GetClientBodyweights)
 	}
 
 	if config.CoachTodoHandler != nil {

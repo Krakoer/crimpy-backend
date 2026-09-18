@@ -97,6 +97,7 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries, pool)
 	programHandler := handler.NewProgramHandler(queries, pool)
 	availabilityHandler := handler.NewAvailabilityHandler(queries, pool)
+	bodyweightHandler := handler.NewBodyweightHandler(queries, pool)
 	coachTodoHandler := handler.NewCoachTodoHandler(queries, pool)
 
 	// Create Fiber app
@@ -231,6 +232,7 @@ func main() {
 	api.Get("/coach/clients/:user_id/sessions/:session_id", coachHandler.GetClientSession)
 	api.Put("/coach/clients/:user_id/sessions/:session_id/reply", coachHandler.SetClientSessionReply)
 	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
+	api.Get("/coach/clients/:user_id/bodyweights", bodyweightHandler.GetClientBodyweights)
 
 	// Program routes (coach manages, coachee reads)
 	api.Post("/coach/clients/:user_id/programs", programHandler.CreateProgram)
@@ -251,6 +253,12 @@ func main() {
 	// Availability routes (coachee declares, coach reads)
 	api.Get("/user/availability", availabilityHandler.GetMyAvailability)
 	api.Put("/user/availability/:week_start", availabilityHandler.UpsertMyWeekAvailability)
+
+	// Bodyweight, a dated series per athlete: their own to write, their coach's
+	// to read.
+	api.Post("/user/bodyweights", bodyweightHandler.CreateMyBodyweight)
+	api.Get("/user/bodyweights", bodyweightHandler.GetMyBodyweights)
+	api.Delete("/user/bodyweights/:id", bodyweightHandler.DeleteMyBodyweight)
 	api.Get("/user/availability-reminder", availabilityHandler.GetMyAvailabilityReminder)
 	api.Get("/coach/clients/:user_id/availability", availabilityHandler.GetClientAvailability)
 	api.Get("/coach/availability-reminder", availabilityHandler.GetAvailabilityReminder)

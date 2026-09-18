@@ -1,0 +1,173 @@
+package handler_test
+
+import (
+	"crimpy/backend/internal/handler"
+	"crimpy/backend/tests/testutil"
+	"encoding/json"
+	"net/http"
+	"testing"
+
+	"github.com/gofiber/fiber/v3"
+)
+
+// The setup a percent_bw freeze needs: an athlete who can record a weight and
+// play a session from a training.
+func setupBodyweightFreeze(t *testing.T, prefix string) (app *fiber.App, userToken, trainingID string) {
+	t.Helper()
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	t.Cleanup(func() { testutil.CleanupTestDB(t, pool) })
+
+	_, userToken = testutil.CreateTestUser(t, queries, prefix+"user@test.com")
+
+	app = testutil.SetupFiberApp(testutil.HandlerConfig{
+		SessionHandler:    handler.NewSessionHandler(queries, pool),
+		TrainingHandler:   handler.NewTrainingHandler(queries, pool),
+		BodyweightHandler: handler.NewBodyweightHandler(queries, pool),
+	})
+
+	// The athlete's own training: a session played straight from one, which is
+	// the plain case for a percent_bw load, needs no coach and no program.
+	status, training := postJSON(t, app, "/api/trainings", userToken, map[string]interface{}{
+		"title": "Weighted pull ups",
+		"items": []map[string]interface{}{
+			{"type": "exercise", "reps": 5, "loads": []map[string]interface{}{{"value": 80, "unit": "percent_bw"}}},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the training, got %d: %v", status, training)
+	}
+	return app, userToken, training["id"].(string)
+}
+
+func recordBodyweight(t *testing.T, app *fiber.App, userToken string, weight float64) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{"weight_kg": weight})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/user/bodyweights", body, userToken))
+	if err != nil {
+		t.Fatalf("Recording the bodyweight failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 recording the bodyweight, got %d", resp.StatusCode)
+	}
+}
+
+func frozenBodyweight(t *testing.T, created map[string]interface{}) (float64, bool) {
+	t.Helper()
+	inputs := sessionPrescription(t, created)["resolved_against"].(map[string]interface{})
+	value, present := inputs["bodyweight_kg"]
+	if !present {
+		return 0, false
+	}
+	return value.(float64), true
+}
+
+// The device sends what it actually resolved the loads against, and that is
+// what the session records, because the device can hold a measurement the
+// server has not been told about yet.
+func TestSessionBodyweight_FreezesWhatTheDeviceUsed(t *testing.T) {
+	app, userToken, trainingID := setupBodyweightFreeze(t, "bwfreeze1")
+	recordBodyweight(t, app, userToken, 70)
+
+	created := playSession(t, app, userToken, map[string]interface{}{
+		"training_id":   trainingID,
+		"bodyweight_kg": 72.5,
+	})
+
+	frozen, present := frozenBodyweight(t, created)
+	if !present {
+		t.Fatalf("Expected the bodyweight frozen with the prescription")
+	}
+	if frozen != 72.5 {
+		t.Errorf("Expected the weight the device used (72.5), got %v", frozen)
+	}
+}
+
+// A client that sends none is answered from the series, so an older app still
+// produces a session whose percent_bw loads can be restated.
+func TestSessionBodyweight_FallsBackToTheSeries(t *testing.T) {
+	app, userToken, trainingID := setupBodyweightFreeze(t, "bwfreeze2")
+	recordBodyweight(t, app, userToken, 68.25)
+
+	created := playSession(t, app, userToken, map[string]interface{}{"training_id": trainingID})
+
+	frozen, present := frozenBodyweight(t, created)
+	if !present {
+		t.Fatalf("Expected the bodyweight frozen from the series")
+	}
+	if frozen != 68.25 {
+		t.Errorf("Expected 68.25 from the series, got %v", frozen)
+	}
+}
+
+// The latest measurement is the one in effect, not the first one recorded.
+func TestSessionBodyweight_FreezesTheLatestOnFile(t *testing.T) {
+	app, userToken, trainingID := setupBodyweightFreeze(t, "bwfreeze3")
+	recordBodyweight(t, app, userToken, 70)
+	recordBodyweight(t, app, userToken, 71.5)
+
+	created := playSession(t, app, userToken, map[string]interface{}{"training_id": trainingID})
+
+	frozen, _ := frozenBodyweight(t, created)
+	if frozen != 71.5 {
+		t.Errorf("Expected the latest weight (71.5), got %v", frozen)
+	}
+}
+
+// Absent rather than zero: an athlete who has never weighed themselves has a
+// session whose percent_bw loads nothing can restate, and a reader has to be
+// able to say so rather than read 0kg as a real weight.
+func TestSessionBodyweight_IsAbsentWhenNothingIsKnown(t *testing.T) {
+	app, userToken, trainingID := setupBodyweightFreeze(t, "bwfreeze4")
+
+	created := playSession(t, app, userToken, map[string]interface{}{"training_id": trainingID})
+
+	if frozen, present := frozenBodyweight(t, created); present {
+		t.Errorf("Expected no bodyweight on the prescription, got %v", frozen)
+	}
+}
+
+// Frozen means frozen: a weight recorded after the session does not restate
+// what that session's loads were read against.
+func TestSessionBodyweight_SurvivesALaterMeasurement(t *testing.T) {
+	app, userToken, trainingID := setupBodyweightFreeze(t, "bwfreeze5")
+	recordBodyweight(t, app, userToken, 70)
+
+	created := playSession(t, app, userToken, map[string]interface{}{"training_id": trainingID})
+	recordBodyweight(t, app, userToken, 64)
+
+	sessionID := created["id"].(string)
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/sessions/"+sessionID, nil, userToken))
+	if err != nil {
+		t.Fatalf("Re-reading the session failed: %v", err)
+	}
+	var detail map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&detail)
+	// The detail endpoint wraps the session beside its reps and assessments.
+	reread, ok := detail["session"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected a session on the detail read, got %v", detail)
+	}
+
+	frozen, present := frozenBodyweight(t, reread)
+	if !present {
+		t.Fatalf("Expected the frozen bodyweight on the re-read, got %v", reread)
+	}
+	if frozen != 70 {
+		t.Errorf("Expected the session to keep the 70 it was played against, got %v", frozen)
+	}
+}
+
+func TestSessionBodyweight_RefusesAWeightThatIsNotOne(t *testing.T) {
+	app, userToken, trainingID := setupBodyweightFreeze(t, "bwfreeze6")
+
+	for _, weight := range []float64{0, -1, 900} {
+		resp := playSessionExpecting(t, app, userToken, map[string]interface{}{
+			"training_id":   trainingID,
+			"bodyweight_kg": weight,
+		})
+		if resp.StatusCode != fiber.StatusBadRequest {
+			t.Errorf("Expected 400 for bodyweight_kg %v, got %d", weight, resp.StatusCode)
+		}
+	}
+}

@@ -168,6 +168,13 @@ type CreateSessionRequest struct {
 	// only: it is what a critical force or an MVC result means, and on any other
 	// session it would be bulk nothing reads.
 	Samples *SessionSamplesRequest `json:"samples,omitempty"`
+	// BodyweightKg is the weight the device resolved this run's percent_bw loads
+	// against. Sent rather than looked up, because the device may hold a newer
+	// measurement than the server has: a run does not need the network, so an
+	// athlete can weigh themselves and train before either reaches us. Absent
+	// falls back to the latest measurement on file, and absent from both is a
+	// session whose percent_bw loads nothing can restate.
+	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
 }
 
 // maxClientPrescriptionBytes caps a prescription the client sends at a few
@@ -781,9 +788,6 @@ type PrescriptionSnapshot struct {
 // against, frozen with it. A load or a target the coach set as a percentage of
 // an assessment is stored as the percentage, so reading it against the results
 // the athlete has now would restate the prescription every time they reassess.
-//
-// The bodyweight a percent_bw load needs is not here: the app keeps it on the
-// device and never sends it, so the server has nothing to freeze.
 type PrescriptionInputs struct {
 	// Empty when the athlete had done no assessment, which is the case where
 	// the clients fall back to the value the coach set.
@@ -793,6 +797,11 @@ type PrescriptionInputs struct {
 	// with no result still has to be named on screen and unit checked before it
 	// resolves, and the definition stays editable afterwards.
 	Definitions []AssessmentDefinitionSnapshot `json:"definitions,omitempty"`
+	// BodyweightKg is what a percent_bw load was read against, in kilograms.
+	// Absent when the athlete has never recorded a weight and the device sent
+	// none, which is the case where a percent_bw load cannot be restated later
+	// and a reader has to say so rather than guess.
+	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
 }
 
 // AssessmentResultSnapshot is the last value the athlete had measured for one
@@ -881,7 +890,7 @@ func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []A
 // the program session's per-item overrides already merged in, so a later edit of
 // either cannot rewrite what was prescribed. programSession is nil for a session
 // played straight from a training, outside any program.
-func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) (PrescriptionSnapshot, error) {
+func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession, usedBodyweight *float32) (PrescriptionSnapshot, error) {
 	training, err := qtx.GetTraining(ctx, trainingID)
 	if err != nil {
 		return PrescriptionSnapshot{}, err
@@ -916,6 +925,19 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 		return PrescriptionSnapshot{}, err
 	}
 	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
+
+	// What the device says it used wins over what is on file. The device can
+	// hold a measurement the server has not seen, because a run needs no
+	// network, and freezing our own number would record a weight the loads were
+	// not actually resolved against.
+	snapshot.ResolvedAgainst.BodyweightKg = usedBodyweight
+	if snapshot.ResolvedAgainst.BodyweightKg == nil {
+		onFile, err := latestBodyweight(ctx, qtx, userID)
+		if err != nil {
+			return PrescriptionSnapshot{}, err
+		}
+		snapshot.ResolvedAgainst.BodyweightKg = onFile
+	}
 
 	if programSession != nil {
 		id := programSession.ID.String()
@@ -1294,6 +1316,14 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	if !isValidActivity(req.Activity) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid activity"})
 	}
+	// Checked here as well as on the bodyweight endpoint, because this value is
+	// frozen into the prescription rather than stored in the series, so nothing
+	// else would refuse a weight that is not one.
+	if req.BodyweightKg != nil && (*req.BodyweightKg <= minBodyweightKg || *req.BodyweightKg > maxBodyweightKg) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("bodyweight_kg must be above %d and at most %d", minBodyweightKg, maxBodyweightKg),
+		})
+	}
 
 	origin := req.Origin
 	if origin == "" {
@@ -1388,7 +1418,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 				"error": fmt.Sprintf("Prescription is not accepted on a session that names %s", named),
 			})
 		}
-		snapshot, err := buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
+		snapshot, err := buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession, req.BodyweightKg)
 		if err != nil {
 			slog.Error("failed to snapshot session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})

@@ -1373,6 +1373,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/coach/clients/{user_id}/bodyweights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The measurements of an athlete enrolled with the authenticated coach, most recently measured first, so a strength number can be read as a ratio to the bodyweight of the day rather than as an absolute.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "List a client's bodyweight series",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many measurements to return, 1 to 365, default 60",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The series, newest first",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.BodyweightResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/coach/clients/{user_id}/programs": {
             "get": {
                 "security": [
@@ -4884,6 +4954,170 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/user/bodyweights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The authenticated user's measurements, most recently measured first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "List my bodyweight series",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "How many measurements to return, 1 to 365, default 60",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The series, newest first",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.BodyweightResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Append a dated measurement to the authenticated user's bodyweight series. measured_at is when the athlete weighed themselves and defaults to now, so a measurement taken while the device was offline keeps the day it belongs to when it is sent. The series is what makes a strength number readable as a ratio, and what a percent_bw prescription is frozen against.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "Record my bodyweight",
+                "parameters": [
+                    {
+                        "description": "The measurement",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateBodyweightRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "The recorded measurement",
+                        "schema": {
+                            "$ref": "#/definitions/handler.BodyweightResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/bodyweights/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a measurement from the authenticated user's own series, for a number typed wrong. A measurement a past session was frozen against is unaffected: that value lives in the session's own snapshot.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "Remove one of my measurements",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Measurement ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/user/enrollment": {
             "get": {
                 "security": [
@@ -5820,6 +6054,26 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.BodyweightResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "measured_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "weight_kg": {
+                    "type": "number"
+                }
+            }
+        },
         "handler.BuiltinTrainingWeightResponse": {
             "type": "object",
             "properties": {
@@ -5987,6 +6241,18 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.CreateBodyweightRequest": {
+            "type": "object",
+            "properties": {
+                "measured_at": {
+                    "description": "When the athlete weighed themselves, RFC3339. Absent means now, which is\nwhat a measurement taken in the app while online is. A device that was\noffline sends the moment it actually happened.",
+                    "type": "string"
+                },
+                "weight_kg": {
+                    "type": "number"
+                }
+            }
+        },
         "handler.CreateBuiltinTrainingWeightRequest": {
             "type": "object",
             "properties": {
@@ -6069,6 +6335,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/handler.AssessmentRequest"
                     }
+                },
+                "bodyweight_kg": {
+                    "description": "BodyweightKg is the weight the device resolved this run's percent_bw loads\nagainst. Sent rather than looked up, because the device may hold a newer\nmeasurement than the server has: a run does not need the network, so an\nathlete can weigh themselves and train before either reaches us. Absent\nfalls back to the latest measurement on file, and absent from both is a\nsession whose percent_bw loads nothing can restate.",
+                    "type": "number"
                 },
                 "date": {
                     "type": "string"
