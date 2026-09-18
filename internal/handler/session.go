@@ -168,6 +168,13 @@ type CreateSessionRequest struct {
 	// only: it is what a critical force or an MVC result means, and on any other
 	// session it would be bulk nothing reads.
 	Samples *SessionSamplesRequest `json:"samples,omitempty"`
+	// BodyweightKg is the weight the device resolved this run's percent_bw loads
+	// against. Sent rather than looked up, because the device may hold a newer
+	// measurement than the server has: a run does not need the network, so an
+	// athlete can weigh themselves and train before either reaches us. Absent
+	// falls back to the latest measurement on file, and absent from both is a
+	// session whose percent_bw loads nothing can restate.
+	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
 }
 
 // maxClientPrescriptionBytes caps a prescription the client sends at a few
@@ -185,6 +192,11 @@ const maxClientPrescriptionBytes = 256 * 1024
 // the server does not model is still the only record of what the athlete was
 // asked to do. Every id in it is a name the client chose, which is why the two
 // link columns are text.
+//
+// Not byte for byte, mind: withFrozenBodyweight re-encodes the top level to add
+// the frozen inputs, which compacts the JSON and reorders its outermost keys.
+// Every value survives, since they travel as raw messages, but nothing should
+// hash these bytes or diff them against the device's own copy.
 func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error) {
 	if len(raw) > maxClientPrescriptionBytes {
 		return nil, nil, errors.New("Prescription is too large")
@@ -201,6 +213,64 @@ func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error
 		return nil, nil, err
 	}
 	return raw, ids, nil
+}
+
+// prescriptionFreezesBodyweight answers whether a client's own prescription
+// already names the weight it was resolved against, which makes it the record
+// of what happened and not something to be replaced from the series.
+func frozenPrescriptionBodyweight(prescription []byte) *float32 {
+	var root struct {
+		ResolvedAgainst struct {
+			BodyweightKg *float32 `json:"bodyweight_kg"`
+		} `json:"resolved_against"`
+	}
+	if err := json.Unmarshal(prescription, &root); err != nil {
+		return nil
+	}
+	return root.ResolvedAgainst.BodyweightKg
+}
+
+// withFrozenBodyweight writes the weight a run resolved its percent_bw loads
+// against into a client's own prescription, under resolved_against beside the
+// assessments the other path freezes there.
+//
+// Done by editing the JSON rather than by decoding into PrescriptionSnapshot
+// and re-encoding, for the reason clientPrescription keeps the raw bytes: this
+// describes a training the server has never seen, so a field it does not model
+// is still the only record of what the athlete was asked to do, and a round
+// trip through the typed struct would drop it. Decoding one level into raw
+// messages keeps every key the client sent.
+//
+// A nil weight writes nothing, so a session played by an athlete who has never
+// recorded one carries no bodyweight rather than a zero.
+func withFrozenBodyweight(prescription []byte, weightKg *float32) ([]byte, error) {
+	if weightKg == nil {
+		return prescription, nil
+	}
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(prescription, &root); err != nil {
+		return nil, err
+	}
+
+	inputs := map[string]json.RawMessage{}
+	if existing, ok := root["resolved_against"]; ok {
+		if err := json.Unmarshal(existing, &inputs); err != nil {
+			return nil, err
+		}
+	}
+	encoded, err := json.Marshal(*weightKg)
+	if err != nil {
+		return nil, err
+	}
+	inputs["bodyweight_kg"] = encoded
+
+	resolved, err := json.Marshal(inputs)
+	if err != nil {
+		return nil, err
+	}
+	root["resolved_against"] = resolved
+	return json.Marshal(root)
 }
 
 // collectPrescribedItemIDs gathers the id of every item of a client's
@@ -781,9 +851,6 @@ type PrescriptionSnapshot struct {
 // against, frozen with it. A load or a target the coach set as a percentage of
 // an assessment is stored as the percentage, so reading it against the results
 // the athlete has now would restate the prescription every time they reassess.
-//
-// The bodyweight a percent_bw load needs is not here: the app keeps it on the
-// device and never sends it, so the server has nothing to freeze.
 type PrescriptionInputs struct {
 	// Empty when the athlete had done no assessment, which is the case where
 	// the clients fall back to the value the coach set.
@@ -793,6 +860,11 @@ type PrescriptionInputs struct {
 	// with no result still has to be named on screen and unit checked before it
 	// resolves, and the definition stays editable afterwards.
 	Definitions []AssessmentDefinitionSnapshot `json:"definitions,omitempty"`
+	// BodyweightKg is what a percent_bw load was read against, in kilograms.
+	// Absent when the athlete has never recorded a weight and the device sent
+	// none, which is the case where a percent_bw load cannot be restated later
+	// and a reader has to say so rather than guess.
+	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
 }
 
 // AssessmentResultSnapshot is the last value the athlete had measured for one
@@ -881,7 +953,7 @@ func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []A
 // the program session's per-item overrides already merged in, so a later edit of
 // either cannot rewrite what was prescribed. programSession is nil for a session
 // played straight from a training, outside any program.
-func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession) (PrescriptionSnapshot, error) {
+func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, trainingID pgtype.UUID, programSession *db.CoachProgramWeekSession, usedBodyweight *float32) (PrescriptionSnapshot, error) {
 	training, err := qtx.GetTraining(ctx, trainingID)
 	if err != nil {
 		return PrescriptionSnapshot{}, err
@@ -916,6 +988,19 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 		return PrescriptionSnapshot{}, err
 	}
 	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
+
+	// What the device says it used wins over what is on file. The device can
+	// hold a measurement the server has not seen, because a run needs no
+	// network, and freezing our own number would record a weight the loads were
+	// not actually resolved against.
+	snapshot.ResolvedAgainst.BodyweightKg = usedBodyweight
+	if snapshot.ResolvedAgainst.BodyweightKg == nil {
+		onFile, err := latestBodyweight(ctx, qtx, userID)
+		if err != nil {
+			return PrescriptionSnapshot{}, err
+		}
+		snapshot.ResolvedAgainst.BodyweightKg = onFile
+	}
 
 	if programSession != nil {
 		id := programSession.ID.String()
@@ -1294,6 +1379,14 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	if !isValidActivity(req.Activity) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid activity"})
 	}
+	// Checked here as well as on the bodyweight endpoint, because this value is
+	// frozen into the prescription rather than stored in the series, so nothing
+	// else would refuse a weight that is not one.
+	if req.BodyweightKg != nil && !plausibleBodyweight(*req.BodyweightKg) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("bodyweight_kg must be above %d and at most %d", minBodyweightKg, maxBodyweightKg),
+		})
+	}
 
 	origin := req.Origin
 	if origin == "" {
@@ -1388,7 +1481,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 				"error": fmt.Sprintf("Prescription is not accepted on a session that names %s", named),
 			})
 		}
-		snapshot, err := buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession)
+		snapshot, err := buildPrescriptionSnapshot(c.Context(), qtx, userUUID, trainingID, programSession, req.BodyweightKg)
 		if err != nil {
 			slog.Error("failed to snapshot session prescription", "user_id", userID, "training_id", trainingID.String(), "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
@@ -1404,6 +1497,39 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		prescription, prescribedItemIDs, err = clientPrescription(sentPrescription)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		// A run of a training the server cannot read still resolves percent_bw
+		// loads against a weight, and that weight is as much a part of what was
+		// prescribed here as on the path above. Without this the field is taken
+		// from the request, checked, and then dropped, and the weight is gone
+		// for good: it only ever lived on the device.
+		//
+		// The series is the last resort, not the second: a prescription that
+		// already names the weight it was resolved against is the device saying
+		// so, and overwriting it with what we happen to hold would record a
+		// weight the loads were not read against, which is the whole thing this
+		// is here to avoid.
+		usedBodyweight := req.BodyweightKg
+		if frozen := frozenPrescriptionBodyweight(prescription); frozen != nil {
+			// Checked for the same reason the request field is: a weight the
+			// prescription froze for itself is stored as it arrived, so this is
+			// the only place that can refuse one no athlete could weigh.
+			if !plausibleBodyweight(*frozen) {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("resolved_against.bodyweight_kg must be above %d and at most %d", minBodyweightKg, maxBodyweightKg),
+				})
+			}
+		} else if usedBodyweight == nil {
+			usedBodyweight, err = latestBodyweight(c.Context(), qtx, userUUID)
+			if err != nil {
+				slog.Error("failed to read the bodyweight to freeze", "user_id", userID, "error", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+			}
+		}
+		prescription, err = withFrozenBodyweight(prescription, usedBodyweight)
+		if err != nil {
+			slog.Error("failed to freeze the bodyweight into the prescription", "user_id", userID, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 		}
 	}
 

@@ -163,6 +163,19 @@ definitions:
       minute:
         type: integer
     type: object
+  handler.BodyweightResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      measured_at:
+        type: string
+      user_id:
+        type: string
+      weight_kg:
+        type: number
+    type: object
   handler.BuiltinTrainingWeightResponse:
     properties:
       builtin_training_id:
@@ -278,6 +291,17 @@ definitions:
       session_id:
         type: string
     type: object
+  handler.CreateBodyweightRequest:
+    properties:
+      measured_at:
+        description: |-
+          When the athlete weighed themselves, RFC3339. Absent means now, which is
+          what a measurement taken in the app while online is. A device that was
+          offline sends the moment it actually happened.
+        type: string
+      weight_kg:
+        type: number
+    type: object
   handler.CreateBuiltinTrainingWeightRequest:
     properties:
       builtin_training_id:
@@ -332,6 +356,15 @@ definitions:
         items:
           $ref: '#/definitions/handler.AssessmentRequest'
         type: array
+      bodyweight_kg:
+        description: |-
+          BodyweightKg is the weight the device resolved this run's percent_bw loads
+          against. Sent rather than looked up, because the device may hold a newer
+          measurement than the server has: a run does not need the network, so an
+          athlete can weigh themselves and train before either reaches us. Absent
+          falls back to the latest measurement on file, and absent from both is a
+          session whose percent_bw loads nothing can restate.
+        type: number
       date:
         type: string
       duration:
@@ -2405,6 +2438,53 @@ paths:
       summary: Get a client's declared availability
       tags:
       - Availability
+  /api/coach/clients/{user_id}/bodyweights:
+    get:
+      description: The measurements of an athlete enrolled with the authenticated
+        coach, most recently measured first, so a strength number can be read as a
+        ratio to the bodyweight of the day rather than as an absolute.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: How many measurements to return, 1 to 365, default 60
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The series, newest first
+          schema:
+            items:
+              $ref: '#/definitions/handler.BodyweightResponse'
+            type: array
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a client's bodyweight series
+      tags:
+      - Bodyweight
   /api/coach/clients/{user_id}/programs:
     get:
       description: Get all training programs created by this coach for a specific
@@ -4794,6 +4874,128 @@ paths:
       summary: Declare my availability for a calendar week
       tags:
       - Availability
+  /api/user/bodyweights:
+    get:
+      description: The authenticated user's measurements, most recently measured first.
+      parameters:
+      - description: How many measurements to return, 1 to 365, default 60
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The series, newest first
+          schema:
+            items:
+              $ref: '#/definitions/handler.BodyweightResponse'
+            type: array
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my bodyweight series
+      tags:
+      - Bodyweight
+    post:
+      consumes:
+      - application/json
+      description: Append a dated measurement to the authenticated user's bodyweight
+        series. measured_at is when the athlete weighed themselves and defaults to
+        now, so a measurement taken while the device was offline keeps the day it
+        belongs to when it is sent. The series is what makes a strength number readable
+        as a ratio, and what a percent_bw prescription is frozen against.
+      parameters:
+      - description: The measurement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateBodyweightRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The recorded measurement
+          schema:
+            $ref: '#/definitions/handler.BodyweightResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Record my bodyweight
+      tags:
+      - Bodyweight
+  /api/user/bodyweights/{id}:
+    delete:
+      description: 'Delete a measurement from the authenticated user''s own series,
+        for a number typed wrong. A measurement a past session was frozen against
+        is unaffected: that value lives in the session''s own snapshot.'
+      parameters:
+      - description: Measurement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Measurement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove one of my measurements
+      tags:
+      - Bodyweight
   /api/user/enrollment:
     delete:
       description: Remove the authenticated user from their current coach enrollment.

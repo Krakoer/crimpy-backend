@@ -194,6 +194,25 @@ CREATE TABLE "pinned_builtin_trainings" (
   PRIMARY KEY ("builtin_training_id", "user_id")
 );
 
+-- A dated bodyweight measurement. Every finger and pulling number a coach reads
+-- is a ratio to the bodyweight of the day rather than an absolute, so the series
+-- is what makes those numbers comparable across a season, and what a percent_bw
+-- prescription is frozen against. Deliberately a plain series: one number and
+-- when it was taken, not body composition.
+CREATE TABLE "user_bodyweights" (
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"     UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "weight_kg"   REAL        NOT NULL,
+  -- When the athlete weighed themselves, which is not when the row reached the
+  -- server: a measurement taken offline is sent when the device next has a
+  -- network, and the day it belongs to is the day it was taken.
+  "measured_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "user_bodyweights_weight_check"
+    CHECK (weight_kg > 0 AND weight_kg <= 500),
+  PRIMARY KEY ("id")
+);
+
 -- Stores the saved sensor configs.
 CREATE TABLE "sensor_configs" (
   "id"         UUID        NOT NULL,
@@ -679,4 +698,8 @@ CREATE INDEX "rep_datas_user_id_idx" ON "rep_datas"("user_id");
 CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings"("user_id");
 CREATE INDEX "sensor_configs_user_id_idx" ON "sensor_configs"("user_id");
 CREATE INDEX "builtin_training_weights_user_id_idx" ON "builtin_training_weights"("user_id");
+-- Every read of the series is one athlete's, newest first, which is also how the
+-- latest value is found when a prescription is frozen.
+CREATE INDEX "user_bodyweights_user_id_measured_at_idx"
+  ON "user_bodyweights"("user_id", "measured_at" DESC);
 
