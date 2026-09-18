@@ -9,13 +9,13 @@ SELECT * FROM assessments WHERE id = $1;
 -- name: GetSessionAssessments :many
 -- The results measured in one session, each with the assessment that defines it,
 -- so a caller can name and format the number without a second query.
-SELECT a.*, d.label, d.unit, d.per_hand, d.training_id
+SELECT a.*, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
 FROM assessments a
 JOIN assessment_definitions d ON d.id = a.assessment_id
 WHERE a.session_id = $1;
 
 -- name: GetUserAssessments :many
-SELECT a.*, s.date AS session_date, d.label, d.unit, d.per_hand, d.training_id
+SELECT a.*, s.date AS session_date, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
 FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 JOIN assessment_definitions d ON d.id = a.assessment_id
@@ -59,3 +59,61 @@ SELECT
 FROM last_right
 FULL OUTER JOIN last_left ON last_left.assessment_id = last_right.assessment_id
 ORDER BY 1;
+
+-- name: GetUserAssessmentValuesAtDate :many
+-- The athlete's assessment results as they stood on a given day: for each
+-- assessment, each grip and each hand, the last value measured at or before it.
+-- GetUserLatestAssessmentValues is this query with no upper bound, and the hands
+-- are tracked apart here for the same reason: an assessment carrying only one of
+-- them does not discard the other hand's last measurement.
+--
+-- The grip is part of the key rather than collapsed away, because a hang on a
+-- 20mm edge and one on a 10mm edge are different tests to a coach reading two
+-- dates side by side, and the results carry the grip they were pulled on.
+--
+-- The date each value was measured travels with it, so a reader can tell a value
+-- measured near the date asked for from one carried forward from months back.
+-- The definition is joined in, as the other read paths do, so a caller can name
+-- and format the number without a second query.
+WITH measured AS (
+  SELECT
+    a.assessment_id,
+    COALESCE(a.grip_position, 0)::int AS grip_position,
+    a.right_value,
+    a.left_value,
+    s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = @user_id AND s.date <= @as_of
+),
+last_right AS (
+  SELECT DISTINCT ON (assessment_id, grip_position)
+    assessment_id, grip_position, right_value, date
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (assessment_id, grip_position)
+    assessment_id, grip_position, left_value, date
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+)
+SELECT
+  d.id AS assessment_id,
+  d.label,
+  d.unit,
+  d.per_hand,
+  d.bodyweight_relative,
+  d.training_id,
+  COALESCE(last_right.grip_position, last_left.grip_position)::int AS grip_position,
+  last_right.right_value,
+  last_right.date AS right_measured_at,
+  last_left.left_value,
+  last_left.date AS left_measured_at
+FROM last_right
+FULL OUTER JOIN last_left
+  ON last_left.assessment_id = last_right.assessment_id
+ AND last_left.grip_position = last_right.grip_position
+JOIN assessment_definitions d
+  ON d.id = COALESCE(last_right.assessment_id, last_left.assessment_id)
+ORDER BY d.label, 7;

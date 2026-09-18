@@ -118,6 +118,7 @@ type HandlerConfig struct {
 	AssessmentHandler interface {
 		CreateAssessment(fiber.Ctx) error
 		GetAssessments(fiber.Ctx) error
+		GetMyAssessmentSnapshot(fiber.Ctx) error
 		DeleteAssessment(fiber.Ctx) error
 	}
 	AssessmentDefinitionHandler interface {
@@ -164,6 +165,7 @@ type HandlerConfig struct {
 		GetClientSession(fiber.Ctx) error
 		SetClientSessionReply(fiber.Ctx) error
 		GetClientAssessments(fiber.Ctx) error
+		GetClientAssessmentSnapshot(fiber.Ctx) error
 	}
 	ProgramHandler interface {
 		CreateProgram(fiber.Ctx) error
@@ -235,6 +237,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	if config.AssessmentHandler != nil {
 		api.Post("/assessments", config.AssessmentHandler.CreateAssessment)
 		api.Get("/assessments", config.AssessmentHandler.GetAssessments)
+		api.Get("/assessments/at", config.AssessmentHandler.GetMyAssessmentSnapshot)
 		api.Delete("/assessments/:id", config.AssessmentHandler.DeleteAssessment)
 	}
 
@@ -266,6 +269,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/coach/clients/:user_id/sessions/:session_id", config.CoachHandler.GetClientSession)
 		api.Put("/coach/clients/:user_id/sessions/:session_id/reply", config.CoachHandler.SetClientSessionReply)
 		api.Get("/coach/clients/:user_id/assessments", config.CoachHandler.GetClientAssessments)
+		api.Get("/coach/clients/:user_id/assessments/at", config.CoachHandler.GetClientAssessmentSnapshot)
 	}
 
 	if config.ExerciseHandler != nil {

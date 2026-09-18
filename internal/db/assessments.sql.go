@@ -92,25 +92,26 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 }
 
 const getSessionAssessments = `-- name: GetSessionAssessments :many
-SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, d.label, d.unit, d.per_hand, d.training_id
+SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
 FROM assessments a
 JOIN assessment_definitions d ON d.id = a.assessment_id
 WHERE a.session_id = $1
 `
 
 type GetSessionAssessmentsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	AssessmentID pgtype.UUID
-	RightValue   pgtype.Float4
-	LeftValue    pgtype.Float4
-	SessionID    pgtype.UUID
-	GripPosition pgtype.Int4
-	UpdatedAt    pgtype.Timestamptz
-	Label        string
-	Unit         string
-	PerHand      bool
-	TrainingID   pgtype.UUID
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	AssessmentID       pgtype.UUID
+	RightValue         pgtype.Float4
+	LeftValue          pgtype.Float4
+	SessionID          pgtype.UUID
+	GripPosition       pgtype.Int4
+	UpdatedAt          pgtype.Timestamptz
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
 }
 
 // The results measured in one session, each with the assessment that defines it,
@@ -136,6 +137,7 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 			&i.Label,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.TrainingID,
 		); err != nil {
 			return nil, err
@@ -148,8 +150,118 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 	return items, nil
 }
 
+const getUserAssessmentValuesAtDate = `-- name: GetUserAssessmentValuesAtDate :many
+WITH measured AS (
+  SELECT
+    a.assessment_id,
+    COALESCE(a.grip_position, 0)::int AS grip_position,
+    a.right_value,
+    a.left_value,
+    s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = $1 AND s.date <= $2
+),
+last_right AS (
+  SELECT DISTINCT ON (assessment_id, grip_position)
+    assessment_id, grip_position, right_value, date
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (assessment_id, grip_position)
+    assessment_id, grip_position, left_value, date
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+)
+SELECT
+  d.id AS assessment_id,
+  d.label,
+  d.unit,
+  d.per_hand,
+  d.bodyweight_relative,
+  d.training_id,
+  COALESCE(last_right.grip_position, last_left.grip_position)::int AS grip_position,
+  last_right.right_value,
+  last_right.date AS right_measured_at,
+  last_left.left_value,
+  last_left.date AS left_measured_at
+FROM last_right
+FULL OUTER JOIN last_left
+  ON last_left.assessment_id = last_right.assessment_id
+ AND last_left.grip_position = last_right.grip_position
+JOIN assessment_definitions d
+  ON d.id = COALESCE(last_right.assessment_id, last_left.assessment_id)
+ORDER BY d.label, 7
+`
+
+type GetUserAssessmentValuesAtDateParams struct {
+	UserID pgtype.UUID
+	AsOf   pgtype.Timestamptz
+}
+
+type GetUserAssessmentValuesAtDateRow struct {
+	AssessmentID       pgtype.UUID
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
+	GripPosition       int32
+	RightValue         pgtype.Float4
+	RightMeasuredAt    pgtype.Timestamptz
+	LeftValue          pgtype.Float4
+	LeftMeasuredAt     pgtype.Timestamptz
+}
+
+// The athlete's assessment results as they stood on a given day: for each
+// assessment, each grip and each hand, the last value measured at or before it.
+// GetUserLatestAssessmentValues is this query with no upper bound, and the hands
+// are tracked apart here for the same reason: an assessment carrying only one of
+// them does not discard the other hand's last measurement.
+//
+// The grip is part of the key rather than collapsed away, because a hang on a
+// 20mm edge and one on a 10mm edge are different tests to a coach reading two
+// dates side by side, and the results carry the grip they were pulled on.
+//
+// The date each value was measured travels with it, so a reader can tell a value
+// measured near the date asked for from one carried forward from months back.
+// The definition is joined in, as the other read paths do, so a caller can name
+// and format the number without a second query.
+func (q *Queries) GetUserAssessmentValuesAtDate(ctx context.Context, arg GetUserAssessmentValuesAtDateParams) ([]GetUserAssessmentValuesAtDateRow, error) {
+	rows, err := q.db.Query(ctx, getUserAssessmentValuesAtDate, arg.UserID, arg.AsOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserAssessmentValuesAtDateRow
+	for rows.Next() {
+		var i GetUserAssessmentValuesAtDateRow
+		if err := rows.Scan(
+			&i.AssessmentID,
+			&i.Label,
+			&i.Unit,
+			&i.PerHand,
+			&i.BodyweightRelative,
+			&i.TrainingID,
+			&i.GripPosition,
+			&i.RightValue,
+			&i.RightMeasuredAt,
+			&i.LeftValue,
+			&i.LeftMeasuredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserAssessments = `-- name: GetUserAssessments :many
-SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date, d.label, d.unit, d.per_hand, d.training_id
+SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
 FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 JOIN assessment_definitions d ON d.id = a.assessment_id
@@ -158,19 +270,20 @@ ORDER BY s.date DESC
 `
 
 type GetUserAssessmentsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	AssessmentID pgtype.UUID
-	RightValue   pgtype.Float4
-	LeftValue    pgtype.Float4
-	SessionID    pgtype.UUID
-	GripPosition pgtype.Int4
-	UpdatedAt    pgtype.Timestamptz
-	SessionDate  pgtype.Timestamptz
-	Label        string
-	Unit         string
-	PerHand      bool
-	TrainingID   pgtype.UUID
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	AssessmentID       pgtype.UUID
+	RightValue         pgtype.Float4
+	LeftValue          pgtype.Float4
+	SessionID          pgtype.UUID
+	GripPosition       pgtype.Int4
+	UpdatedAt          pgtype.Timestamptz
+	SessionDate        pgtype.Timestamptz
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
 }
 
 func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([]GetUserAssessmentsRow, error) {
@@ -195,6 +308,7 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 			&i.Label,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.TrainingID,
 		); err != nil {
 			return nil, err

@@ -718,6 +718,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/assessments/at": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The last value measured for each assessment, grip and hand at or before the given date, with the bodyweight in effect then. Reading two dates gives the two sides of a comparison, and a result carried forward from an earlier day is marked by the date it was actually measured.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "My assessment results as of a date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The day to read the results as of, YYYY-MM-DD or RFC3339",
+                        "name": "date",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The results as of that date",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AssessmentSnapshotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/assessments/{id}": {
             "delete": {
                 "security": [
@@ -1299,6 +1360,74 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Not a coach or user not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/clients/{user_id}/assessments/at": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach, with the bodyweight in effect then. Two reads give the two sides of a comparison between blocks.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "A client's assessment results as of a date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "The day to read the results as of, YYYY-MM-DD or RFC3339",
+                        "name": "date",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The results as of that date",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AssessmentSnapshotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a coach or user not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5852,6 +5981,10 @@ const docTemplate = `{
         "handler.AssessmentDefinitionResponse": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at,\n(bodyweight + result) / bodyweight, rather than as an absolute load. A\ndisplay concern: the raw kilograms and the dated bodyweight are what is\nstored, so the formula can be corrected without rewriting history.",
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -5930,6 +6063,10 @@ const docTemplate = `{
                 "assessment_id": {
                     "type": "string"
                 },
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the bodyweight series holds the denominator.",
+                    "type": "boolean"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -5997,6 +6134,10 @@ const docTemplate = `{
                 "assessment_id": {
                     "type": "string"
                 },
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the bodyweight series holds the denominator.",
+                    "type": "boolean"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -6035,6 +6176,68 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.AssessmentSnapshotItem": {
+            "type": "object",
+            "properties": {
+                "assessment_id": {
+                    "type": "string"
+                },
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only, see the column comment.",
+                    "type": "boolean"
+                },
+                "grip_position": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "left_measured_at": {
+                    "type": "string"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "per_hand": {
+                    "type": "boolean"
+                },
+                "right_measured_at": {
+                    "type": "string"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "training_id": {
+                    "description": "The training the assessment is run from, absent on the ones Crimpy ships.",
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
+                }
+            }
+        },
+        "handler.AssessmentSnapshotResponse": {
+            "type": "object",
+            "properties": {
+                "bodyweight_kg": {
+                    "type": "number"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentSnapshotItem"
+                    }
                 }
             }
         },
@@ -6217,6 +6420,10 @@ const docTemplate = `{
         "handler.CreateAssessmentDefinitionRequest": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Display the result as a ratio to the bodyweight it was pulled at, which\nonly a result in kilograms can be.",
+                    "type": "boolean"
+                },
                 "label": {
                     "type": "string"
                 },
@@ -7592,6 +7799,10 @@ const docTemplate = `{
         "handler.UpdateAssessmentDefinitionRequest": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Free to toggle at any time, unlike the unit and the hands: see the freeze\nrule in UpdateAssessmentDefinition.",
+                    "type": "boolean"
+                },
                 "label": {
                     "type": "string"
                 },

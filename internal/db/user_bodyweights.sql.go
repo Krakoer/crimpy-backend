@@ -62,6 +62,35 @@ func (q *Queries) GetUserBodyweight(ctx context.Context, id pgtype.UUID) (UserBo
 	return i, err
 }
 
+const getUserBodyweightAtDate = `-- name: GetUserBodyweightAtDate :one
+SELECT id, user_id, weight_kg, measured_at, created_at FROM user_bodyweights
+WHERE user_id = $1 AND measured_at <= $2
+ORDER BY measured_at DESC, created_at DESC
+LIMIT 1
+`
+
+type GetUserBodyweightAtDateParams struct {
+	UserID pgtype.UUID
+	AsOf   pgtype.Timestamptz
+}
+
+// The weight in effect on a given day, which is the denominator a bodyweight
+// relative score measured then has to be read against. The last measurement at
+// or before the date rather than the nearest one: a weigh-in that happened after
+// the test cannot be what the test was pulled at.
+func (q *Queries) GetUserBodyweightAtDate(ctx context.Context, arg GetUserBodyweightAtDateParams) (UserBodyweight, error) {
+	row := q.db.QueryRow(ctx, getUserBodyweightAtDate, arg.UserID, arg.AsOf)
+	var i UserBodyweight
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.WeightKg,
+		&i.MeasuredAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getUserBodyweights = `-- name: GetUserBodyweights :many
 SELECT id, user_id, weight_kg, measured_at, created_at FROM user_bodyweights
 WHERE user_id = $1
