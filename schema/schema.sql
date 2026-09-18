@@ -312,11 +312,24 @@ CREATE TABLE "assessment_definitions" (
   "unit"        TEXT        NOT NULL,
   -- Whether the two hands are measured apart, as a one arm test is.
   "per_hand"    BOOLEAN     NOT NULL DEFAULT FALSE,
+  -- Whether a result in kilograms reads as a ratio to the bodyweight it was
+  -- pulled at, (bodyweight + result) / bodyweight, rather than as a load. A
+  -- finger strength number is not comparable across a season until it is
+  -- divided by the weight that hung off it.
+  --
+  -- Strictly a display concern: the kilograms and the dated bodyweight series
+  -- are what is stored, never the ratio, so the formula can be corrected
+  -- without rewriting history. Nothing reads this to resolve a prescription.
+  "bodyweight_relative" BOOLEAN NOT NULL DEFAULT FALSE,
   "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "assessment_definitions_unit_check"
     CHECK (unit IN ('kilograms', 'seconds', 'repetitions')),
+  -- A ratio to a bodyweight only means something when the result is a weight.
+  -- Seconds or repetitions divided by kilograms is not a number anybody reads.
+  CONSTRAINT "assessment_definitions_bodyweight_relative_check"
+    CHECK (NOT bodyweight_relative OR unit = 'kilograms'),
   CONSTRAINT "assessment_definitions_builtin_check"
     CHECK (num_nonnulls(user_id, training_id, prompt) IN (0, 3))
 );

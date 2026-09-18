@@ -24,12 +24,26 @@ func NewAssessmentDefinitionHandler(queries *db.Queries, pool *pgxpool.Pool) *As
 // being declared an assessment twice.
 const assessmentPerTrainingConstraint = "assessment_definitions_training_id_idx"
 
+// bodyweightRelativeUnitError is what a caller is told when they ask for a ratio
+// of something that is not a weight, which the column's own check would refuse.
+const bodyweightRelativeUnitError = "bodyweight_relative is only available on an assessment measured in kilograms"
+
+// validBodyweightRelative reports whether the flag may be set for a unit. A
+// score of (bodyweight + result) / bodyweight only reads as anything when the
+// result is itself a weight.
+func validBodyweightRelative(bodyweightRelative bool, unit string) bool {
+	return !bodyweightRelative || unit == string(unitKilograms)
+}
+
 type CreateAssessmentDefinitionRequest struct {
 	TrainingID string `json:"training_id"`
 	Label      string `json:"label"`
 	Prompt     string `json:"prompt"`
 	Unit       string `json:"unit" enums:"kilograms,seconds,repetitions"`
 	PerHand    bool   `json:"per_hand"`
+	// Display the result as a ratio to the bodyweight it was pulled at, which
+	// only a result in kilograms can be.
+	BodyweightRelative bool `json:"bodyweight_relative"`
 }
 
 type UpdateAssessmentDefinitionRequest struct {
@@ -37,6 +51,9 @@ type UpdateAssessmentDefinitionRequest struct {
 	Prompt  string `json:"prompt"`
 	Unit    string `json:"unit" enums:"kilograms,seconds,repetitions"`
 	PerHand bool   `json:"per_hand"`
+	// Free to toggle at any time, unlike the unit and the hands: see the freeze
+	// rule in UpdateAssessmentDefinition.
+	BodyweightRelative bool `json:"bodyweight_relative"`
 }
 
 type AssessmentDefinitionResponse struct {
@@ -49,7 +66,12 @@ type AssessmentDefinitionResponse struct {
 	Prompt     *string `json:"prompt,omitempty"`
 	TrainingID *string `json:"training_id,omitempty"`
 	PerHand    bool    `json:"per_hand"`
-	IsBuiltin  bool    `json:"is_builtin"`
+	// Whether the result reads as a ratio to the bodyweight it was pulled at,
+	// (bodyweight + result) / bodyweight, rather than as an absolute load. A
+	// display concern: the raw kilograms and the dated bodyweight are what is
+	// stored, so the formula can be corrected without rewriting history.
+	BodyweightRelative bool `json:"bodyweight_relative"`
+	IsBuiltin          bool `json:"is_builtin"`
 	// Set once the unit and the hands can no longer move: results were measured
 	// against them, or a training reads a number against them.
 	UnitLocked bool   `json:"unit_locked"`
@@ -59,13 +81,14 @@ type AssessmentDefinitionResponse struct {
 
 func assessmentDefinitionToResponse(d db.AssessmentDefinition) AssessmentDefinitionResponse {
 	resp := AssessmentDefinitionResponse{
-		ID:        d.ID.String(),
-		Label:     d.Label,
-		Unit:      d.Unit,
-		PerHand:   d.PerHand,
-		IsBuiltin: !d.UserID.Valid,
-		CreatedAt: d.CreatedAt.Time.UTC().Format(time.RFC3339),
-		UpdatedAt: d.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:                 d.ID.String(),
+		Label:              d.Label,
+		Unit:               d.Unit,
+		PerHand:            d.PerHand,
+		BodyweightRelative: d.BodyweightRelative,
+		IsBuiltin:          !d.UserID.Valid,
+		CreatedAt:          d.CreatedAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt:          d.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	if d.Prompt.Valid {
 		resp.Prompt = &d.Prompt.String
@@ -158,6 +181,9 @@ func (h *AssessmentDefinitionHandler) CreateAssessmentDefinition(c fiber.Ctx) er
 	if !validAssessmentUnits[assessmentUnit(req.Unit)] {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid unit"})
 	}
+	if !validBodyweightRelative(req.BodyweightRelative, req.Unit) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bodyweightRelativeUnitError})
+	}
 
 	var trainingUUID pgtype.UUID
 	if err := trainingUUID.Scan(req.TrainingID); err != nil {
@@ -174,12 +200,13 @@ func (h *AssessmentDefinitionHandler) CreateAssessmentDefinition(c fiber.Ctx) er
 	}
 
 	definition, err := h.queries.CreateAssessmentDefinition(c.Context(), db.CreateAssessmentDefinitionParams{
-		UserID:     userUUID,
-		TrainingID: trainingUUID,
-		Label:      req.Label,
-		Prompt:     pgtype.Text{String: req.Prompt, Valid: true},
-		Unit:       req.Unit,
-		PerHand:    req.PerHand,
+		UserID:             userUUID,
+		TrainingID:         trainingUUID,
+		Label:              req.Label,
+		Prompt:             pgtype.Text{String: req.Prompt, Valid: true},
+		Unit:               req.Unit,
+		PerHand:            req.PerHand,
+		BodyweightRelative: req.BodyweightRelative,
 	})
 	if err != nil {
 		// One assessment per training, enforced by a unique index: a retry or a
@@ -232,7 +259,18 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 	if !validAssessmentUnits[assessmentUnit(req.Unit)] {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid unit"})
 	}
+	if !validBodyweightRelative(req.BodyweightRelative, req.Unit) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bodyweightRelativeUnitError})
+	}
 
+	// The bodyweight relative flag is deliberately absent from this condition,
+	// and so from the CountAssessmentsForDefinition check below. What freezes
+	// the unit and the hands is that past results were measured under them, and
+	// moving them would restate what those stored numbers mean. This flag stores
+	// nothing: the rows keep raw kilograms and the bodyweight series keeps the
+	// denominator, so turning it on or off only changes how the same numbers are
+	// drawn, for the whole history at once and reversibly. A coach who realises
+	// mid season that a test reads better as a ratio may say so.
 	if req.Unit != definition.Unit || req.PerHand != definition.PerHand {
 		measured, err := h.queries.CountAssessmentsForDefinition(c.Context(), definitionUUID)
 		if err != nil {
@@ -262,11 +300,12 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 	}
 
 	updated, err := h.queries.UpdateAssessmentDefinition(c.Context(), db.UpdateAssessmentDefinitionParams{
-		ID:      definitionUUID,
-		Label:   req.Label,
-		Prompt:  pgtype.Text{String: req.Prompt, Valid: true},
-		Unit:    req.Unit,
-		PerHand: req.PerHand,
+		ID:                 definitionUUID,
+		Label:              req.Label,
+		Prompt:             pgtype.Text{String: req.Prompt, Valid: true},
+		Unit:               req.Unit,
+		PerHand:            req.PerHand,
+		BodyweightRelative: req.BodyweightRelative,
 	})
 	if err != nil {
 		slog.Error("failed to update assessment definition", "assessment_id", definitionUUID.String(), "error", err)
