@@ -218,16 +218,16 @@ func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error
 // prescriptionFreezesBodyweight answers whether a client's own prescription
 // already names the weight it was resolved against, which makes it the record
 // of what happened and not something to be replaced from the series.
-func prescriptionFreezesBodyweight(prescription []byte) bool {
+func frozenPrescriptionBodyweight(prescription []byte) *float32 {
 	var root struct {
 		ResolvedAgainst struct {
 			BodyweightKg *float32 `json:"bodyweight_kg"`
 		} `json:"resolved_against"`
 	}
 	if err := json.Unmarshal(prescription, &root); err != nil {
-		return false
+		return nil
 	}
-	return root.ResolvedAgainst.BodyweightKg != nil
+	return root.ResolvedAgainst.BodyweightKg
 }
 
 // withFrozenBodyweight writes the weight a run resolved its percent_bw loads
@@ -1382,7 +1382,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	// Checked here as well as on the bodyweight endpoint, because this value is
 	// frozen into the prescription rather than stored in the series, so nothing
 	// else would refuse a weight that is not one.
-	if req.BodyweightKg != nil && (*req.BodyweightKg <= minBodyweightKg || *req.BodyweightKg > maxBodyweightKg) {
+	if req.BodyweightKg != nil && !plausibleBodyweight(*req.BodyweightKg) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": fmt.Sprintf("bodyweight_kg must be above %d and at most %d", minBodyweightKg, maxBodyweightKg),
 		})
@@ -1510,7 +1510,16 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		// weight the loads were not read against, which is the whole thing this
 		// is here to avoid.
 		usedBodyweight := req.BodyweightKg
-		if usedBodyweight == nil && !prescriptionFreezesBodyweight(prescription) {
+		if frozen := frozenPrescriptionBodyweight(prescription); frozen != nil {
+			// Checked for the same reason the request field is: a weight the
+			// prescription froze for itself is stored as it arrived, so this is
+			// the only place that can refuse one no athlete could weigh.
+			if !plausibleBodyweight(*frozen) {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("resolved_against.bodyweight_kg must be above %d and at most %d", minBodyweightKg, maxBodyweightKg),
+				})
+			}
+		} else if usedBodyweight == nil {
 			usedBodyweight, err = latestBodyweight(c.Context(), qtx, userUUID)
 			if err != nil {
 				slog.Error("failed to read the bodyweight to freeze", "user_id", userID, "error", err)

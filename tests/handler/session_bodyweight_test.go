@@ -310,3 +310,45 @@ func TestSessionBodyweight_RequestBeatsAPrescriptionsOwnWeight(t *testing.T) {
 		t.Errorf("Expected the request's 70.1 to win, got %v", frozen)
 	}
 }
+
+// A weight a prescription froze for itself is stored as it arrived, so this is
+// the only place that can refuse one no athlete could weigh. Without the check
+// a zero reaches the coach, who reads a percent_bw load as a ratio and divides
+// by it.
+func TestSessionBodyweight_RefusesAnImplausibleWeightAPrescriptionNames(t *testing.T) {
+	app, userToken, _ := setupBodyweightFreeze(t, "bwclient7")
+	recordBodyweight(t, app, userToken, 68)
+
+	for _, weight := range []float64{0, -5, 900} {
+		prescription := generatedPrescription("builtin:max-hangs:0")
+		prescription["resolved_against"] = map[string]interface{}{"bodyweight_kg": weight}
+
+		resp := postGeneratedSession(t, app, userToken, map[string]interface{}{
+			"prescription": prescription,
+		})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Expected 400 for a frozen weight of %v, got %d", weight, resp.StatusCode)
+		}
+	}
+}
+
+// The refusal is about the weight being implausible, not about the key being
+// there, so a weight on the boundary is still accepted and still wins over the
+// series.
+func TestSessionBodyweight_AcceptsAPrescriptionWeightOnTheBound(t *testing.T) {
+	app, userToken, _ := setupBodyweightFreeze(t, "bwclient8")
+	recordBodyweight(t, app, userToken, 68)
+
+	prescription := generatedPrescription("builtin:max-hangs:0")
+	prescription["resolved_against"] = map[string]interface{}{"bodyweight_kg": 500}
+
+	resp := postGeneratedSession(t, app, userToken, map[string]interface{}{
+		"prescription": prescription,
+	})
+	detail := getSessionDetail(t, app, userToken, createdSessionID(t, resp))
+	session := detail["session"].(map[string]interface{})
+
+	if frozen, _ := frozenBodyweight(t, session); frozen != 500 {
+		t.Errorf("Expected the 500 the prescription named, got %v", frozen)
+	}
+}

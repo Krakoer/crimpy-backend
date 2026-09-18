@@ -77,9 +77,17 @@ func bodyweightToResponse(b db.UserBodyweight) BodyweightResponse {
 // measurement dated in the future, which is a clock that is wrong rather than a
 // measurement: it would otherwise sit at the head of the series and be what
 // every prescription freezes against until the real date catches up.
+// plausibleBodyweight reports whether a weight is one a person could have. The
+// same bound guards the series column, the bodyweight_kg a session carries, and
+// the weight a client prescription froze for itself, because a value that is
+// frozen rather than stored has nothing else downstream to refuse it.
+func plausibleBodyweight(weightKg float32) bool {
+	return weightKg > minBodyweightKg && weightKg <= maxBodyweightKg
+}
+
 func validateBodyweight(req CreateBodyweightRequest) (pgtype.Timestamptz, error) {
 	var measuredAt pgtype.Timestamptz
-	if req.WeightKg <= minBodyweightKg || req.WeightKg > maxBodyweightKg {
+	if !plausibleBodyweight(req.WeightKg) {
 		return measuredAt, fmt.Errorf("weight_kg must be above %d and at most %d", minBodyweightKg, maxBodyweightKg)
 	}
 	if req.MeasuredAt == nil {
