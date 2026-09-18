@@ -15,6 +15,8 @@ WHERE user_id = @user_id
 ORDER BY measured_at DESC, created_at DESC
 LIMIT 1;
 
+-- name: GetUserBodyweight :one
+SELECT * FROM user_bodyweights WHERE id = @id;
+
 -- name: DeleteUserBodyweight :exec
-DELETE FROM user_bodyweights
-WHERE id = @id AND user_id = @user_id;
+DELETE FROM user_bodyweights WHERE id = @id;

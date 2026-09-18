@@ -39,6 +39,14 @@ func NewBodyweightHandler(queries *db.Queries, pool *pgxpool.Pool) *BodyweightHa
 	return &BodyweightHandler{queries: queries, pool: pool}
 }
 
+func (h *BodyweightHandler) ownedBodyweight() ownedResource[db.UserBodyweight] {
+	return ownedResource[db.UserBodyweight]{
+		label: "Bodyweight",
+		fetch: h.queries.GetUserBodyweight,
+		owner: func(b db.UserBodyweight) pgtype.UUID { return b.UserID },
+	}
+}
+
 type CreateBodyweightRequest struct {
 	WeightKg float32 `json:"weight_kg"`
 	// When the athlete weighed themselves, RFC3339. Absent means now, which is
@@ -108,7 +116,7 @@ func (h *BodyweightHandler) listFor(c fiber.Ctx, userUUID pgtype.UUID) error {
 
 	rows, err := h.queries.GetUserBodyweights(c.Context(), db.GetUserBodyweightsParams{
 		UserID:   userUUID,
-		RowLimit: int32(limit),
+		RowLimit: limit,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve bodyweights", "user_id", userUUID.String(), "error", err)
@@ -190,27 +198,18 @@ func (h *BodyweightHandler) GetMyBodyweights(c fiber.Ctx) error {
 // @Param id path string true "Measurement ID"
 // @Success 200 {object} map[string]string "Deleted"
 // @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 403 {object} map[string]string "Access denied"
+// @Failure 404 {object} map[string]string "Measurement not found"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/user/bodyweights/{id} [delete]
 func (h *BodyweightHandler) DeleteMyBodyweight(c fiber.Ctx) error {
-	userUUID, ok := requireCallerUUID(c)
+	_, id, ok := h.ownedBodyweight().require(c)
 	if !ok {
 		return nil
 	}
 
-	var id pgtype.UUID
-	if err := id.Scan(c.Params("id")); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid measurement ID"})
-	}
-
-	// Scoped by user rather than checked first: a row belonging to someone else
-	// matches nothing, which is the same answer as one that does not exist, and
-	// tells a caller nothing about whose it was.
-	if err := h.queries.DeleteUserBodyweight(c.Context(), db.DeleteUserBodyweightParams{
-		ID:     id,
-		UserID: userUUID,
-	}); err != nil {
-		slog.Error("failed to delete bodyweight", "user_id", userUUID.String(), "error", err)
+	if err := h.queries.DeleteUserBodyweight(c.Context(), id); err != nil {
+		slog.Error("failed to delete bodyweight", "bodyweight_id", id.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete bodyweight"})
 	}
 

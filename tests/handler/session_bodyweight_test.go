@@ -54,7 +54,13 @@ func recordBodyweight(t *testing.T, app *fiber.App, userToken string, weight flo
 
 func frozenBodyweight(t *testing.T, created map[string]interface{}) (float64, bool) {
 	t.Helper()
-	inputs := sessionPrescription(t, created)["resolved_against"].(map[string]interface{})
+	// A client's own prescription carries no resolved_against at all until
+	// something is frozen into it, so its absence is the same answer as an
+	// absent weight rather than a broken shape.
+	inputs, ok := sessionPrescription(t, created)["resolved_against"].(map[string]interface{})
+	if !ok {
+		return 0, false
+	}
 	value, present := inputs["bodyweight_kg"]
 	if !present {
 		return 0, false
@@ -169,5 +175,92 @@ func TestSessionBodyweight_RefusesAWeightThatIsNotOne(t *testing.T) {
 		if resp.StatusCode != fiber.StatusBadRequest {
 			t.Errorf("Expected 400 for bodyweight_kg %v, got %d", weight, resp.StatusCode)
 		}
+	}
+}
+
+// A run of a training the server cannot read is exactly where a builtin lives,
+// and a builtin can carry percent_bw loads like any other. Before this the
+// weight was taken from the request, checked, and then dropped on this path.
+func TestSessionBodyweight_FreezesOnAClientPrescription(t *testing.T) {
+	app, userToken, _ := setupBodyweightFreeze(t, "bwclient1")
+	recordBodyweight(t, app, userToken, 70)
+
+	resp := postGeneratedSession(t, app, userToken, map[string]interface{}{
+		"prescription":  generatedPrescription("builtin:max-hangs:0"),
+		"bodyweight_kg": 72.5,
+	})
+	detail := getSessionDetail(t, app, userToken, createdSessionID(t, resp))
+	session := detail["session"].(map[string]interface{})
+
+	frozen, present := frozenBodyweight(t, session)
+	if !present {
+		t.Fatalf("Expected the bodyweight frozen into the client prescription")
+	}
+	if frozen != 72.5 {
+		t.Errorf("Expected the weight the device used (72.5), got %v", frozen)
+	}
+}
+
+func TestSessionBodyweight_ClientPrescriptionFallsBackToTheSeries(t *testing.T) {
+	app, userToken, _ := setupBodyweightFreeze(t, "bwclient2")
+	recordBodyweight(t, app, userToken, 68.25)
+
+	resp := postGeneratedSession(t, app, userToken, map[string]interface{}{
+		"prescription": generatedPrescription("builtin:max-hangs:0"),
+	})
+	detail := getSessionDetail(t, app, userToken, createdSessionID(t, resp))
+	session := detail["session"].(map[string]interface{})
+
+	frozen, present := frozenBodyweight(t, session)
+	if !present {
+		t.Fatalf("Expected the bodyweight frozen from the series")
+	}
+	if frozen != 68.25 {
+		t.Errorf("Expected 68.25 from the series, got %v", frozen)
+	}
+}
+
+func TestSessionBodyweight_IsAbsentFromAClientPrescriptionWhenNothingIsKnown(t *testing.T) {
+	app, userToken, _ := setupBodyweightFreeze(t, "bwclient3")
+
+	resp := postGeneratedSession(t, app, userToken, map[string]interface{}{
+		"prescription": generatedPrescription("builtin:max-hangs:0"),
+	})
+	detail := getSessionDetail(t, app, userToken, createdSessionID(t, resp))
+	session := detail["session"].(map[string]interface{})
+
+	if frozen, present := frozenBodyweight(t, session); present {
+		t.Errorf("Expected no bodyweight on the prescription, got %v", frozen)
+	}
+}
+
+// The prescription describes a training the server has never seen, so anything
+// in it the server does not model is the only record of what was asked for.
+// Writing the weight in must not cost that, which is why it edits the JSON
+// rather than round tripping through the typed snapshot.
+func TestSessionBodyweight_LeavesWhatTheServerDoesNotModelAlone(t *testing.T) {
+	app, userToken, _ := setupBodyweightFreeze(t, "bwclient4")
+
+	prescription := generatedPrescription("builtin:max-hangs:0")
+	prescription["device_protocol"] = "max-hangs-v3"
+	prescription["items"].([]map[string]interface{})[0]["device_notch"] = 42
+
+	resp := postGeneratedSession(t, app, userToken, map[string]interface{}{
+		"prescription":  prescription,
+		"bodyweight_kg": 71,
+	})
+	detail := getSessionDetail(t, app, userToken, createdSessionID(t, resp))
+	session := detail["session"].(map[string]interface{})
+	stored := sessionPrescription(t, session)
+
+	if stored["device_protocol"] != "max-hangs-v3" {
+		t.Errorf("Expected the unmodelled field to survive, got %v", stored["device_protocol"])
+	}
+	item := stored["items"].([]interface{})[0].(map[string]interface{})
+	if item["device_notch"] != float64(42) {
+		t.Errorf("Expected the unmodelled item field to survive, got %v", item["device_notch"])
+	}
+	if frozen, _ := frozenBodyweight(t, session); frozen != 71 {
+		t.Errorf("Expected the weight frozen beside it, got %v", frozen)
 	}
 }

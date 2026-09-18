@@ -37,18 +37,29 @@ func (q *Queries) CreateUserBodyweight(ctx context.Context, arg CreateUserBodywe
 }
 
 const deleteUserBodyweight = `-- name: DeleteUserBodyweight :exec
-DELETE FROM user_bodyweights
-WHERE id = $1 AND user_id = $2
+DELETE FROM user_bodyweights WHERE id = $1
 `
 
-type DeleteUserBodyweightParams struct {
-	ID     pgtype.UUID
-	UserID pgtype.UUID
+func (q *Queries) DeleteUserBodyweight(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserBodyweight, id)
+	return err
 }
 
-func (q *Queries) DeleteUserBodyweight(ctx context.Context, arg DeleteUserBodyweightParams) error {
-	_, err := q.db.Exec(ctx, deleteUserBodyweight, arg.ID, arg.UserID)
-	return err
+const getUserBodyweight = `-- name: GetUserBodyweight :one
+SELECT id, user_id, weight_kg, measured_at, created_at FROM user_bodyweights WHERE id = $1
+`
+
+func (q *Queries) GetUserBodyweight(ctx context.Context, id pgtype.UUID) (UserBodyweight, error) {
+	row := q.db.QueryRow(ctx, getUserBodyweight, id)
+	var i UserBodyweight
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.WeightKg,
+		&i.MeasuredAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getUserBodyweights = `-- name: GetUserBodyweights :many

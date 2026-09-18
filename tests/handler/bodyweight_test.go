@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
@@ -19,6 +20,9 @@ type bodyweightFixture struct {
 	userID     string
 	userToken  string
 	pool       *pgxpool.Pool
+	// Kept so a test that needs a second account makes one against this pool
+	// rather than opening another and running the shared cleanup twice.
+	queries *db.Queries
 }
 
 func setupBodyweightFixture(t *testing.T, emailPrefix string) bodyweightFixture {
@@ -35,7 +39,14 @@ func setupBodyweightFixture(t *testing.T, emailPrefix string) bodyweightFixture 
 		BodyweightHandler: handler.NewBodyweightHandler(queries, pool),
 	})
 
-	return bodyweightFixture{app: app, coachToken: coachToken, userID: userID, userToken: userToken, pool: pool}
+	return bodyweightFixture{
+		app:        app,
+		coachToken: coachToken,
+		userID:     userID,
+		userToken:  userToken,
+		pool:       pool,
+		queries:    queries,
+	}
 }
 
 func (f bodyweightFixture) record(t *testing.T, body map[string]interface{}) (int, map[string]interface{}) {
@@ -177,9 +188,7 @@ func TestBodyweight_IsReadableByTheCoach(t *testing.T) {
 
 func TestBodyweight_IsNotReadableByAnotherCoach(t *testing.T) {
 	f := setupBodyweightFixture(t, "bw7")
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-	_, strangerToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "bw7stranger@test.com")
+	_, strangerToken := testutil.CreateTestValidatedCoachUser(t, f.pool, f.queries, "bw7stranger@test.com")
 
 	if status, _ := f.record(t, map[string]interface{}{"weight_kg": 71}); status != fiber.StatusCreated {
 		t.Fatalf("Expected 201, got %d", status)
@@ -193,9 +202,7 @@ func TestBodyweight_IsNotReadableByAnotherCoach(t *testing.T) {
 
 func TestBodyweight_IsNotReadableByAnotherAthlete(t *testing.T) {
 	f := setupBodyweightFixture(t, "bw8")
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-	_, strangerToken := testutil.CreateTestUser(t, queries, "bw8stranger@test.com")
+	_, strangerToken := testutil.CreateTestUser(t, f.queries, "bw8stranger@test.com")
 
 	if status, _ := f.record(t, map[string]interface{}{"weight_kg": 71}); status != fiber.StatusCreated {
 		t.Fatalf("Expected 201, got %d", status)
@@ -212,19 +219,20 @@ func TestBodyweight_IsNotReadableByAnotherAthlete(t *testing.T) {
 	}
 }
 
+// Answered the way every other delete in this API answers: 403 for someone
+// else's row and 404 for one that is not there, rather than telling a caller
+// their delete succeeded when nothing was deleted.
 func TestBodyweight_DeletesOnlyTheCallersOwn(t *testing.T) {
 	f := setupBodyweightFixture(t, "bw9")
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-	_, strangerToken := testutil.CreateTestUser(t, queries, "bw9stranger@test.com")
+	_, strangerToken := testutil.CreateTestUser(t, f.queries, "bw9stranger@test.com")
 
 	_, created := f.record(t, map[string]interface{}{"weight_kg": 71})
 	id := created["id"].(string)
 
 	resp, _ := f.app.Test(testutil.NewJSONRequestWithAuth(
 		http.MethodDelete, "/api/user/bodyweights/"+id, nil, strangerToken))
-	if resp.StatusCode != fiber.StatusOK {
-		t.Errorf("Expected 200 for a delete that matches nothing, got %d", resp.StatusCode)
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected 403 deleting someone else's measurement, got %d", resp.StatusCode)
 	}
 	if _, series := f.list(t, "/api/user/bodyweights", f.userToken); len(series) != 1 {
 		t.Fatalf("Expected the measurement to survive a stranger's delete, got %v", series)
@@ -237,6 +245,12 @@ func TestBodyweight_DeletesOnlyTheCallersOwn(t *testing.T) {
 	}
 	if _, series := f.list(t, "/api/user/bodyweights", f.userToken); len(series) != 0 {
 		t.Errorf("Expected the measurement to be gone, got %v", series)
+	}
+
+	resp, _ = f.app.Test(testutil.NewJSONRequestWithAuth(
+		http.MethodDelete, "/api/user/bodyweights/"+id, nil, f.userToken))
+	if resp.StatusCode != fiber.StatusNotFound {
+		t.Errorf("Expected 404 deleting it again, got %d", resp.StatusCode)
 	}
 }
 

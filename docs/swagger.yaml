@@ -4973,6 +4973,18 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Measurement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Server error
           schema:

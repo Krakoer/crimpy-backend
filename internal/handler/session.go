@@ -210,6 +210,49 @@ func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error
 	return raw, ids, nil
 }
 
+// withFrozenBodyweight writes the weight a run resolved its percent_bw loads
+// against into a client's own prescription, under resolved_against beside the
+// assessments the other path freezes there.
+//
+// Done by editing the JSON rather than by decoding into PrescriptionSnapshot
+// and re-encoding, for the reason clientPrescription keeps the raw bytes: this
+// describes a training the server has never seen, so a field it does not model
+// is still the only record of what the athlete was asked to do, and a round
+// trip through the typed struct would drop it. Decoding one level into raw
+// messages keeps every key the client sent.
+//
+// A nil weight writes nothing, so a session played by an athlete who has never
+// recorded one carries no bodyweight rather than a zero.
+func withFrozenBodyweight(prescription []byte, weightKg *float32) ([]byte, error) {
+	if weightKg == nil {
+		return prescription, nil
+	}
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(prescription, &root); err != nil {
+		return nil, err
+	}
+
+	inputs := map[string]json.RawMessage{}
+	if existing, ok := root["resolved_against"]; ok {
+		if err := json.Unmarshal(existing, &inputs); err != nil {
+			return nil, err
+		}
+	}
+	encoded, err := json.Marshal(*weightKg)
+	if err != nil {
+		return nil, err
+	}
+	inputs["bodyweight_kg"] = encoded
+
+	resolved, err := json.Marshal(inputs)
+	if err != nil {
+		return nil, err
+	}
+	root["resolved_against"] = resolved
+	return json.Marshal(root)
+}
+
 // collectPrescribedItemIDs gathers the id of every item of a client's
 // prescription, nested ones included, refusing the ones that would cost the
 // session later rather than the report they name.
@@ -1434,6 +1477,24 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		prescription, prescribedItemIDs, err = clientPrescription(sentPrescription)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		// A run of a training the server cannot read still resolves percent_bw
+		// loads against a weight, and that weight is as much a part of what was
+		// prescribed here as on the path above. Without this the field is taken
+		// from the request, checked, and then dropped, and the weight is gone
+		// for good: it only ever lived on the device.
+		usedBodyweight := req.BodyweightKg
+		if usedBodyweight == nil {
+			usedBodyweight, err = latestBodyweight(c.Context(), qtx, userUUID)
+			if err != nil {
+				slog.Error("failed to read the bodyweight to freeze", "user_id", userID, "error", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
+			}
+		}
+		prescription, err = withFrozenBodyweight(prescription, usedBodyweight)
+		if err != nil {
+			slog.Error("failed to freeze the bodyweight into the prescription", "user_id", userID, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 		}
 	}
 

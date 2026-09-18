@@ -253,16 +253,16 @@ func main() {
 	// Availability routes (coachee declares, coach reads)
 	api.Get("/user/availability", availabilityHandler.GetMyAvailability)
 	api.Put("/user/availability/:week_start", availabilityHandler.UpsertMyWeekAvailability)
-
-	// Bodyweight, a dated series per athlete: their own to write, their coach's
-	// to read.
-	api.Post("/user/bodyweights", bodyweightHandler.CreateMyBodyweight)
-	api.Get("/user/bodyweights", bodyweightHandler.GetMyBodyweights)
-	api.Delete("/user/bodyweights/:id", bodyweightHandler.DeleteMyBodyweight)
 	api.Get("/user/availability-reminder", availabilityHandler.GetMyAvailabilityReminder)
 	api.Get("/coach/clients/:user_id/availability", availabilityHandler.GetClientAvailability)
 	api.Get("/coach/availability-reminder", availabilityHandler.GetAvailabilityReminder)
 	api.Put("/coach/availability-reminder", availabilityHandler.SetAvailabilityReminder)
+
+	// Bodyweight, a dated series per athlete: their own to write, their coach's
+	// to read. The coach read sits with the other /coach/clients reads above.
+	api.Post("/user/bodyweights", bodyweightHandler.CreateMyBodyweight)
+	api.Get("/user/bodyweights", bodyweightHandler.GetMyBodyweights)
+	api.Delete("/user/bodyweights/:id", bodyweightHandler.DeleteMyBodyweight)
 
 	// Coach feed and TODO routes
 	api.Get("/coach/feed", coachTodoHandler.GetCoachFeed)
