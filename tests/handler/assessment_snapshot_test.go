@@ -260,6 +260,144 @@ func TestAssessmentSnapshot_CarriesTheBodyweightInEffectThen(t *testing.T) {
 	}
 }
 
+// The denominator of a ratio is the weight the result was pulled at, not the
+// weight the athlete carries on the date asked for. A result carried forward
+// from an earlier session keeps the weight of that session, or the comparison
+// prints a number the athlete never achieved.
+func TestAssessmentSnapshot_CarriesTheWeightEachValueWasPulledAt(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap11")
+
+	f.recordBodyweight(t, "2026-03-01T08:00:00Z", 71)
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordBodyweight(t, "2026-06-01T08:00:00Z", 75)
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-06-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the March result carried into June, got %v", body)
+	}
+	if result["right_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the weight the result was pulled at, got %v", result["right_bodyweight_kg"])
+	}
+	// The snapshot still says what the athlete weighed on the date asked for,
+	// which is a different statement and belongs to the snapshot rather than to
+	// any one result.
+	if body["bodyweight_kg"] != float64(75) {
+		t.Errorf("Expected the June weight on the snapshot, got %v", body["bodyweight_kg"])
+	}
+}
+
+// The two hands can come from sessions months apart, so they can have been
+// pulled at different weights.
+func TestAssessmentSnapshot_WeighsEachHandOnItsOwnDate(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap12")
+
+	f.recordBodyweight(t, "2026-03-01T08:00:00Z", 71)
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinCriticalForceID, 0, floatPtr(20), floatPtr(19))
+	f.recordBodyweight(t, "2026-06-01T08:00:00Z", 75)
+	f.recordAssessment(t, "2026-06-02T10:00:00Z", testutil.BuiltinCriticalForceID, 0, floatPtr(22), nil)
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-06-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinCriticalForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected a result, got %v", body)
+	}
+	if result["right_bodyweight_kg"] != float64(75) {
+		t.Errorf("Expected the June weight on the retested hand, got %v", result["right_bodyweight_kg"])
+	}
+	if result["left_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the March weight on the hand not retested, got %v", result["left_bodyweight_kg"])
+	}
+}
+
+// A weight is absent rather than zero when nothing preceded the measurement,
+// which a reader has to say out loud rather than divide by.
+func TestAssessmentSnapshot_SaysNothingAboutAWeightItDoesNotHave(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap13")
+
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordBodyweight(t, "2026-06-01T08:00:00Z", 75)
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-06-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the result, got %v", body)
+	}
+	if _, present := result["right_bodyweight_kg"]; present {
+		t.Errorf("Expected no weight for a result measured before the first weigh-in, got %v", result["right_bodyweight_kg"])
+	}
+	if _, present := result["left_bodyweight_kg"]; present {
+		t.Errorf("Expected no weight on a hand that was never measured, got %v", result["left_bodyweight_kg"])
+	}
+}
+
+// Two results recorded to the same instant have to resolve the same way twice,
+// or the same comparison reads differently on a refresh.
+func TestAssessmentSnapshot_ResolvesATieOnTheDateTheSameWayTwice(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap14")
+
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(31), nil)
+
+	var first interface{}
+	for read := range 5 {
+		_, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02", f.userToken)
+		result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+		if result == nil {
+			t.Fatalf("Expected a result on read %d, got %v", read, body)
+		}
+		if read == 0 {
+			first = result["right_value"]
+			continue
+		}
+		if result["right_value"] != first {
+			t.Fatalf("Expected the same value on every read, got %v then %v", first, result["right_value"])
+		}
+	}
+	// The later of the two wins, since it is the one recorded last.
+	if first != float64(31) {
+		t.Errorf("Expected the result written last, got %v", first)
+	}
+}
+
+// The one field an older client could clear by sending the payload it has always
+// sent.
+func TestBodyweightRelative_SurvivesAnUpdateThatDoesNotMentionIt(t *testing.T) {
+	f := setupSnapshotFixture(t, "bwrel4")
+
+	_, assessmentID := createAssessmentTraining(t, f.app, f.userToken, "Weighted hang", "kilograms", false)
+	payload, _ := json.Marshal(map[string]interface{}{
+		"label": "Weighted hang", "prompt": "How much did you add?",
+		"unit": "kilograms", "per_hand": false, "bodyweight_relative": true,
+	})
+	if _, err := f.app.Test(testutil.NewJSONRequestWithAuth(
+		http.MethodPut, "/api/assessment-definitions/"+assessmentID, payload, f.userToken)); err != nil {
+		t.Fatalf("Update request failed: %v", err)
+	}
+
+	// The shape a client written before the flag existed still sends.
+	payload, _ = json.Marshal(map[string]interface{}{
+		"label": "Weighted hang 20mm", "prompt": "How much did you add?",
+		"unit": "kilograms", "per_hand": false,
+	})
+	resp, err := f.app.Test(testutil.NewJSONRequestWithAuth(
+		http.MethodPut, "/api/assessment-definitions/"+assessmentID, payload, f.userToken))
+	if err != nil {
+		t.Fatalf("Update request failed: %v", err)
+	}
+	var updated map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&updated)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 renaming without mentioning the flag, got %d: %v", resp.StatusCode, updated)
+	}
+	if updated["label"] != "Weighted hang 20mm" {
+		t.Errorf("Expected the rename applied, got %v", updated["label"])
+	}
+	if updated["bodyweight_relative"] != true {
+		t.Errorf("Expected the flag kept when the request does not mention it, got %v", updated)
+	}
+}
+
 func TestAssessmentSnapshot_RefusesAMissingOrUnreadableDate(t *testing.T) {
 	f := setupSnapshotFixture(t, "snap6")
 

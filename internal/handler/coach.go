@@ -621,7 +621,7 @@ func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {
 
 // GetClientAssessmentSnapshot godoc
 // @Summary A client's assessment results as of a date
-// @Description The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach, with the bodyweight in effect then. Two reads give the two sides of a comparison between blocks.
+// @Description The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against. Two reads give the two sides of a comparison between blocks.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth

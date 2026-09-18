@@ -179,12 +179,22 @@ definitions:
         type: integer
       label:
         type: string
+      left_bodyweight_kg:
+        type: number
       left_measured_at:
         type: string
       left_value:
         type: number
       per_hand:
         type: boolean
+      right_bodyweight_kg:
+        description: |-
+          The weight in effect when this hand was measured, which is the denominator
+          its ratio has to be read against. Not the snapshot's bodyweight_kg: a value
+          carried forward from an earlier session was pulled at the weight of that
+          day, and dividing it by a later one gives a number the athlete never
+          achieved. Absent when no weigh-in precedes the measurement.
+        type: number
       right_measured_at:
         type: string
       right_value:
@@ -1369,6 +1379,11 @@ definitions:
         description: |-
           Free to toggle at any time, unlike the unit and the hands: see the freeze
           rule in UpdateAssessmentDefinition.
+
+          A pointer so that omitting it keeps what is stored. Every other field here
+          is either refused when empty or frozen by results, so this is the one an
+          older client could silently clear by sending the payload it has always
+          sent, taking the ratio off a whole history with a 200 and no warning.
         type: boolean
       label:
         type: string
@@ -2133,9 +2148,11 @@ paths:
   /api/assessments/at:
     get:
       description: The last value measured for each assessment, grip and hand at or
-        before the given date, with the bodyweight in effect then. Reading two dates
-        gives the two sides of a comparison, and a result carried forward from an
-        earlier day is marked by the date it was actually measured.
+        before the given date. Each hand carries the date it was measured and the
+        bodyweight in effect then, which is the denominator a bodyweight relative
+        score is read against; the snapshot's own bodyweight_kg is what the athlete
+        weighed on the date asked for. Reading two dates gives the two sides of a
+        comparison.
       parameters:
       - description: The day to read the results as of, YYYY-MM-DD or RFC3339
         in: query
@@ -2521,9 +2538,10 @@ paths:
   /api/coach/clients/{user_id}/assessments/at:
     get:
       description: The last value measured for each assessment, grip and hand at or
-        before the given date for an athlete enrolled with the authenticated coach,
-        with the bodyweight in effect then. Two reads give the two sides of a comparison
-        between blocks.
+        before the given date for an athlete enrolled with the authenticated coach.
+        Each hand carries the date it was measured and the bodyweight in effect then,
+        which is the denominator a bodyweight relative score is read against. Two
+        reads give the two sides of a comparison between blocks.
       parameters:
       - description: Client user ID
         in: path

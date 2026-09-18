@@ -74,10 +74,22 @@ ORDER BY 1;
 -- The date each value was measured travels with it, so a reader can tell a value
 -- measured near the date asked for from one carried forward from months back.
 --
--- The row id breaks a tie on that date, so two results logged to the same instant
--- pick the same one on every request rather than whichever the planner reached
--- first. A comparison that flips between identical reads is worse than either
--- answer.
+-- So does the bodyweight that value was pulled at, which is not the same thing as
+-- the athlete's weight on the date asked for: the snapshot carries a result
+-- forward, and dividing a result measured in March by a weight recorded in June
+-- gives a ratio the athlete never achieved. One weight per hand, because the two
+-- hands can come from different sessions months apart.
+--
+-- Those two come back as zero when no weigh-in precedes the value, standing for
+-- "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real
+-- measurement strictly above zero, so the two cannot be confused. The handler
+-- turns it into an absent field before it reaches a client, and a caller never
+-- sees the sentinel.
+--
+-- A later result wins a tie on the date, and the row id settles a tie on both, so
+-- two results logged to the same instant resolve the same way on every request. A
+-- comparison that flips between identical reads is worse than either answer.
+--
 -- The definition is joined in, as the other read paths do, so a caller can name
 -- and format the number without a second query.
 WITH measured AS (
@@ -87,6 +99,7 @@ WITH measured AS (
     COALESCE(a.grip_position, 0)::int AS grip_position,
     a.right_value,
     a.left_value,
+    a.updated_at,
     s.date
   FROM assessments a
   JOIN sessions s ON s.id = a.session_id
@@ -96,13 +109,13 @@ last_right AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
     assessment_id, grip_position, right_value, date
   FROM measured WHERE right_value IS NOT NULL
-  ORDER BY assessment_id, grip_position, date DESC, id DESC
+  ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 ),
 last_left AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
     assessment_id, grip_position, left_value, date
   FROM measured WHERE left_value IS NOT NULL
-  ORDER BY assessment_id, grip_position, date DESC, id DESC
+  ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 )
 SELECT
   d.id AS assessment_id,
@@ -111,15 +124,27 @@ SELECT
   d.per_hand,
   d.bodyweight_relative,
   d.training_id,
-  COALESCE(last_right.grip_position, last_left.grip_position)::int AS grip_position,
-  last_right.right_value,
-  last_right.date AS right_measured_at,
-  last_left.left_value,
-  last_left.date AS left_measured_at
-FROM last_right
-FULL OUTER JOIN last_left
-  ON last_left.assessment_id = last_right.assessment_id
- AND last_left.grip_position = last_right.grip_position
+  COALESCE(r.grip_position, l.grip_position)::int AS grip_position,
+  r.right_value,
+  r.date AS right_measured_at,
+  COALESCE((
+    SELECT w.weight_kg FROM user_bodyweights w
+    WHERE w.user_id = @user_id AND w.measured_at <= r.date
+    ORDER BY w.measured_at DESC, w.created_at DESC
+    LIMIT 1
+  ), 0)::real AS right_bodyweight_kg,
+  l.left_value,
+  l.date AS left_measured_at,
+  COALESCE((
+    SELECT w.weight_kg FROM user_bodyweights w
+    WHERE w.user_id = @user_id AND w.measured_at <= l.date
+    ORDER BY w.measured_at DESC, w.created_at DESC
+    LIMIT 1
+  ), 0)::real AS left_bodyweight_kg
+FROM last_right r
+FULL OUTER JOIN last_left l
+  ON l.assessment_id = r.assessment_id
+ AND l.grip_position = r.grip_position
 JOIN assessment_definitions d
-  ON d.id = COALESCE(last_right.assessment_id, last_left.assessment_id)
-ORDER BY d.label, 7;
+  ON d.id = COALESCE(r.assessment_id, l.assessment_id)
+ORDER BY d.label, 7, d.id;

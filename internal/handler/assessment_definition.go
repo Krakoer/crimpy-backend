@@ -53,7 +53,12 @@ type UpdateAssessmentDefinitionRequest struct {
 	PerHand bool   `json:"per_hand"`
 	// Free to toggle at any time, unlike the unit and the hands: see the freeze
 	// rule in UpdateAssessmentDefinition.
-	BodyweightRelative bool `json:"bodyweight_relative"`
+	//
+	// A pointer so that omitting it keeps what is stored. Every other field here
+	// is either refused when empty or frozen by results, so this is the one an
+	// older client could silently clear by sending the payload it has always
+	// sent, taking the ratio off a whole history with a 200 and no warning.
+	BodyweightRelative *bool `json:"bodyweight_relative"`
 }
 
 type AssessmentDefinitionResponse struct {
@@ -259,7 +264,11 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 	if !validAssessmentUnits[assessmentUnit(req.Unit)] {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid unit"})
 	}
-	if !validBodyweightRelative(req.BodyweightRelative, req.Unit) {
+	bodyweightRelative := definition.BodyweightRelative
+	if req.BodyweightRelative != nil {
+		bodyweightRelative = *req.BodyweightRelative
+	}
+	if !validBodyweightRelative(bodyweightRelative, req.Unit) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bodyweightRelativeUnitError})
 	}
 
@@ -305,7 +314,7 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 		Prompt:             pgtype.Text{String: req.Prompt, Valid: true},
 		Unit:               req.Unit,
 		PerHand:            req.PerHand,
-		BodyweightRelative: req.BodyweightRelative,
+		BodyweightRelative: bodyweightRelative,
 	})
 	if err != nil {
 		slog.Error("failed to update assessment definition", "assessment_id", definitionUUID.String(), "error", err)

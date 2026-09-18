@@ -251,15 +251,23 @@ type AssessmentSnapshotItem struct {
 	GripPosition    int32    `json:"grip_position"`
 	RightValue      *float32 `json:"right_value,omitempty"`
 	RightMeasuredAt *string  `json:"right_measured_at,omitempty"`
-	LeftValue       *float32 `json:"left_value,omitempty"`
-	LeftMeasuredAt  *string  `json:"left_measured_at,omitempty"`
+	// The weight in effect when this hand was measured, which is the denominator
+	// its ratio has to be read against. Not the snapshot's bodyweight_kg: a value
+	// carried forward from an earlier session was pulled at the weight of that
+	// day, and dividing it by a later one gives a number the athlete never
+	// achieved. Absent when no weigh-in precedes the measurement.
+	RightBodyweightKg *float32 `json:"right_bodyweight_kg,omitempty"`
+	LeftValue         *float32 `json:"left_value,omitempty"`
+	LeftMeasuredAt    *string  `json:"left_measured_at,omitempty"`
+	LeftBodyweightKg  *float32 `json:"left_bodyweight_kg,omitempty"`
 }
 
 // AssessmentSnapshotResponse is what an athlete had measured as of a date. The
-// bodyweight is the one in effect then rather than the one they carry now, so a
-// bodyweight relative score is read against the weight it was actually pulled
-// at. Absent when nothing had been recorded by then, which a reader has to say
-// out loud rather than divide by.
+// bodyweight is the one in effect on that date, and is what the athlete weighed
+// then rather than what any particular result was pulled at: the weight a ratio
+// is read against travels with the value, on the item. Absent when nothing had
+// been recorded by then, which a reader has to say out loud rather than divide
+// by.
 type AssessmentSnapshotResponse struct {
 	Date         string                   `json:"date"`
 	BodyweightKg *float32                 `json:"bodyweight_kg,omitempty"`
@@ -290,6 +298,17 @@ func parseAssessmentSnapshotDate(raw string) (pgtype.Timestamptz, error) {
 		return asOf, errors.New("date must be a YYYY-MM-DD day or an RFC3339 instant")
 	}
 	return pgtype.Timestamptz{Time: instant.UTC(), Valid: true}, nil
+}
+
+// measuredBodyweight reads the weight a value was pulled at. The query answers
+// zero when no weigh-in precedes the measurement, which is not a weight: the
+// column's own check keeps a real one strictly above zero. Turned into an absent
+// field here so the sentinel never leaves this package.
+func measuredBodyweight(weightKg float32) *float32 {
+	if weightKg <= 0 {
+		return nil
+	}
+	return &weightKg
 }
 
 // assessmentSnapshotAt answers with the athlete's results as of the date the
@@ -335,6 +354,7 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 			measured := row.RightMeasuredAt.Time.UTC().Format(time.RFC3339)
 			item.RightMeasuredAt = &measured
 		}
+		item.RightBodyweightKg = measuredBodyweight(row.RightBodyweightKg)
 		if row.LeftValue.Valid {
 			item.LeftValue = &row.LeftValue.Float32
 		}
@@ -342,6 +362,7 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 			measured := row.LeftMeasuredAt.Time.UTC().Format(time.RFC3339)
 			item.LeftMeasuredAt = &measured
 		}
+		item.LeftBodyweightKg = measuredBodyweight(row.LeftBodyweightKg)
 		response.Results = append(response.Results, item)
 	}
 
@@ -362,7 +383,7 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 
 // GetMyAssessmentSnapshot godoc
 // @Summary My assessment results as of a date
-// @Description The last value measured for each assessment, grip and hand at or before the given date, with the bodyweight in effect then. Reading two dates gives the two sides of a comparison, and a result carried forward from an earlier day is marked by the date it was actually measured.
+// @Description The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.
 // @Tags Assessment
 // @Produce json
 // @Security BearerAuth
