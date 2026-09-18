@@ -264,9 +264,15 @@ func (h *AssessmentDefinitionHandler) UpdateAssessmentDefinition(c fiber.Ctx) er
 	if !validAssessmentUnits[assessmentUnit(req.Unit)] {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid unit"})
 	}
+	// An absent flag keeps what is stored, except when the unit is moving to one
+	// that cannot carry a ratio: a client that does not know the field exists
+	// cannot clear it, and the column would refuse the pair anyway, so refusing
+	// the whole request would leave it with no way through.
 	bodyweightRelative := definition.BodyweightRelative
 	if req.BodyweightRelative != nil {
 		bodyweightRelative = *req.BodyweightRelative
+	} else if req.Unit != string(unitKilograms) {
+		bodyweightRelative = false
 	}
 	if !validBodyweightRelative(bodyweightRelative, req.Unit) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bodyweightRelativeUnitError})

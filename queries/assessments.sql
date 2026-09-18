@@ -80,6 +80,12 @@ ORDER BY 1;
 -- gives a ratio the athlete never achieved. One weight per hand, because the two
 -- hands can come from different sessions months apart.
 --
+-- The weigh-in is bounded by the end of the value's own day rather than by the
+-- instant it was measured at, because an athlete who weighs themselves after
+-- training rather than before still weighed that on the day, and the snapshot's
+-- own bodyweight_kg, bounded by the end of the date asked for, would otherwise
+-- name a weight the same response denies to the result pulled that day.
+--
 -- Those two come back as zero when no weigh-in precedes the value, standing for
 -- "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real
 -- measurement strictly above zero, so the two cannot be confused. The handler
@@ -129,7 +135,8 @@ SELECT
   r.date AS right_measured_at,
   COALESCE((
     SELECT w.weight_kg FROM user_bodyweights w
-    WHERE w.user_id = @user_id AND w.measured_at <= r.date
+    WHERE w.user_id = @user_id
+      AND w.measured_at < date_trunc('day', r.date) + interval '1 day' 
     ORDER BY w.measured_at DESC, w.created_at DESC
     LIMIT 1
   ), 0)::real AS right_bodyweight_kg,
@@ -137,7 +144,8 @@ SELECT
   l.date AS left_measured_at,
   COALESCE((
     SELECT w.weight_kg FROM user_bodyweights w
-    WHERE w.user_id = @user_id AND w.measured_at <= l.date
+    WHERE w.user_id = @user_id
+      AND w.measured_at < date_trunc('day', l.date) + interval '1 day' 
     ORDER BY w.measured_at DESC, w.created_at DESC
     LIMIT 1
   ), 0)::real AS left_bodyweight_kg

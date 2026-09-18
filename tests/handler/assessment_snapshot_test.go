@@ -398,6 +398,73 @@ func TestBodyweightRelative_SurvivesAnUpdateThatDoesNotMentionIt(t *testing.T) {
 	}
 }
 
+// An athlete who weighs themselves after training still weighed that on the day,
+// so the weigh-in counts for a result measured earlier the same day. Otherwise
+// one response names a weight for the date and denies one to the result pulled
+// on it.
+func TestAssessmentSnapshot_CountsAWeighInLaterTheSameDay(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap15")
+
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordBodyweight(t, "2026-03-02T10:30:00Z", 71)
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the result, got %v", body)
+	}
+	if result["right_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the weigh-in taken after the session to count, got %v", result["right_bodyweight_kg"])
+	}
+	// And the snapshot agrees, rather than naming a weight the result is denied.
+	if body["bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the same weight on the snapshot, got %v", body["bodyweight_kg"])
+	}
+
+	// A weigh-in the day after is still in the future for that result.
+	f.recordBodyweight(t, "2026-03-03T08:00:00Z", 75)
+	_, body = f.snapshot(t, "/api/assessments/at?date=2026-03-03", f.userToken)
+	result = findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil || result["right_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the result to keep the weight of its own day, got %v", result)
+	}
+}
+
+// A client written before the flag existed sends no flag and may move the unit.
+// Refusing that leaves it with no way through, since it cannot clear a field it
+// does not know about, so the flag is cleared with the unit instead.
+func TestBodyweightRelative_ClearsItselfWhenTheUnitLeavesKilograms(t *testing.T) {
+	f := setupSnapshotFixture(t, "bwrel5")
+
+	_, assessmentID := createAssessmentTraining(t, f.app, f.userToken, "Weighted hang", "kilograms", false)
+	payload, _ := json.Marshal(map[string]interface{}{
+		"label": "Weighted hang", "prompt": "How much did you add?",
+		"unit": "kilograms", "per_hand": false, "bodyweight_relative": true,
+	})
+	if _, err := f.app.Test(testutil.NewJSONRequestWithAuth(
+		http.MethodPut, "/api/assessment-definitions/"+assessmentID, payload, f.userToken)); err != nil {
+		t.Fatalf("Update request failed: %v", err)
+	}
+
+	payload, _ = json.Marshal(map[string]interface{}{
+		"label": "One arm lock off", "prompt": "How long did you hold?",
+		"unit": "seconds", "per_hand": false,
+	})
+	resp, err := f.app.Test(testutil.NewJSONRequestWithAuth(
+		http.MethodPut, "/api/assessment-definitions/"+assessmentID, payload, f.userToken))
+	if err != nil {
+		t.Fatalf("Update request failed: %v", err)
+	}
+	var updated map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&updated)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 moving the unit without mentioning the flag, got %d: %v", resp.StatusCode, updated)
+	}
+	if updated["unit"] != "seconds" || updated["bodyweight_relative"] != false {
+		t.Errorf("Expected the flag cleared with the unit, got %v", updated)
+	}
+}
+
 func TestAssessmentSnapshot_RefusesAMissingOrUnreadableDate(t *testing.T) {
 	f := setupSnapshotFixture(t, "snap6")
 
