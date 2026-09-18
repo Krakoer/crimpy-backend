@@ -276,6 +276,32 @@ func TestAssessmentSnapshot_RefusesAMissingOrUnreadableDate(t *testing.T) {
 	}
 }
 
+// An RFC3339 instant with a numeric offset survives the query string, where a
+// raw plus is decoded as a space.
+func TestAssessmentSnapshot_AcceptsAnInstantWithAnOffset(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap10")
+
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+
+	// 11:30 in UTC+2 is 09:30 UTC, before the session, so the snapshot is empty.
+	status, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02T11:30:00+02:00", f.userToken)
+	if status != fiber.StatusOK {
+		t.Fatalf("Expected 200 for an instant with an offset, got %d: %v", status, body)
+	}
+	if len(snapshotResults(t, body)) != 0 {
+		t.Errorf("Expected the offset to be honoured, got %v", body)
+	}
+
+	// 13:30 in UTC+2 is 11:30 UTC, after it.
+	status, body = f.snapshot(t, "/api/assessments/at?date=2026-03-02T13:30:00+02:00", f.userToken)
+	if status != fiber.StatusOK {
+		t.Fatalf("Expected 200 for an instant with an offset, got %d: %v", status, body)
+	}
+	if findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0) == nil {
+		t.Errorf("Expected the result once the offset instant is past it, got %v", body)
+	}
+}
+
 func TestAssessmentSnapshot_CoachReadsAnEnrolledClient(t *testing.T) {
 	f := setupSnapshotFixture(t, "snap7")
 
@@ -355,6 +381,21 @@ func TestBodyweightRelative_OnlyOnAnAssessmentInKilograms(t *testing.T) {
 	}
 	if definition["bodyweight_relative"] != true {
 		t.Errorf("Expected the flag echoed back, got %v", definition["bodyweight_relative"])
+	}
+
+	// The update path guards it too, so a definition cannot be moved to seconds
+	// and made a ratio in the same request.
+	payload, _ := json.Marshal(map[string]interface{}{
+		"label": "Weighted hang", "prompt": "How much did you add?",
+		"unit": "seconds", "per_hand": false, "bodyweight_relative": true,
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(
+		http.MethodPut, "/api/assessment-definitions/"+definition["id"].(string), payload, token))
+	if err != nil {
+		t.Fatalf("Update request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 updating to a ratio of a duration, got %d", resp.StatusCode)
 	}
 }
 

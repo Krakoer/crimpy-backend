@@ -73,10 +73,16 @@ ORDER BY 1;
 --
 -- The date each value was measured travels with it, so a reader can tell a value
 -- measured near the date asked for from one carried forward from months back.
+--
+-- The row id breaks a tie on that date, so two results logged to the same instant
+-- pick the same one on every request rather than whichever the planner reached
+-- first. A comparison that flips between identical reads is worse than either
+-- answer.
 -- The definition is joined in, as the other read paths do, so a caller can name
 -- and format the number without a second query.
 WITH measured AS (
   SELECT
+    a.id,
     a.assessment_id,
     COALESCE(a.grip_position, 0)::int AS grip_position,
     a.right_value,
@@ -90,13 +96,13 @@ last_right AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
     assessment_id, grip_position, right_value, date
   FROM measured WHERE right_value IS NOT NULL
-  ORDER BY assessment_id, grip_position, date DESC
+  ORDER BY assessment_id, grip_position, date DESC, id DESC
 ),
 last_left AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
     assessment_id, grip_position, left_value, date
   FROM measured WHERE left_value IS NOT NULL
-  ORDER BY assessment_id, grip_position, date DESC
+  ORDER BY assessment_id, grip_position, date DESC, id DESC
 )
 SELECT
   d.id AS assessment_id,

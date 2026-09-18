@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/middleware"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -278,7 +279,13 @@ func parseAssessmentSnapshotDate(raw string) (pgtype.Timestamptz, error) {
 		endOfDay := day.UTC().Add(24*time.Hour - time.Nanosecond)
 		return pgtype.Timestamptz{Time: endOfDay, Valid: true}, nil
 	}
-	instant, err := time.Parse(time.RFC3339, raw)
+	// A query string decoder reads a raw "+" as a space, so an RFC3339 instant
+	// with a numeric offset arrives here as "2026-03-02T10:00:00 02:00" unless
+	// the caller percent encoded it. A valid instant holds no space of its own,
+	// so putting the plus back cannot turn one value into another, and it means
+	// the endpoint accepts the format its documentation promises rather than
+	// only the ones that survive the wire.
+	instant, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
 	if err != nil {
 		return asOf, errors.New("date must be a YYYY-MM-DD day or an RFC3339 instant")
 	}
