@@ -192,11 +192,6 @@ const maxClientPrescriptionBytes = 256 * 1024
 // the server does not model is still the only record of what the athlete was
 // asked to do. Every id in it is a name the client chose, which is why the two
 // link columns are text.
-//
-// Not byte for byte, mind: withFrozenBodyweight re-encodes the top level to add
-// the frozen inputs, which compacts the JSON and reorders its outermost keys.
-// Every value survives, since they travel as raw messages, but nothing should
-// hash these bytes or diff them against the device's own copy.
 func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error) {
 	if len(raw) > maxClientPrescriptionBytes {
 		return nil, nil, errors.New("Prescription is too large")
@@ -213,21 +208,6 @@ func clientPrescription(raw json.RawMessage) ([]byte, map[string]struct{}, error
 		return nil, nil, err
 	}
 	return raw, ids, nil
-}
-
-// prescriptionFreezesBodyweight answers whether a client's own prescription
-// already names the weight it was resolved against, which makes it the record
-// of what happened and not something to be replaced from the series.
-func prescriptionFreezesBodyweight(prescription []byte) bool {
-	var root struct {
-		ResolvedAgainst struct {
-			BodyweightKg *float32 `json:"bodyweight_kg"`
-		} `json:"resolved_against"`
-	}
-	if err := json.Unmarshal(prescription, &root); err != nil {
-		return false
-	}
-	return root.ResolvedAgainst.BodyweightKg != nil
 }
 
 // withFrozenBodyweight writes the weight a run resolved its percent_bw loads
@@ -1503,14 +1483,8 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		// prescribed here as on the path above. Without this the field is taken
 		// from the request, checked, and then dropped, and the weight is gone
 		// for good: it only ever lived on the device.
-		//
-		// The series is the last resort, not the second: a prescription that
-		// already names the weight it was resolved against is the device saying
-		// so, and overwriting it with what we happen to hold would record a
-		// weight the loads were not read against, which is the whole thing this
-		// is here to avoid.
 		usedBodyweight := req.BodyweightKg
-		if usedBodyweight == nil && !prescriptionFreezesBodyweight(prescription) {
+		if usedBodyweight == nil {
 			usedBodyweight, err = latestBodyweight(c.Context(), qtx, userUUID)
 			if err != nil {
 				slog.Error("failed to read the bodyweight to freeze", "user_id", userID, "error", err)
