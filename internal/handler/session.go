@@ -459,10 +459,18 @@ type AssessmentRequest struct {
 	GripPosition *int32   `json:"grip_position,omitempty"`
 }
 
+// UpdateSessionRequest is what an edit changes about a session. Every field is
+// optional and every one left out is kept, so a client that sends only what it
+// means to change cannot blank the rest: an athlete filling in an RPE weeks
+// later should not have to restate the notes to keep them.
 type UpdateSessionRequest struct {
-	Name     string `json:"name"`
-	Notes    string `json:"notes"`
-	Duration int32  `json:"duration"`
+	// Sent, the name replaces the stored one, and it may not be empty, for the
+	// reason the create path refuses an empty one.
+	Name  *string `json:"name,omitempty"`
+	Notes *string `json:"notes,omitempty"`
+	// Sent, the duration replaces the stored one, in seconds, and may not be
+	// negative. Only a logged session sends it: a played one is timed by its run.
+	Duration *int32 `json:"duration,omitempty"`
 	// Only logged sessions send a date. Omitted, the stored one is kept, which is
 	// what played sessions rely on since their date is fixed by the run.
 	Date string `json:"date,omitempty"`
@@ -470,10 +478,10 @@ type UpdateSessionRequest struct {
 	// the fact: forgetting it at the end of a run is the normal case, and a
 	// played session keeps it editable even though nothing else on it is.
 	//
-	// Sending neither field leaves the stored answer alone, so a client that
-	// knows nothing of RPE cannot wipe one by saving a note. Sending either
-	// replaces the whole answer, which is how a rated session is taken back to
-	// unrated: "rpe_failed": false on its own.
+	// The pair is one answer, so it is one field as far as keeping goes: sending
+	// neither leaves the stored answer alone, and sending either replaces the
+	// whole of it. That is how a rated session is taken back to unrated, with
+	// "rpe_failed": false and no "rpe" beside it.
 	RPE       *int32 `json:"rpe,omitempty"`
 	RPEFailed *bool  `json:"rpe_failed,omitempty"`
 }
@@ -587,6 +595,22 @@ func optionalTimestamp(t pgtype.Timestamptz) *string {
 	}
 	s := t.Time.UTC().Format(time.RFC3339)
 	return &s
+}
+
+// optionalText carries a field a request may leave out into the null the
+// statement reads as "keep what is stored".
+func optionalText(s *string) pgtype.Text {
+	if s == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *s, Valid: true}
+}
+
+func optionalInt4(v *int32) pgtype.Int4 {
+	if v == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: *v, Valid: true}
 }
 
 func optionalInt32(v pgtype.Int4) *int32 {
@@ -1459,6 +1483,11 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	if !isValidActivity(req.Activity) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid activity"})
 	}
+	// Refused here as well as on the update path, so the server cannot store a
+	// duration it would later refuse to be handed back.
+	if req.Duration < 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Duration cannot be negative"})
+	}
 	// Checked here as well as on the bodyweight endpoint, because this value is
 	// frozen into the prescription rather than stored in the series, so nothing
 	// else would refuse a weight that is not one.
@@ -1816,7 +1845,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 
 // UpdateSession godoc
 // @Summary Update a session
-// @Description Update a session's name, notes, duration and RPE. The whole session is sent, not a patch of it: name, notes and duration are written as they arrive, and a request with no name is refused rather than blanking the one stored. Only the RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it, so rpe_failed false on its own takes a rating back to unrated. User must own the session unless they are an admin.
+// @Description Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1840,22 +1869,18 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// The whole session is sent on this path, not a patch of it: the name, the
-	// notes and the duration are written as they arrive. Refused rather than
-	// stored, for the same reason the create path refuses one, so a request that
-	// meant to say only "the RPE was 7" cannot quietly blank the session it was
-	// filling an answer in on.
-	if req.Name == "" {
+	// A name and a duration are refused rather than stored when they say nothing
+	// a session may hold, for the reason the create path refuses them. Not sent
+	// at all is a different statement, and means the stored value is kept.
+	if req.Name != nil && *req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
 	}
-	if req.Duration < 0 {
+	if req.Duration != nil && *req.Duration < 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Duration cannot be negative"})
 	}
 
-	// Only the RPE pair may be left out, and leaving both out keeps the stored
-	// answer, which is what lets a client written before RPE existed go on
-	// updating notes without erasing one. The keeping is done by the statement
-	// rather than here, so no read sits between it and the write.
+	// The keeping is done by the statement rather than here, for every field,
+	// so no read sits between what a request leaves out and the write.
 	rpeGiven := req.RPE != nil || req.RPEFailed != nil
 	rpe, err := resolveSessionRPE(req.RPE, req.RPEFailed)
 	if err != nil {
@@ -1873,9 +1898,9 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 
 	updated, err := h.queries.UpdateSession(c.Context(), db.UpdateSessionParams{
 		ID:        sessionUUID,
-		Name:      req.Name,
-		Notes:     req.Notes,
-		Duration:  req.Duration,
+		Name:      optionalText(req.Name),
+		Notes:     optionalText(req.Notes),
+		Duration:  optionalInt4(req.Duration),
 		Date:      date,
 		RpeGiven:  rpeGiven,
 		Rpe:       rpe.value,

@@ -262,36 +262,90 @@ func TestSessionHandler_UpdateSession_RejectsRPEOffTheScale(t *testing.T) {
 	}
 }
 
-// The RPE pair is the only optional half of the update body, so a request that
-// tries to send it alone is refused rather than blanking the session it meant
-// to fill an answer in on.
-func TestSessionHandler_UpdateSession_RejectsRPEWithoutTheSession(t *testing.T) {
+// The whole point of the update path here is an athlete filling an answer in
+// weeks later, so a request carrying only the RPE has to leave the rest of the
+// session exactly as it was rather than blanking what it did not mention.
+func TestSessionHandler_UpdateSession_RPEAloneKeepsTheSession(t *testing.T) {
 	app, token := rpeApp(t, "rpe-partial@test.com")
+
+	created := createRPESession(t, app, token, map[string]interface{}{
+		"notes": "Felt heavy from the first set",
+	})
+	sessionID := created["id"].(string)
+
+	resp, updated := updateRPESession(t, app, token, sessionID, map[string]interface{}{"rpe": 7})
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected status %d, got %d", fiber.StatusOK, resp.StatusCode)
+	}
+	if updated["rpe"] != float64(7) {
+		t.Errorf("Expected rpe 7, got %v", updated["rpe"])
+	}
+	if updated["name"] != "RPE session" {
+		t.Errorf("Expected the stored name to survive, got %v", updated["name"])
+	}
+	if updated["notes"] != "Felt heavy from the first set" {
+		t.Errorf("Expected the stored notes to survive, got %v", updated["notes"])
+	}
+	if updated["duration"] != float64(3600) {
+		t.Errorf("Expected the stored duration to survive, got %v", updated["duration"])
+	}
+}
+
+// The same holds the other way round: an edit that renames a session must not
+// take its notes, its duration or its rating with it.
+func TestSessionHandler_UpdateSession_RenameKeepsTheRest(t *testing.T) {
+	app, token := rpeApp(t, "rpe-rename@test.com")
+
+	created := createRPESession(t, app, token, map[string]interface{}{
+		"notes": "Shoulder twinged",
+		"rpe":   9,
+	})
+	sessionID := created["id"].(string)
+
+	_, updated := updateRPESession(t, app, token, sessionID, map[string]interface{}{
+		"name": "Evening board",
+	})
+
+	if updated["name"] != "Evening board" {
+		t.Errorf("Expected the new name, got %v", updated["name"])
+	}
+	if updated["notes"] != "Shoulder twinged" {
+		t.Errorf("Expected the stored notes to survive a rename, got %v", updated["notes"])
+	}
+	if updated["duration"] != float64(3600) {
+		t.Errorf("Expected the stored duration to survive a rename, got %v", updated["duration"])
+	}
+	if updated["rpe"] != float64(9) {
+		t.Errorf("Expected the stored rpe to survive a rename, got %v", updated["rpe"])
+	}
+}
+
+// Empty notes are a value the athlete can mean, unlike an empty name, so they
+// are written rather than read as an omission.
+func TestSessionHandler_UpdateSession_ClearsNotesWhenSentEmpty(t *testing.T) {
+	app, token := rpeApp(t, "rpe-clear-notes@test.com")
+
+	created := createRPESession(t, app, token, map[string]interface{}{"notes": "Something"})
+	sessionID := created["id"].(string)
+
+	_, updated := updateRPESession(t, app, token, sessionID, map[string]interface{}{"notes": ""})
+
+	if updated["notes"] != "" {
+		t.Errorf("Expected the notes to be cleared, got %v", updated["notes"])
+	}
+}
+
+func TestSessionHandler_UpdateSession_RejectsEmptyName(t *testing.T) {
+	app, token := rpeApp(t, "rpe-empty-name@test.com")
 
 	created := createRPESession(t, app, token, nil)
 	sessionID := created["id"].(string)
 
-	resp, _ := updateRPESession(t, app, token, sessionID, map[string]interface{}{"rpe": 7})
+	resp, _ := updateRPESession(t, app, token, sessionID, map[string]interface{}{"name": ""})
 
 	if resp.StatusCode != fiber.StatusBadRequest {
 		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
-	}
-
-	req := testutil.NewJSONRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
-	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
-	readBack, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Failed to read the session back: %v", err)
-	}
-
-	var detail map[string]interface{}
-	json.NewDecoder(readBack.Body).Decode(&detail)
-	session := detail["session"].(map[string]interface{})
-	if session["name"] != "RPE session" {
-		t.Errorf("Expected the stored name to survive a refused update, got %v", session["name"])
-	}
-	if session["duration"] != float64(3600) {
-		t.Errorf("Expected the stored duration to survive a refused update, got %v", session["duration"])
 	}
 }
 
@@ -308,6 +362,30 @@ func TestSessionHandler_UpdateSession_RejectsNegativeDuration(t *testing.T) {
 		"rpe":      7,
 	})
 
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
+// A duration the create path accepted would otherwise be one the update path
+// refuses to be handed back, leaving the session uneditable.
+func TestSessionHandler_CreateSession_RejectsNegativeDuration(t *testing.T) {
+	app, token := rpeApp(t, "rpe-create-duration@test.com")
+
+	reqBody := map[string]interface{}{
+		"name":     "Negative",
+		"notes":    "",
+		"activity": 1,
+		"duration": -1,
+	}
+	body, _ := json.Marshal(reqBody)
+	req := testutil.NewJSONRequest(http.MethodPost, "/api/sessions", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
 	if resp.StatusCode != fiber.StatusBadRequest {
 		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
 	}

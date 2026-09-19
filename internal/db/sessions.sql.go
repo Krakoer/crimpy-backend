@@ -393,7 +393,10 @@ func (q *Queries) SetSessionCoachReply(ctx context.Context, arg SetSessionCoachR
 
 const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
-SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date),
+SET name = COALESCE($2, name),
+    notes = COALESCE($3, notes),
+    duration = COALESCE($4, duration),
+    date = COALESCE($5, date),
     rpe = CASE WHEN $6::boolean THEN $7::integer ELSE rpe END,
     rpe_failed = CASE WHEN $6::boolean THEN $8::boolean ELSE rpe_failed END,
     updated_at = now()
@@ -403,21 +406,25 @@ RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, train
 
 type UpdateSessionParams struct {
 	ID        pgtype.UUID
-	Name      string
-	Notes     string
-	Duration  int32
+	Name      pgtype.Text
+	Notes     pgtype.Text
+	Duration  pgtype.Int4
 	Date      pgtype.Timestamptz
 	RpeGiven  bool
 	Rpe       pgtype.Int4
 	RpeFailed bool
 }
 
-// A request that mentions neither RPE field keeps the stored answer, so a
-// client that knows nothing of RPE cannot wipe one by saving a note. Decided
-// here rather than in the handler against a row it read first: that read and
-// this write are not one statement, so a note saved in the window between them
-// would write back the answer as it read before, erasing a rating stored in
-// between.
+// Every field a request leaves out is kept, so a client that sends only what it
+// means to change cannot blank the rest of the session. That is one rule rather
+// than a rule per column: the RPE pair had it from the start, and the name, the
+// notes and the duration used to be written unconditionally, which turned
+// "record the RPE" into "record the RPE and wipe the notes".
+//
+// Decided here rather than in the handler against a row it read first: that
+// read and this write are not one statement, so a note saved in the window
+// between them would write back the answer as it read before, erasing a rating
+// stored in between.
 func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, updateSession,
 		arg.ID,

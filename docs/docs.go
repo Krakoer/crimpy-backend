@@ -4347,7 +4347,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update a session's name, notes, duration and RPE. The whole session is sent, not a patch of it: name, notes and duration are written as they arrive, and a request with no name is refused rather than blanking the one stored. Only the RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it, so rpe_failed false on its own takes a rating back to unrated. User must own the session unless they are an admin.",
+                "description": "Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7925,16 +7925,18 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "duration": {
+                    "description": "Sent, the duration replaces the stored one, in seconds, and may not be\nnegative. Only a logged session sends it: a played one is timed by its run.",
                     "type": "integer"
                 },
                 "name": {
+                    "description": "Sent, the name replaces the stored one, and it may not be empty, for the\nreason the create path refuses an empty one.",
                     "type": "string"
                 },
                 "notes": {
                     "type": "string"
                 },
                 "rpe": {
-                    "description": "The athlete's RPE answer, which this path exists to let them give after\nthe fact: forgetting it at the end of a run is the normal case, and a\nplayed session keeps it editable even though nothing else on it is.\n\nSending neither field leaves the stored answer alone, so a client that\nknows nothing of RPE cannot wipe one by saving a note. Sending either\nreplaces the whole answer, which is how a rated session is taken back to\nunrated: \"rpe_failed\": false on its own.",
+                    "description": "The athlete's RPE answer, which this path exists to let them give after\nthe fact: forgetting it at the end of a run is the normal case, and a\nplayed session keeps it editable even though nothing else on it is.\n\nThe pair is one answer, so it is one field as far as keeping goes: sending\nneither leaves the stored answer alone, and sending either replaces the\nwhole of it. That is how a rated session is taken back to unrated, with\n\"rpe_failed\": false and no \"rpe\" beside it.",
                     "type": "integer"
                 },
                 "rpe_failed": {
