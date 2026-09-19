@@ -4210,7 +4210,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped. A session may also carry the athlete's session RPE, how much recovery it cost: rpe is a value of the scale, 5 to 10, and rpe_failed is that scale's ECHEC, a session that could not be carried through. They are exclusive, and both are optional, since the value stays editable through the update endpoint long after the session.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4347,7 +4347,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update a session's name, notes, and duration. User must own the session unless they are an admin.",
+                "description": "Update a session's name, notes, duration and RPE. The RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6614,6 +6614,14 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.RepDataRequest"
                     }
                 },
+                "rpe": {
+                    "description": "RPE is how much recovery the session cost, on the session RPE scale, as\nthe athlete reported it. Absent on a session they were not asked or\nskipped the prompt on, which the update path lets them fill in later.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "description": "RPEFailed is the scale's ECHEC: a session the athlete could not carry\nthrough. It replaces the number rather than grading it, so sending both is\nrefused.",
+                    "type": "boolean"
+                },
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded. Accepted on an assessment\nonly: it is what a critical force or an MVC result means, and on any other\nsession it would be bulk nothing reads.",
                     "allOf": [
@@ -7283,6 +7291,13 @@ const docTemplate = `{
                 "rep_count": {
                     "type": "integer"
                 },
+                "rpe": {
+                    "description": "RPE is how much recovery the session cost on the session RPE scale, absent\nwhile the athlete has not reported one. RPEFailed is the scale's ECHEC,\nand never true beside a number.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "type": "boolean"
+                },
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
                     "type": "object"
@@ -7377,6 +7392,13 @@ const docTemplate = `{
                 },
                 "program_session_id": {
                     "type": "string"
+                },
+                "rpe": {
+                    "description": "RPE is how much recovery the session cost on the session RPE scale, absent\nwhile the athlete has not reported one. RPEFailed is the scale's ECHEC,\nand never true beside a number.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "type": "boolean"
                 },
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
@@ -7910,6 +7932,13 @@ const docTemplate = `{
                 },
                 "notes": {
                     "type": "string"
+                },
+                "rpe": {
+                    "description": "The athlete's RPE answer, which this path exists to let them give after\nthe fact: forgetting it at the end of a run is the normal case, and a\nplayed session keeps it editable even though nothing else on it is.\n\nSending neither field leaves the stored answer alone, so a client that\nknows nothing of RPE cannot wipe one by saving a note. Sending either\nreplaces the whole answer, which is how a rated session is taken back to\nunrated: \"rpe_failed\": false on its own.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "type": "boolean"
                 }
             }
         },

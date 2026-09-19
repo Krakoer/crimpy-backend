@@ -1,9 +1,9 @@
 -- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, samples, duration, date
+  program_session_id, prescription, samples, duration, date, rpe, rpe_failed
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 ) RETURNING *;
 
 -- name: GetSession :one
@@ -30,6 +30,8 @@ SELECT
   sessions.coach_reply,
   sessions.coach_reply_at,
   sessions.coach_reply_read_at,
+  sessions.rpe,
+  sessions.rpe_failed,
   sessions.updated_at,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
@@ -39,8 +41,12 @@ GROUP BY sessions.id
 ORDER BY sessions.date DESC;
 
 -- name: UpdateSession :one
+-- The RPE pair is written whole rather than coalesced: the handler resolves
+-- what the request left out against the row it already read, so a client that
+-- knows nothing of RPE cannot wipe one by saving a note.
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4, date = COALESCE(sqlc.narg('date'), date),
+    rpe = sqlc.narg('rpe'), rpe_failed = sqlc.arg('rpe_failed'),
     updated_at = now()
 WHERE id = $1
 RETURNING *;

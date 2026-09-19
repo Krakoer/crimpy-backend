@@ -96,6 +96,20 @@ CREATE TABLE "sessions" (
   -- what the app raises a notification for. Reset by a coach rewriting their
   -- answer, since the athlete has then not seen what it now says.
   "coach_reply_read_at" TIMESTAMPTZ,
+  -- How much recovery the session cost, on the coach's session RPE scale: 5 is
+  -- active recovery, 10 needs three or more full rest days. Reported by the
+  -- athlete, and null until they do, which stays the normal case: the prompt is
+  -- skippable and the value is editable long after the session.
+  --
+  -- Not the set RPE scale, which measures reps left in reserve and lives on the
+  -- item a set was played from. A bare number is ambiguous between the two, so
+  -- nothing else may be stored here.
+  "rpe"                 INTEGER,
+  -- The scale's ECHEC, a session the athlete could not carry through. Kept off
+  -- the column above rather than given a sentinel inside it: a sentinel would
+  -- have to sit outside the range the check constraint exists to hold, and
+  -- every reader averaging or plotting RPE would have to know to drop it.
+  "rpe_failed"          BOOLEAN     NOT NULL DEFAULT false,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
@@ -117,7 +131,16 @@ CREATE TABLE "sessions" (
   CONSTRAINT "sessions_coach_reply_at_check"
     CHECK ((coach_reply IS NULL) = (coach_reply_at IS NULL)),
   CONSTRAINT "sessions_coach_reply_read_at_check"
-    CHECK (coach_reply_read_at IS NULL OR coach_reply IS NOT NULL)
+    CHECK (coach_reply_read_at IS NULL OR coach_reply IS NOT NULL),
+  -- The scale starts at 5 because that is where its written anchors start: the
+  -- values below it name nothing, and a number with no anchor is what makes an
+  -- RPE unreadable.
+  CONSTRAINT "sessions_rpe_check"
+    CHECK (rpe IS NULL OR rpe BETWEEN 5 AND 10),
+  -- ECHEC is a value of the scale, not a grade beside one, so a session cannot
+  -- be both failed and rated.
+  CONSTRAINT "sessions_rpe_failed_check"
+    CHECK (NOT rpe_failed OR rpe IS NULL)
 );
 
 -- Stores the assessments the user has done, with the results.
