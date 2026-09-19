@@ -638,32 +638,53 @@ CREATE TABLE "coach_program_session_overrides" (
 
 CREATE INDEX "coach_program_session_overrides_session_id_idx" ON "coach_program_session_overrides"("session_id");
 
--- What a coachee declared they can do on each day of a calendar week, so a coach
--- builds the program around the week the athlete actually has.
--- week_start is the Monday of that week; day_of_week 0=Mon...6=Sun.
--- A week is always written whole, so the existence of any row for a week is what
--- says the coachee has declared it, and an all unavailable week is still 7 rows.
-CREATE TABLE "coachee_day_availabilities" (
-  "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"          UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "week_start"       DATE        NOT NULL,
-  "day_of_week"      INTEGER     NOT NULL,
-  "is_available"     BOOLEAN     NOT NULL DEFAULT FALSE,
-  "duration_minutes" INTEGER,
-  "note"             TEXT,
-  "created_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT "cda_day_range_check" CHECK (day_of_week >= 0 AND day_of_week <= 6),
-  CONSTRAINT "cda_duration_check"
-    CHECK (duration_minutes IS NULL OR duration_minutes > 0),
-  CONSTRAINT "cda_week_start_monday_check"
+-- A coachee saying "here is my week", so a coach builds the program around the
+-- week the athlete actually has. week_start is the Monday of that week.
+--
+-- The row is the declaration itself. What the athlete plans lives in
+-- "coachee_day_activities" hanging off it, and a week where they plan nothing
+-- at all is still a declared week. Inferring the declaration from the presence
+-- of activity rows would make an empty week indistinguishable from a week never
+-- answered, and the reminder would keep nudging an athlete who already answered.
+CREATE TABLE "coachee_week_declarations" (
+  "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "week_start" DATE        NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cwd_week_start_monday_check"
     CHECK (EXTRACT(ISODOW FROM week_start) = 1),
-  UNIQUE ("user_id", "week_start", "day_of_week"),
+  UNIQUE ("user_id", "week_start"),
   PRIMARY KEY ("id")
 );
 
-CREATE INDEX "coachee_day_availabilities_user_week_idx"
-  ON "coachee_day_availabilities"("user_id", "week_start");
+-- One thing the athlete plans to do on one day of a declared week, day_of_week
+-- 0=Mon...6=Sun. A day holds as many as the athlete cares to enter, ordered by
+-- "position" so the list reads back the way it was written. Everything but the
+-- label is optional: "when" and "where" are free text, and the morning against
+-- afternoon distinction lives in "when_text" rather than in the schema.
+--
+-- The week is written whole, so a save deletes every activity of the
+-- declaration and re-inserts the ones sent. That is why there is no updated_at
+-- here: the week is dated by its declaration.
+CREATE TABLE "coachee_day_activities" (
+  "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "declaration_id"   UUID        NOT NULL REFERENCES "coachee_week_declarations"("id") ON DELETE CASCADE,
+  "day_of_week"      INTEGER     NOT NULL,
+  "position"         INTEGER     NOT NULL,
+  "label"            TEXT        NOT NULL,
+  "duration_minutes" INTEGER,
+  "when_text"        TEXT,
+  "where_text"       TEXT,
+  "created_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cda_day_range_check" CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  CONSTRAINT "cda_position_check" CHECK (position >= 0),
+  CONSTRAINT "cda_label_not_blank_check" CHECK (btrim(label) <> ''),
+  CONSTRAINT "cda_duration_check"
+    CHECK (duration_minutes IS NULL OR duration_minutes > 0),
+  UNIQUE ("declaration_id", "day_of_week", "position"),
+  PRIMARY KEY ("id")
+);
 
 -- One reminder per coach, applying to every coachee they train. The hour is a
 -- wall clock time delivered by the athlete app in the athlete's own timezone,

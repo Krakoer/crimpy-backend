@@ -1445,14 +1445,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve every calendar week a user enrolled with the authenticated coach has declared.",
+                "description": "Retrieve every calendar week a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Availability"
                 ],
-                "summary": "Get a client's declared availability",
+                "summary": "Get a client's declared weeks",
                 "parameters": [
                     {
                         "type": "string",
@@ -4928,14 +4928,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve every calendar week the authenticated user has declared their availability for.",
+                "description": "Retrieve every calendar week the authenticated user has declared, each carrying the seven days and the activities planned on them.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Availability"
                 ],
-                "summary": "Get my declared availability",
+                "summary": "Get my declared weeks",
                 "responses": {
                     "200": {
                         "description": "Declared weeks",
@@ -5026,7 +5026,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the authenticated user's availability for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. A day declared unavailable keeps its note and drops its duration.",
+                "description": "Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday, each with the activities planned on it. A day may carry none, and a week where no day carries any is still a declared week.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5036,7 +5036,7 @@ const docTemplate = `{
                 "tags": [
                     "Availability"
                 ],
-                "summary": "Declare my availability for a calendar week",
+                "summary": "Declare my schedule for a calendar week",
                 "parameters": [
                     {
                         "type": "string",
@@ -5064,6 +5064,15 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid user ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -6675,37 +6684,66 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.DayAvailabilityRequest": {
+        "handler.DayActivityRequest": {
             "type": "object",
             "properties": {
-                "day_of_week": {
-                    "type": "integer"
-                },
                 "duration_minutes": {
                     "type": "integer"
                 },
-                "is_available": {
-                    "type": "boolean"
-                },
-                "note": {
+                "label": {
                     "type": "string"
+                },
+                "when": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.DayActivityResponse": {
+            "type": "object",
+            "properties": {
+                "duration_minutes": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "when": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.DayAvailabilityRequest": {
+            "type": "object",
+            "properties": {
+                "activities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.DayActivityRequest"
+                    }
+                },
+                "day_of_week": {
+                    "type": "integer"
                 }
             }
         },
         "handler.DayAvailabilityResponse": {
             "type": "object",
             "properties": {
+                "activities": {
+                    "description": "Never null, so a client can iterate it without a guard. An empty list is\na day the athlete has nothing planned for, which is a real answer.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.DayActivityResponse"
+                    }
+                },
                 "day_of_week": {
                     "type": "integer"
-                },
-                "duration_minutes": {
-                    "type": "integer"
-                },
-                "is_available": {
-                    "type": "boolean"
-                },
-                "note": {
-                    "type": "string"
                 }
             }
         },
@@ -8079,6 +8117,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "days": {
+                    "description": "All seven days, Monday first, whether or not anything is planned on them.\nA week only ever appears here because its declaration row exists, so the\nresponse says \"declared\" by being present at all.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.DayAvailabilityResponse"

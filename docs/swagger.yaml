@@ -534,27 +534,48 @@ definitions:
       training_type:
         type: string
     type: object
-  handler.DayAvailabilityRequest:
+  handler.DayActivityRequest:
     properties:
-      day_of_week:
-        type: integer
       duration_minutes:
         type: integer
-      is_available:
-        type: boolean
-      note:
+      label:
         type: string
+      when:
+        type: string
+      where:
+        type: string
+    type: object
+  handler.DayActivityResponse:
+    properties:
+      duration_minutes:
+        type: integer
+      label:
+        type: string
+      when:
+        type: string
+      where:
+        type: string
+    type: object
+  handler.DayAvailabilityRequest:
+    properties:
+      activities:
+        items:
+          $ref: '#/definitions/handler.DayActivityRequest'
+        type: array
+      day_of_week:
+        type: integer
     type: object
   handler.DayAvailabilityResponse:
     properties:
+      activities:
+        description: |-
+          Never null, so a client can iterate it without a guard. An empty list is
+          a day the athlete has nothing planned for, which is a real answer.
+        items:
+          $ref: '#/definitions/handler.DayActivityResponse'
+        type: array
       day_of_week:
         type: integer
-      duration_minutes:
-        type: integer
-      is_available:
-        type: boolean
-      note:
-        type: string
     type: object
   handler.EmptyProgramWeekResponse:
     properties:
@@ -1589,6 +1610,10 @@ definitions:
   handler.WeekAvailabilityResponse:
     properties:
       days:
+        description: |-
+          All seven days, Monday first, whether or not anything is planned on them.
+          A week only ever appears here because its declaration row exists, so the
+          response says "declared" by being present at all.
         items:
           $ref: '#/definitions/handler.DayAvailabilityResponse'
         type: array
@@ -2635,7 +2660,8 @@ paths:
   /api/coach/clients/{user_id}/availability:
     get:
       description: Retrieve every calendar week a user enrolled with the authenticated
-        coach has declared.
+        coach has declared, each carrying the seven days and the activities planned
+        on them.
       parameters:
       - description: Client user ID
         in: path
@@ -2671,7 +2697,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Get a client's declared availability
+      summary: Get a client's declared weeks
       tags:
       - Availability
   /api/coach/clients/{user_id}/bodyweights:
@@ -5015,8 +5041,8 @@ paths:
       - Authentication
   /api/user/availability:
     get:
-      description: Retrieve every calendar week the authenticated user has declared
-        their availability for.
+      description: Retrieve every calendar week the authenticated user has declared,
+        each carrying the seven days and the activities planned on them.
       produces:
       - application/json
       responses:
@@ -5040,7 +5066,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Get my declared availability
+      summary: Get my declared weeks
       tags:
       - Availability
   /api/user/availability-reminder:
@@ -5082,9 +5108,10 @@ paths:
     put:
       consumes:
       - application/json
-      description: Replace the authenticated user's availability for one calendar
-        week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday.
-        A day declared unavailable keeps its note and drops its duration.
+      description: Replace the authenticated user's schedule for one calendar week.
+        The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday,
+        each with the activities planned on it. A day may carry none, and a week where
+        no day carries any is still a declared week.
       parameters:
       - description: Monday of the week, YYYY-MM-DD
         in: path
@@ -5110,6 +5137,12 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "401":
+          description: Invalid user ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Server error
           schema:
@@ -5118,7 +5151,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Declare my availability for a calendar week
+      summary: Declare my schedule for a calendar week
       tags:
       - Availability
   /api/user/bodyweights:

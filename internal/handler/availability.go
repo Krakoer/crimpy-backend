@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -17,8 +18,15 @@ import (
 )
 
 const (
-	daysInWeek                = 7
-	maxAvailabilityNoteLength = 2000
+	daysInWeek = 7
+	// A label carries what the athlete is doing, not a paragraph about it, and
+	// "when" and "where" are of the same size. The old single note per day was
+	// allowed 2000 characters because it was the only place anything could be
+	// said; there are now as many lines as the athlete wants.
+	maxActivityTextLength = 200
+	// An unbounded list still needs a ceiling, or one athlete decides how big
+	// every coach's week response is.
+	maxActivitiesPerDay = 20
 )
 
 type AvailabilityHandler struct {
@@ -30,29 +38,47 @@ func NewAvailabilityHandler(queries *db.Queries, pool *pgxpool.Pool) *Availabili
 	return &AvailabilityHandler{queries: queries, pool: pool}
 }
 
-type DayAvailabilityRequest struct {
-	DayOfWeek       int32   `json:"day_of_week"`
-	IsAvailable     bool    `json:"is_available"`
+// DayActivityRequest is one thing the athlete plans to do on one day. Only the
+// label is required: a duration the athlete cannot guess, or a place they have
+// not picked, are left out rather than invented.
+type DayActivityRequest struct {
+	Label           string  `json:"label"`
 	DurationMinutes *int32  `json:"duration_minutes"`
-	Note            *string `json:"note"`
+	When            *string `json:"when"`
+	Where           *string `json:"where"`
+}
+
+type DayAvailabilityRequest struct {
+	DayOfWeek  int32                `json:"day_of_week"`
+	Activities []DayActivityRequest `json:"activities"`
 }
 
 type WeekAvailabilityRequest struct {
 	Days []DayAvailabilityRequest `json:"days"`
 }
 
-type DayAvailabilityResponse struct {
-	DayOfWeek       int32   `json:"day_of_week"`
-	IsAvailable     bool    `json:"is_available"`
+type DayActivityResponse struct {
+	Label           string  `json:"label"`
 	DurationMinutes *int32  `json:"duration_minutes,omitempty"`
-	Note            *string `json:"note,omitempty"`
+	When            *string `json:"when,omitempty"`
+	Where           *string `json:"where,omitempty"`
+}
+
+type DayAvailabilityResponse struct {
+	DayOfWeek int32 `json:"day_of_week"`
+	// Never null, so a client can iterate it without a guard. An empty list is
+	// a day the athlete has nothing planned for, which is a real answer.
+	Activities []DayActivityResponse `json:"activities"`
 }
 
 type WeekAvailabilityResponse struct {
-	UserID    string                    `json:"user_id"`
-	WeekStart string                    `json:"week_start"`
-	UpdatedAt string                    `json:"updated_at"`
-	Days      []DayAvailabilityResponse `json:"days"`
+	UserID    string `json:"user_id"`
+	WeekStart string `json:"week_start"`
+	UpdatedAt string `json:"updated_at"`
+	// All seven days, Monday first, whether or not anything is planned on them.
+	// A week only ever appears here because its declaration row exists, so the
+	// response says "declared" by being present at all.
+	Days []DayAvailabilityResponse `json:"days"`
 }
 
 type AvailabilityReminderRequest struct {
@@ -69,45 +95,64 @@ type AvailabilityReminderResponse struct {
 	Minute    int32 `json:"minute"`
 }
 
-func dayAvailabilityToResponse(d db.CoacheeDayAvailability) DayAvailabilityResponse {
-	resp := DayAvailabilityResponse{
-		DayOfWeek:   d.DayOfWeek,
-		IsAvailable: d.IsAvailable,
-	}
-	if d.DurationMinutes.Valid {
-		v := d.DurationMinutes.Int32
+func dayActivityToResponse(a db.CoacheeDayActivity) DayActivityResponse {
+	resp := DayActivityResponse{Label: a.Label}
+	if a.DurationMinutes.Valid {
+		v := a.DurationMinutes.Int32
 		resp.DurationMinutes = &v
 	}
-	if d.Note.Valid {
-		resp.Note = &d.Note.String
+	if a.WhenText.Valid {
+		resp.When = &a.WhenText.String
+	}
+	if a.WhereText.Valid {
+		resp.Where = &a.WhereText.String
 	}
 	return resp
 }
 
-// availabilityRowsToWeeks groups day rows into one response per week. The rows
-// must already be ordered by week_start then day_of_week, which every query
-// returning them does.
-func availabilityRowsToWeeks(rows []db.CoacheeDayAvailability) []WeekAvailabilityResponse {
-	weeks := []WeekAvailabilityResponse{}
-	for _, row := range rows {
-		weekStart := row.WeekStart.Time.Format(time.DateOnly)
-		updatedAt := row.UpdatedAt.Time.UTC().Format(time.RFC3339)
-		if len(weeks) == 0 || weeks[len(weeks)-1].WeekStart != weekStart {
-			weeks = append(weeks, WeekAvailabilityResponse{
-				UserID:    row.UserID.String(),
-				WeekStart: weekStart,
-				UpdatedAt: updatedAt,
-				Days:      []DayAvailabilityResponse{},
-			})
+// emptyWeekDays is the shape every week answers in: seven days, Monday first,
+// each holding an empty activity list until the rows fill it in.
+func emptyWeekDays() []DayAvailabilityResponse {
+	days := make([]DayAvailabilityResponse, daysInWeek)
+	for day := range days {
+		days[day] = DayAvailabilityResponse{
+			DayOfWeek:  int32(day),
+			Activities: []DayActivityResponse{},
 		}
-		week := &weeks[len(weeks)-1]
-		// The week reads as edited when its most recently touched day was. The
-		// string compare holds because every value goes through the same
-		// fixed width RFC3339 UTC format, where lexical order is chronological.
-		if updatedAt > week.UpdatedAt {
-			week.UpdatedAt = updatedAt
+	}
+	return days
+}
+
+func declarationToResponse(d db.CoacheeWeekDeclaration) WeekAvailabilityResponse {
+	return WeekAvailabilityResponse{
+		UserID:    d.UserID.String(),
+		WeekStart: d.WeekStart.Time.Format(time.DateOnly),
+		UpdatedAt: d.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		Days:      emptyWeekDays(),
+	}
+}
+
+// availabilityToWeeks pairs each declared week with the activities hanging off
+// it. A declaration with no activity at all still comes back, which is the
+// whole reason it is a row of its own: it is a week the athlete answered by
+// saying they have nothing planned.
+//
+// The activities must already be ordered by week_start, day_of_week then
+// position, which every query returning them does.
+func availabilityToWeeks(declarations []db.CoacheeWeekDeclaration, activities []db.CoacheeDayActivity) []WeekAvailabilityResponse {
+	weeks := make([]WeekAvailabilityResponse, 0, len(declarations))
+	weekByDeclaration := make(map[string]int, len(declarations))
+	for _, declaration := range declarations {
+		weekByDeclaration[declaration.ID.String()] = len(weeks)
+		weeks = append(weeks, declarationToResponse(declaration))
+	}
+	for _, activity := range activities {
+		index, ok := weekByDeclaration[activity.DeclarationID.String()]
+		if !ok || activity.DayOfWeek < 0 || activity.DayOfWeek >= daysInWeek {
+			continue
 		}
-		week.Days = append(week.Days, dayAvailabilityToResponse(row))
+		day := &weeks[index].Days[activity.DayOfWeek]
+		day.Activities = append(day.Activities, dayActivityToResponse(activity))
 	}
 	return weeks
 }
@@ -136,8 +181,12 @@ func parseWeekStart(raw string) (pgtype.Date, error) {
 }
 
 // validateWeekAvailability demands the whole week rather than the days that
-// changed: the presence of a week is what tells the reminder the coachee has
-// declared it, so a partial write would leave that ambiguous.
+// changed: the week is one answer, and a partial write would leave the days it
+// left out reading as planned-nothing without the athlete having said so.
+//
+// It does not demand any activity at all. A week where every day is empty is
+// an athlete saying they have nothing on, which the declaration row records
+// just as loudly as a full week.
 func validateWeekAvailability(days []DayAvailabilityRequest) error {
 	if len(days) != daysInWeek {
 		return fmt.Errorf("days must carry all %d days of the week", daysInWeek)
@@ -151,14 +200,53 @@ func validateWeekAvailability(days []DayAvailabilityRequest) error {
 			return fmt.Errorf("day_of_week %d is declared twice", day.DayOfWeek)
 		}
 		seen[day.DayOfWeek] = true
-		if day.DurationMinutes != nil && *day.DurationMinutes <= 0 {
-			return errors.New("duration_minutes must be greater than 0")
+		if len(day.Activities) > maxActivitiesPerDay {
+			return fmt.Errorf("a day carries at most %d activities", maxActivitiesPerDay)
 		}
-		if day.Note != nil && utf8.RuneCountInString(*day.Note) > maxAvailabilityNoteLength {
-			return fmt.Errorf("note must be at most %d characters", maxAvailabilityNoteLength)
+		for _, activity := range day.Activities {
+			if err := validateDayActivity(activity); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func validateDayActivity(activity DayActivityRequest) error {
+	if strings.TrimSpace(activity.Label) == "" {
+		return errors.New("every activity needs a label")
+	}
+	if err := checkActivityTextLength("label", &activity.Label); err != nil {
+		return err
+	}
+	if activity.DurationMinutes != nil && *activity.DurationMinutes <= 0 {
+		return errors.New("duration_minutes must be greater than 0")
+	}
+	if err := checkActivityTextLength("when", activity.When); err != nil {
+		return err
+	}
+	return checkActivityTextLength("where", activity.Where)
+}
+
+func checkActivityTextLength(field string, value *string) error {
+	if value == nil || utf8.RuneCountInString(*value) <= maxActivityTextLength {
+		return nil
+	}
+	return fmt.Errorf("%s must be at most %d characters", field, maxActivityTextLength)
+}
+
+// trimmedText drops a field the athlete left blank rather than storing an empty
+// string, so a client can tell "not said" from "said nothing" without comparing
+// against "".
+func trimmedText(value *string) pgtype.Text {
+	if value == nil {
+		return pgtype.Text{}
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: trimmed, Valid: true}
 }
 
 func validateReminderRequest(req AvailabilityReminderRequest) error {
@@ -187,8 +275,8 @@ func requireCallerUUID(c fiber.Ctx) (pgtype.UUID, bool) {
 }
 
 // GetMyAvailability godoc
-// @Summary Get my declared availability
-// @Description Retrieve every calendar week the authenticated user has declared their availability for.
+// @Summary Get my declared weeks
+// @Description Retrieve every calendar week the authenticated user has declared, each carrying the seven days and the activities planned on them.
 // @Tags Availability
 // @Produce json
 // @Security BearerAuth
@@ -202,18 +290,34 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 		return nil
 	}
 
-	rows, err := h.queries.GetCoacheeAvailability(c.Context(), userUUID)
+	weeks, err := h.loadWeeks(c, userUUID)
 	if err != nil {
-		slog.Error("failed to retrieve availability", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(availabilityRowsToWeeks(rows))
+	return c.Status(fiber.StatusOK).JSON(weeks)
+}
+
+// loadWeeks reads every week a coachee declared, with what they planned in it.
+// The declarations are read on their own rather than derived from the activity
+// rows, so a week holding no activity is still in the answer.
+func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID) ([]WeekAvailabilityResponse, error) {
+	declarations, err := h.queries.ListCoacheeWeekDeclarations(c.Context(), userUUID)
+	if err != nil {
+		slog.Error("failed to retrieve availability", "user_id", userUUID.String(), "error", err)
+		return nil, err
+	}
+	activities, err := h.queries.ListCoacheeDayActivities(c.Context(), userUUID)
+	if err != nil {
+		slog.Error("failed to retrieve availability activities", "user_id", userUUID.String(), "error", err)
+		return nil, err
+	}
+	return availabilityToWeeks(declarations, activities), nil
 }
 
 // UpsertMyWeekAvailability godoc
-// @Summary Declare my availability for a calendar week
-// @Description Replace the authenticated user's availability for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. A day declared unavailable keeps its note and drops its duration.
+// @Summary Declare my schedule for a calendar week
+// @Description Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday, each with the activities planned on it. A day may carry none, and a week where no day carries any is still a declared week.
 // @Tags Availability
 // @Accept json
 // @Produce json
@@ -222,6 +326,7 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 // @Param request body WeekAvailabilityRequest true "The seven days of the week"
 // @Success 200 {object} WeekAvailabilityResponse "The declared week"
 // @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 401 {object} map[string]string "Invalid user ID"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/user/availability/{week_start} [put]
 func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
@@ -258,25 +363,42 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
+	// The declaration first: it is what says the week was answered, and it has
+	// to exist even when every day below turns out to be empty.
+	declaration, err := qtx.UpsertCoacheeWeekDeclaration(c.Context(), db.UpsertCoacheeWeekDeclarationParams{
+		UserID:    userUUID,
+		WeekStart: weekStart,
+	})
+	if err != nil {
+		slog.Error("failed to declare availability week", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
+	}
+
+	// The week is one answer, so what it held before is cleared wholesale
+	// rather than reconciled: an activity the athlete removed has no key to
+	// match an update against.
+	if err := qtx.DeleteCoacheeWeekActivities(c.Context(), declaration.ID); err != nil {
+		slog.Error("failed to clear availability activities", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
+	}
+
 	for _, day := range req.Days {
-		params := db.UpsertCoacheeDayAvailabilityParams{
-			UserID:      userUUID,
-			WeekStart:   weekStart,
-			DayOfWeek:   day.DayOfWeek,
-			IsAvailable: day.IsAvailable,
-		}
-		// A duration on a day the athlete cannot train has no reading, and the
-		// app leaves one behind when a filled day is toggled off. The note is
-		// kept: "travelling" is worth saying about a day that is a no.
-		if day.IsAvailable && day.DurationMinutes != nil {
-			params.DurationMinutes = pgtype.Int4{Int32: *day.DurationMinutes, Valid: true}
-		}
-		if day.Note != nil {
-			params.Note = pgtype.Text{String: *day.Note, Valid: true}
-		}
-		if _, err := qtx.UpsertCoacheeDayAvailability(c.Context(), params); err != nil {
-			slog.Error("failed to upsert availability day", "user_id", userUUID.String(), "day_of_week", day.DayOfWeek, "error", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
+		for position, activity := range day.Activities {
+			params := db.InsertCoacheeDayActivityParams{
+				DeclarationID: declaration.ID,
+				DayOfWeek:     day.DayOfWeek,
+				Position:      int32(position),
+				Label:         strings.TrimSpace(activity.Label),
+				WhenText:      trimmedText(activity.When),
+				WhereText:     trimmedText(activity.Where),
+			}
+			if activity.DurationMinutes != nil {
+				params.DurationMinutes = pgtype.Int4{Int32: *activity.DurationMinutes, Valid: true}
+			}
+			if err := qtx.InsertCoacheeDayActivity(c.Context(), params); err != nil {
+				slog.Error("failed to save availability activity", "user_id", userUUID.String(), "day_of_week", day.DayOfWeek, "error", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
+			}
 		}
 	}
 
@@ -289,22 +411,22 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 }
 
 func (h *AvailabilityHandler) respondWithWeek(c fiber.Ctx, userUUID pgtype.UUID, weekStart pgtype.Date) error {
-	rows, err := h.queries.GetCoacheeWeekAvailability(c.Context(), db.GetCoacheeWeekAvailabilityParams{
+	declaration, err := h.queries.GetCoacheeWeekDeclaration(c.Context(), db.GetCoacheeWeekDeclarationParams{
 		UserID:    userUUID,
 		WeekStart: weekStart,
 	})
 	if err != nil {
+		// The declaration was committed a moment ago, so a missing row is a
+		// broken invariant rather than a week the client should handle.
 		slog.Error("failed to reload availability", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
-	weeks := availabilityRowsToWeeks(rows)
-	if len(weeks) == 0 {
-		// The seven rows were committed a moment ago, so an empty read is a
-		// broken invariant rather than a week the client should handle.
-		slog.Error("availability read back empty after a committed write", "user_id", userUUID.String())
+	activities, err := h.queries.ListCoacheeWeekDayActivities(c.Context(), declaration.ID)
+	if err != nil {
+		slog.Error("failed to reload availability activities", "user_id", userUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
-	return c.Status(fiber.StatusOK).JSON(weeks[0])
+	return c.Status(fiber.StatusOK).JSON(availabilityToWeeks([]db.CoacheeWeekDeclaration{declaration}, activities)[0])
 }
 
 // GetMyAvailabilityReminder godoc
@@ -337,8 +459,8 @@ func (h *AvailabilityHandler) GetMyAvailabilityReminder(c fiber.Ctx) error {
 }
 
 // GetClientAvailability godoc
-// @Summary Get a client's declared availability
-// @Description Retrieve every calendar week a user enrolled with the authenticated coach has declared.
+// @Summary Get a client's declared weeks
+// @Description Retrieve every calendar week a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them.
 // @Tags Availability
 // @Produce json
 // @Security BearerAuth
@@ -358,13 +480,12 @@ func (h *AvailabilityHandler) GetClientAvailability(c fiber.Ctx) error {
 		return nil
 	}
 
-	rows, err := h.queries.GetCoacheeAvailability(c.Context(), clientUUID)
+	weeks, err := h.loadWeeks(c, clientUUID)
 	if err != nil {
-		slog.Error("failed to retrieve client availability", "client_id", clientUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(availabilityRowsToWeeks(rows))
+	return c.Status(fiber.StatusOK).JSON(weeks)
 }
 
 // GetAvailabilityReminder godoc

@@ -57,13 +57,21 @@ func insertItemCount(t *testing.T, pool *pgxpool.Pool, userID, sessionID string,
 
 func insertDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) {
 	t.Helper()
-	for day := 0; day < 7; day++ {
+	var declarationID string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO coachee_week_declarations (user_id, week_start)
+		 VALUES ($1, $2) RETURNING id`,
+		userID, weekStart).Scan(&declarationID)
+	if err != nil {
+		t.Fatalf("Failed to declare availability: %v", err)
+	}
+	for day := 0; day < 7; day += 2 {
 		_, err := pool.Exec(context.Background(),
-			`INSERT INTO coachee_day_availabilities (user_id, week_start, day_of_week, is_available)
-			 VALUES ($1, $2, $3, $4)`,
-			userID, weekStart, day, day%2 == 0)
+			`INSERT INTO coachee_day_activities (declaration_id, day_of_week, position, label)
+			 VALUES ($1, $2, 0, $3)`,
+			declarationID, day, "Climbing")
 		if err != nil {
-			t.Fatalf("Failed to declare availability: %v", err)
+			t.Fatalf("Failed to plan an activity: %v", err)
 		}
 	}
 }
