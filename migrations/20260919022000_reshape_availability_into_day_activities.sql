@@ -61,6 +61,11 @@ CREATE TABLE "coachee_day_activities" (
 -- strings.TrimSpace takes off in the handler, so the two agree on what counts
 -- as blank; the list is spelled out because Postgres has no name for it.
 --
+-- The vertical tab is written \u000b rather than \v on purpose. Postgres has no
+-- \v escape, and an unrecognised one yields the bare character, so \v would put
+-- the letter v in the set and leave U+000B out of it: "via ferrata" would
+-- migrate as "ia ferrata".
+--
 -- It matters because the old write path stored the note untrimmed, so a note of
 -- nothing but a tab, a non breaking space or an ideographic space is a row that
 -- can exist. Trimmed of spaces alone it would migrate into a label that looks
@@ -82,7 +87,7 @@ WITH "trimmed" AS (
     a."is_available",
     a."duration_minutes",
     a."created_at",
-    NULLIF(btrim(a."note", E' \t\n\r\f\v\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000'), '') AS "clean_note"
+    NULLIF(btrim(a."note", E' \t\n\r\f\u000b\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000'), '') AS "clean_note"
   FROM "coachee_day_availabilities" a
 )
 INSERT INTO "coachee_day_activities"
