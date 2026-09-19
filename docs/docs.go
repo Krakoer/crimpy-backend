@@ -5026,7 +5026,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday, each with the activities planned on it. A day may carry none, and a week where no day carries any is still a declared week.",
+                "description": "Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. Every day must carry an activities array, empty when nothing is planned on it; leaving the key out is refused. A week where every day is empty is still a declared week.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6722,7 +6722,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "activities": {
-                    "description": "A pointer so an absent list is told apart from an empty one. They mean\nopposite things here: an empty list is the athlete saying nothing is on\nthat day, while an absent one is a client that does not know about\nactivities at all. Read as empty, the second would answer 200 and wipe\nthe week an installed older app was trying to write.",
+                    "description": "Required on every day. Send an empty array for a day with nothing planned.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.DayActivityRequest"

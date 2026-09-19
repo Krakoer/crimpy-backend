@@ -49,11 +49,7 @@ type DayActivityRequest struct {
 
 type DayAvailabilityRequest struct {
 	DayOfWeek int32 `json:"day_of_week"`
-	// A pointer so an absent list is told apart from an empty one. They mean
-	// opposite things here: an empty list is the athlete saying nothing is on
-	// that day, while an absent one is a client that does not know about
-	// activities at all. Read as empty, the second would answer 200 and wipe
-	// the week an installed older app was trying to write.
+	// Required on every day. Send an empty array for a day with nothing planned.
 	Activities *[]DayActivityRequest `json:"activities"`
 }
 
@@ -204,6 +200,11 @@ func validateWeekAvailability(days []DayAvailabilityRequest) error {
 			return fmt.Errorf("day_of_week %d is declared twice", day.DayOfWeek)
 		}
 		seen[day.DayOfWeek] = true
+		// The field is a pointer so an absent list is told apart from an empty
+		// one. They mean opposite things: an empty list is the athlete saying
+		// nothing is on that day, while an absent one is a client that does not
+		// know about activities at all. Read as empty, the second would answer
+		// 200 and wipe the week an installed older app was trying to write.
 		if day.Activities == nil {
 			return errors.New("every day must carry an activities list, empty when nothing is planned")
 		}
@@ -353,7 +354,7 @@ func insertWeekActivities(c fiber.Ctx, qtx *db.Queries, inserts []db.InsertCoach
 
 // UpsertMyWeekAvailability godoc
 // @Summary Declare my schedule for a calendar week
-// @Description Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday, each with the activities planned on it. A day may carry none, and a week where no day carries any is still a declared week.
+// @Description Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. Every day must carry an activities array, empty when nothing is planned on it; leaving the key out is refused. A week where every day is empty is still a declared week.
 // @Tags Availability
 // @Accept json
 // @Produce json
