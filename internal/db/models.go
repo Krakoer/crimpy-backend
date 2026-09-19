@@ -208,6 +208,8 @@ type Session struct {
 	CoachReply       pgtype.Text
 	CoachReplyAt     pgtype.Timestamptz
 	CoachReplyReadAt pgtype.Timestamptz
+	Rpe              pgtype.Int4
+	RpeFailed        bool
 	UpdatedAt        pgtype.Timestamptz
 }
 

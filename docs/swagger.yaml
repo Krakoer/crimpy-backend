@@ -486,6 +486,18 @@ definitions:
         items:
           $ref: '#/definitions/handler.RepDataRequest'
         type: array
+      rpe:
+        description: |-
+          RPE is how much recovery the session cost, on the session RPE scale, as
+          the athlete reported it. Absent on a session they were not asked or
+          skipped the prompt on, which the update path lets them fill in later.
+        type: integer
+      rpe_failed:
+        description: |-
+          RPEFailed is the scale's ECHEC: a session the athlete could not carry
+          through. It replaces the number rather than grading it, so sending both is
+          refused.
+        type: boolean
       samples:
         allOf:
         - $ref: '#/definitions/handler.SessionSamplesRequest'
@@ -964,6 +976,14 @@ definitions:
         type: string
       rep_count:
         type: integer
+      rpe:
+        description: |-
+          RPE is how much recovery the session cost on the session RPE scale, absent
+          while the athlete has not reported one. RPEFailed is the scale's ECHEC,
+          and never true beside a number.
+        type: integer
+      rpe_failed:
+        type: boolean
       samples:
         description: |-
           Samples is the force curve the sensor recorded, carried on an assessment
@@ -1072,6 +1092,14 @@ definitions:
         type: object
       program_session_id:
         type: string
+      rpe:
+        description: |-
+          RPE is how much recovery the session cost on the session RPE scale, absent
+          while the athlete has not reported one. RPEFailed is the scale's ECHEC,
+          and never true beside a number.
+        type: integer
+      rpe_failed:
+        type: boolean
       samples:
         description: |-
           Samples is the force curve the sensor recorded, carried on an assessment
@@ -1443,14 +1471,35 @@ definitions:
       date:
         description: |-
           Only logged sessions send a date. Omitted, the stored one is kept, which is
-          what played sessions rely on since their date is fixed by the run.
+          what played sessions rely on since their date is fixed by the run. A
+          pointer like the fields above, so this struct spells "not sent" one way
+          rather than two.
         type: string
       duration:
+        description: |-
+          Sent, the duration replaces the stored one, in seconds, and may not be
+          negative. Only a logged session sends it: a played one is timed by its run.
         type: integer
       name:
+        description: |-
+          Sent, the name replaces the stored one, and it may not be empty, for the
+          reason the create path refuses an empty one.
         type: string
       notes:
         type: string
+      rpe:
+        description: |-
+          The athlete's RPE answer, which this path exists to let them give after
+          the fact: forgetting it at the end of a run is the normal case, and a
+          played session keeps it editable even though nothing else on it is.
+
+          The pair is one answer, so it is one field as far as keeping goes: sending
+          neither leaves the stored answer alone, and sending either replaces the
+          whole of it. That is how a rated session is taken back to unrated, with
+          "rpe_failed": false and no "rpe" beside it.
+        type: integer
+      rpe_failed:
+        type: boolean
     type: object
   handler.UpdateTagRequest:
     properties:
@@ -4477,7 +4526,11 @@ paths:
         passes apart, then whichever of reps, cycles, load_kg, duration_seconds and
         note it has something to say about; a field left out is stored as absent rather
         than as a zero. One result answers one pass, so two naming the same pass are
-        refused, and one reporting nothing at all is dropped.'
+        refused, and one reporting nothing at all is dropped. A session may also carry
+        the athlete''s session RPE, how much recovery it cost: rpe is a value of the
+        scale, 5 to 10, and rpe_failed is that scale''s ECHEC, a session that could
+        not be carried through. They are exclusive, and both are optional, since the
+        value stays editable through the update endpoint long after the session.'
       parameters:
       - description: Session details
         in: body
@@ -4618,8 +4671,15 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update a session's name, notes, and duration. User must own the
-        session unless they are an admin.
+      description: 'Update a session''s name, notes, duration, date and RPE. Every
+        field is optional and every field left out keeps the value already stored,
+        so a request may carry only what it means to change. A name sent as an empty
+        string and a negative duration are refused rather than stored, the way the
+        create path refuses them; not sending them at all is a different statement
+        and keeps what is stored. The RPE pair counts as one field: sending neither
+        rpe nor rpe_failed keeps the stored answer, and sending either replaces the
+        whole answer, so rpe_failed false with no rpe beside it is how a rated session
+        is taken back to unrated. User must own the session unless they are an admin.'
       parameters:
       - description: Session ID (UUID)
         in: path
