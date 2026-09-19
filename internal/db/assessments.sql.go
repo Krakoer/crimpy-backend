@@ -189,8 +189,13 @@ SELECT
   COALESCE((
     SELECT w.weight_kg FROM user_bodyweights w
     WHERE w.user_id = $1
-      AND w.measured_at < date_trunc('day', r.date) + interval '1 day' 
-    ORDER BY w.measured_at DESC, w.created_at DESC
+      AND w.measured_at <= $2
+      AND w.measured_at < date_trunc('day', r.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+    ORDER BY
+      (w.measured_at <= r.date) DESC,
+      CASE WHEN w.measured_at <= r.date THEN w.measured_at END DESC,
+      w.measured_at ASC,
+      w.created_at DESC
     LIMIT 1
   ), 0)::real AS right_bodyweight_kg,
   l.left_value,
@@ -198,8 +203,13 @@ SELECT
   COALESCE((
     SELECT w.weight_kg FROM user_bodyweights w
     WHERE w.user_id = $1
-      AND w.measured_at < date_trunc('day', l.date) + interval '1 day' 
-    ORDER BY w.measured_at DESC, w.created_at DESC
+      AND w.measured_at <= $2
+      AND w.measured_at < date_trunc('day', l.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+    ORDER BY
+      (w.measured_at <= l.date) DESC,
+      CASE WHEN w.measured_at <= l.date THEN w.measured_at END DESC,
+      w.measured_at ASC,
+      w.created_at DESC
     LIMIT 1
   ), 0)::real AS left_bodyweight_kg
 FROM last_right r
@@ -251,11 +261,22 @@ type GetUserAssessmentValuesAtDateRow struct {
 // gives a ratio the athlete never achieved. One weight per hand, because the two
 // hands can come from different sessions months apart.
 //
-// The weigh-in is bounded by the end of the value's own day rather than by the
-// instant it was measured at, because an athlete who weighs themselves after
-// training rather than before still weighed that on the day, and the snapshot's
-// own bodyweight_kg, bounded by the end of the date asked for, would otherwise
-// name a weight the same response denies to the result pulled that day.
+// The weigh-in the value is divided by is the last one taken at or before the
+// value itself. When nothing precedes it the search widens to the rest of that
+// day and takes the earliest one after it, because an athlete who weighs
+// themselves after training rather than before still weighed that on the day,
+// and the snapshot's own bodyweight_kg, bounded by the end of the date asked
+// for, would otherwise name a weight the same response denies to the result
+// pulled that day. Widening only where nothing precedes the value keeps the
+// morning weigh-in as the denominator for an athlete who also weighs in at
+// night, which is the weight the result was actually pulled at.
+//
+// Both are capped by @as_of as well, so a read "as of" an instant never divides
+// by a weight that did not exist yet at that instant, the same bound
+// GetUserBodyweightAtDate puts on the snapshot's own bodyweight_kg.
+//
+// The day is cut in UTC explicitly rather than through the session TimeZone, so
+// the boundary does not move with a server setting.
 //
 // Those two come back as zero when no weigh-in precedes the value, standing for
 // "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real

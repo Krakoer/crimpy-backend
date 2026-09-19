@@ -430,6 +430,60 @@ func TestAssessmentSnapshot_CountsAWeighInLaterTheSameDay(t *testing.T) {
 	}
 }
 
+// Widening the search to the rest of the day is a fallback for a result nothing
+// precedes, not a preference for the latest number of the day. An athlete who
+// weighs in morning and evening pulled the hang at the morning weight, and that
+// is the denominator the ratio has to use.
+func TestAssessmentSnapshot_PrefersTheWeighInTheResultWasPulledAt(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap20")
+
+	f.recordBodyweight(t, "2026-03-02T07:00:00Z", 71)
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordBodyweight(t, "2026-03-02T22:00:00Z", 74)
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the result, got %v", body)
+	}
+	if result["right_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the weigh-in taken before the hang, got %v", result["right_bodyweight_kg"])
+	}
+}
+
+// The day bound widened the search; it must not let it reach past the instant
+// the caller asked for. bodyweight_kg is bounded by that instant, and a result
+// divided by a weight recorded hours later would contradict it in the same body.
+func TestAssessmentSnapshot_IgnoresAWeighInTakenAfterTheInstantAskedFor(t *testing.T) {
+	f := setupSnapshotFixture(t, "snap21")
+
+	f.recordBodyweight(t, "2026-03-01T08:00:00Z", 71)
+	f.recordAssessment(t, "2026-03-02T09:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordBodyweight(t, "2026-03-02T20:00:00Z", 75)
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02T12:00:00Z", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the result, got %v", body)
+	}
+	if result["right_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the weight in effect at noon, got %v", result["right_bodyweight_kg"])
+	}
+	if body["bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the snapshot to agree with its own result, got %v", body["bodyweight_kg"])
+	}
+
+	// Asked for the whole day instead, the evening weigh-in is the one in effect.
+	_, body = f.snapshot(t, "/api/assessments/at?date=2026-03-02", f.userToken)
+	result = findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil || result["right_bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the hang to keep the weight it was pulled at, got %v", result)
+	}
+	if body["bodyweight_kg"] != float64(75) {
+		t.Errorf("Expected the day's last weigh-in on the snapshot, got %v", body["bodyweight_kg"])
+	}
+}
+
 // A client written before the flag existed sends no flag and may move the unit.
 // Refusing that leaves it with no way through, since it cannot clear a field it
 // does not know about, so the flag is cleared with the unit instead.
