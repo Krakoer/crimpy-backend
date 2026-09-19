@@ -57,12 +57,18 @@ CREATE TABLE "coachee_day_activities" (
 -- week is already carried by the declaration above.
 --
 -- The trim is widened past what btrim strips by default, which is the space
--- alone, to the set Go's strings.TrimSpace takes off. The old write path stored
--- the note untrimmed, so a note of nothing but a tab or a non breaking space is
--- a row that can exist; trimmed only of spaces it would migrate into a label
--- that looks blank on screen and that the new API refuses, and the week could
--- not be saved again. Computed once in the CTE so the test for "did this day
--- say anything" and the value written cannot disagree.
+-- alone, to every code point unicode.IsSpace answers true for. That is the set
+-- strings.TrimSpace takes off in the handler, so the two agree on what counts
+-- as blank; the list is spelled out because Postgres has no name for it.
+--
+-- It matters because the old write path stored the note untrimmed, so a note of
+-- nothing but a tab, a non breaking space or an ideographic space is a row that
+-- can exist. Trimmed of spaces alone it would migrate into a label that looks
+-- blank on screen and that the new API then refuses, leaving the week
+-- unsaveable until the athlete deletes a character they cannot see.
+--
+-- Computed once in the CTE so the test for "did this day say anything" and the
+-- value written cannot disagree.
 --
 -- The label is cut to the 200 characters the new API accepts. The old note was
 -- allowed 2000, and the week is written whole, so a longer one carried across
@@ -76,7 +82,7 @@ WITH "trimmed" AS (
     a."is_available",
     a."duration_minutes",
     a."created_at",
-    NULLIF(btrim(a."note", E' \t\n\r\f\v\u00a0'), '') AS "clean_note"
+    NULLIF(btrim(a."note", E' \t\n\r\f\v\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000'), '') AS "clean_note"
   FROM "coachee_day_availabilities" a
 )
 INSERT INTO "coachee_day_activities"
