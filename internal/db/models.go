@@ -20,15 +20,16 @@ type Assessment struct {
 }
 
 type AssessmentDefinition struct {
-	ID         pgtype.UUID
-	UserID     pgtype.UUID
-	TrainingID pgtype.UUID
-	Label      string
-	Prompt     pgtype.Text
-	Unit       string
-	PerHand    bool
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	TrainingID         pgtype.UUID
+	Label              string
+	Prompt             pgtype.Text
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type BuiltinTrainingWeight struct {

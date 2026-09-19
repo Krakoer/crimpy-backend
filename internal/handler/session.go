@@ -718,6 +718,10 @@ type AssessmentResponse struct {
 	Label        string `json:"label"`
 	Unit         string `json:"unit" enums:"kilograms,seconds,repetitions"`
 	PerHand      bool   `json:"per_hand"`
+	// Whether the result reads as a ratio to the bodyweight it was pulled at
+	// rather than as an absolute load. Display only: the value beside it is the
+	// raw measurement, and the bodyweight series holds the denominator.
+	BodyweightRelative bool `json:"bodyweight_relative"`
 	// The training the assessment is run from, absent for the ones Crimpy ships.
 	TrainingID   *string  `json:"training_id,omitempty"`
 	RightValue   *float32 `json:"right_value,omitempty"`
@@ -730,25 +734,27 @@ type AssessmentResponse struct {
 // row joined to its definition. The generated row types differ per query, so the
 // callers fill this in and share one mapper.
 type assessmentResult struct {
-	Assessment db.Assessment
-	Label      string
-	Unit       string
-	PerHand    bool
-	TrainingID pgtype.UUID
+	Assessment         db.Assessment
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
 }
 
 func assessmentToResponse(r assessmentResult) AssessmentResponse {
 	a := r.Assessment
 	resp := AssessmentResponse{
-		ID:           a.ID.String(),
-		UserID:       a.UserID.String(),
-		SessionID:    a.SessionID.String(),
-		AssessmentID: a.AssessmentID.String(),
-		Label:        r.Label,
-		Unit:         r.Unit,
-		PerHand:      r.PerHand,
-		GripPosition: optionalInt32(a.GripPosition),
-		UpdatedAt:    a.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:                 a.ID.String(),
+		UserID:             a.UserID.String(),
+		SessionID:          a.SessionID.String(),
+		AssessmentID:       a.AssessmentID.String(),
+		Label:              r.Label,
+		Unit:               r.Unit,
+		PerHand:            r.PerHand,
+		BodyweightRelative: r.BodyweightRelative,
+		GripPosition:       optionalInt32(a.GripPosition),
+		UpdatedAt:          a.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	if r.TrainingID.Valid {
 		trainingID := r.TrainingID.String()
@@ -785,10 +791,11 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 					GripPosition: r.GripPosition,
 					UpdatedAt:    r.UpdatedAt,
 				},
-				Label:      r.Label,
-				Unit:       r.Unit,
-				PerHand:    r.PerHand,
-				TrainingID: r.TrainingID,
+				Label:              r.Label,
+				Unit:               r.Unit,
+				PerHand:            r.PerHand,
+				BodyweightRelative: r.BodyweightRelative,
+				TrainingID:         r.TrainingID,
 			}),
 			SessionDate: r.SessionDate.Time.UTC().Format(time.RFC3339),
 		})
@@ -810,10 +817,11 @@ func assessmentsToResponses(rows []db.GetSessionAssessmentsRow) []AssessmentResp
 				GripPosition: r.GripPosition,
 				UpdatedAt:    r.UpdatedAt,
 			},
-			Label:      r.Label,
-			Unit:       r.Unit,
-			PerHand:    r.PerHand,
-			TrainingID: r.TrainingID,
+			Label:              r.Label,
+			Unit:               r.Unit,
+			PerHand:            r.PerHand,
+			BodyweightRelative: r.BodyweightRelative,
+			TrainingID:         r.TrainingID,
 		}))
 	}
 	return items
@@ -885,6 +893,10 @@ type AssessmentDefinitionSnapshot struct {
 	Prompt  *string `json:"prompt,omitempty"`
 	Unit    string  `json:"unit" enums:"kilograms,seconds,repetitions"`
 	PerHand bool    `json:"per_hand"`
+	// Whether the result is drawn as a ratio to the bodyweight it was pulled at.
+	// Display only, and read by nothing that resolves a percentage: a
+	// prescription is resolved against the raw kilograms whatever this says.
+	BodyweightRelative bool `json:"bodyweight_relative"`
 	// The training the assessment is run from, absent on the ones Crimpy ships.
 	TrainingID *string `json:"training_id,omitempty"`
 	// Set once the unit and the hands can no longer move, because results were
@@ -896,10 +908,11 @@ type AssessmentDefinitionSnapshot struct {
 
 func assessmentDefinitionToSnapshot(d db.AssessmentDefinition) AssessmentDefinitionSnapshot {
 	snapshot := AssessmentDefinitionSnapshot{
-		ID:      d.ID.String(),
-		Label:   d.Label,
-		Unit:    d.Unit,
-		PerHand: d.PerHand,
+		ID:                 d.ID.String(),
+		Label:              d.Label,
+		Unit:               d.Unit,
+		PerHand:            d.PerHand,
+		BodyweightRelative: d.BodyweightRelative,
 	}
 	if d.Prompt.Valid {
 		snapshot.Prompt = &d.Prompt.String

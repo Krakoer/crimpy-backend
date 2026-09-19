@@ -2,6 +2,13 @@ basePath: /
 definitions:
   handler.AssessmentDefinitionResponse:
     properties:
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at,
+          (bodyweight + result) / bodyweight, rather than as an absolute load. A
+          display concern: the raw kilograms and the dated bodyweight are what is
+          stored, so the formula can be corrected without rewriting history.
+        type: boolean
       created_at:
         type: string
       id:
@@ -36,6 +43,12 @@ definitions:
     type: object
   handler.AssessmentDefinitionSnapshot:
     properties:
+      bodyweight_relative:
+        description: |-
+          Whether the result is drawn as a ratio to the bodyweight it was pulled at.
+          Display only, and read by nothing that resolves a percentage: a
+          prescription is resolved against the raw kilograms whatever this says.
+        type: boolean
       id:
         type: string
       label:
@@ -66,6 +79,12 @@ definitions:
     properties:
       assessment_id:
         type: string
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at
+          rather than as an absolute load. Display only: the value beside it is the
+          raw measurement, and the bodyweight series holds the denominator.
+        type: boolean
       grip_position:
         type: integer
       id:
@@ -112,6 +131,12 @@ definitions:
     properties:
       assessment_id:
         type: string
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at
+          rather than as an absolute load. Display only: the value beside it is the
+          raw measurement, and the bodyweight series holds the denominator.
+        type: boolean
       grip_position:
         type: integer
       id:
@@ -140,6 +165,61 @@ definitions:
         type: string
       user_id:
         type: string
+    type: object
+  handler.AssessmentSnapshotItem:
+    properties:
+      assessment_id:
+        type: string
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at
+          rather than as an absolute load. Display only, see the column comment.
+        type: boolean
+      grip_position:
+        type: integer
+      label:
+        type: string
+      left_bodyweight_kg:
+        type: number
+      left_measured_at:
+        type: string
+      left_value:
+        type: number
+      per_hand:
+        type: boolean
+      right_bodyweight_kg:
+        description: |-
+          The weight in effect when this hand was measured, which is the denominator
+          its ratio has to be read against. Not the snapshot's bodyweight_kg: a value
+          carried forward from an earlier session was pulled at the weight of that
+          day, and dividing it by a later one gives a number the athlete never
+          achieved. Absent when no weigh-in precedes the measurement.
+        type: number
+      right_measured_at:
+        type: string
+      right_value:
+        type: number
+      training_id:
+        description: The training the assessment is run from, absent on the ones Crimpy
+          ships.
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
+    type: object
+  handler.AssessmentSnapshotResponse:
+    properties:
+      bodyweight_kg:
+        type: number
+      date:
+        type: string
+      results:
+        items:
+          $ref: '#/definitions/handler.AssessmentSnapshotItem'
+        type: array
     type: object
   handler.AvailabilityReminderRequest:
     properties:
@@ -263,6 +343,11 @@ definitions:
     type: object
   handler.CreateAssessmentDefinitionRequest:
     properties:
+      bodyweight_relative:
+        description: |-
+          Display the result as a ratio to the bodyweight it was pulled at, which
+          only a result in kilograms can be.
+        type: boolean
       label:
         type: string
       per_hand:
@@ -1290,6 +1375,16 @@ definitions:
     type: object
   handler.UpdateAssessmentDefinitionRequest:
     properties:
+      bodyweight_relative:
+        description: |-
+          Free to toggle at any time, unlike the unit and the hands: see the freeze
+          rule in UpdateAssessmentDefinition.
+
+          A pointer so that omitting it keeps what is stored. Every other field here
+          is either refused when empty or frozen by results, so this is the one an
+          older client could silently clear by sending the payload it has always
+          sent, taking the ratio off a whole history with a 200 and no warning.
+        type: boolean
       label:
         type: string
       per_hand:
@@ -2050,6 +2145,50 @@ paths:
       summary: Delete an assessment
       tags:
       - Assessment
+  /api/assessments/at:
+    get:
+      description: The last value measured for each assessment, grip and hand at or
+        before the given date. Each hand carries the date it was measured and the
+        bodyweight in effect then, which is the denominator a bodyweight relative
+        score is read against; the snapshot's own bodyweight_kg is what the athlete
+        weighed on the date asked for. Reading two dates gives the two sides of a
+        comparison.
+      parameters:
+      - description: The day to read the results as of, YYYY-MM-DD or RFC3339
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The results as of that date
+          schema:
+            $ref: '#/definitions/handler.AssessmentSnapshotResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My assessment results as of a date
+      tags:
+      - Assessment
   /api/auth/change-password:
     put:
       consumes:
@@ -2394,6 +2533,54 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a client's assessments
+      tags:
+      - Coaching
+  /api/coach/clients/{user_id}/assessments/at:
+    get:
+      description: The last value measured for each assessment, grip and hand at or
+        before the given date for an athlete enrolled with the authenticated coach.
+        Each hand carries the date it was measured and the bodyweight in effect then,
+        which is the denominator a bodyweight relative score is read against. Two
+        reads give the two sides of a comparison between blocks.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: The day to read the results as of, YYYY-MM-DD or RFC3339
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The results as of that date
+          schema:
+            $ref: '#/definitions/handler.AssessmentSnapshotResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a coach or user not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: A client's assessment results as of a date
       tags:
       - Coaching
   /api/coach/clients/{user_id}/availability:

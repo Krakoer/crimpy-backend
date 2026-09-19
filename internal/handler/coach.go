@@ -618,3 +618,24 @@ func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {
 	}
 	return c.Status(fiber.StatusOK).JSON(assessmentRowsToListItems(assessments))
 }
+
+// GetClientAssessmentSnapshot godoc
+// @Summary A client's assessment results as of a date
+// @Description The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against. Two reads give the two sides of a comparison between blocks.
+// @Tags Coaching
+// @Produce json
+// @Security BearerAuth
+// @Param user_id path string true "Client user ID"
+// @Param date query string true "The day to read the results as of, YYYY-MM-DD or RFC3339"
+// @Success 200 {object} AssessmentSnapshotResponse "The results as of that date"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/coach/clients/{user_id}/assessments/at [get]
+func (h *CoachHandler) GetClientAssessmentSnapshot(c fiber.Ctx) error {
+	clientUUID, ok := h.verifyCoachClientRelationship(c, c.Params("user_id"))
+	if !ok {
+		return nil
+	}
+	return assessmentSnapshotAt(c, h.queries, clientUUID)
+}

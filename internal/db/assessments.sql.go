@@ -92,25 +92,26 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 }
 
 const getSessionAssessments = `-- name: GetSessionAssessments :many
-SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, d.label, d.unit, d.per_hand, d.training_id
+SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
 FROM assessments a
 JOIN assessment_definitions d ON d.id = a.assessment_id
 WHERE a.session_id = $1
 `
 
 type GetSessionAssessmentsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	AssessmentID pgtype.UUID
-	RightValue   pgtype.Float4
-	LeftValue    pgtype.Float4
-	SessionID    pgtype.UUID
-	GripPosition pgtype.Int4
-	UpdatedAt    pgtype.Timestamptz
-	Label        string
-	Unit         string
-	PerHand      bool
-	TrainingID   pgtype.UUID
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	AssessmentID       pgtype.UUID
+	RightValue         pgtype.Float4
+	LeftValue          pgtype.Float4
+	SessionID          pgtype.UUID
+	GripPosition       pgtype.Int4
+	UpdatedAt          pgtype.Timestamptz
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
 }
 
 // The results measured in one session, each with the assessment that defines it,
@@ -136,6 +137,7 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 			&i.Label,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.TrainingID,
 		); err != nil {
 			return nil, err
@@ -148,8 +150,182 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 	return items, nil
 }
 
+const getUserAssessmentValuesAtDate = `-- name: GetUserAssessmentValuesAtDate :many
+WITH measured AS (
+  SELECT
+    a.id,
+    a.assessment_id,
+    COALESCE(a.grip_position, 0)::int AS grip_position,
+    a.right_value,
+    a.left_value,
+    a.updated_at,
+    s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = $1 AND s.date <= $2
+),
+last_right AS (
+  SELECT DISTINCT ON (assessment_id, grip_position)
+    assessment_id, grip_position, right_value, date
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (assessment_id, grip_position)
+    assessment_id, grip_position, left_value, date
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
+)
+SELECT
+  d.id AS assessment_id,
+  d.label,
+  d.unit,
+  d.per_hand,
+  d.bodyweight_relative,
+  d.training_id,
+  COALESCE(r.grip_position, l.grip_position)::int AS grip_position,
+  r.right_value,
+  r.date AS right_measured_at,
+  COALESCE((
+    SELECT w.weight_kg FROM user_bodyweights w
+    WHERE w.user_id = $1
+      AND w.measured_at <= $2
+      AND w.measured_at < date_trunc('day', r.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+    ORDER BY
+      (w.measured_at <= r.date) DESC,
+      CASE WHEN w.measured_at <= r.date THEN w.measured_at END DESC,
+      w.measured_at ASC,
+      w.created_at DESC
+    LIMIT 1
+  ), 0)::real AS right_bodyweight_kg,
+  l.left_value,
+  l.date AS left_measured_at,
+  COALESCE((
+    SELECT w.weight_kg FROM user_bodyweights w
+    WHERE w.user_id = $1
+      AND w.measured_at <= $2
+      AND w.measured_at < date_trunc('day', l.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+    ORDER BY
+      (w.measured_at <= l.date) DESC,
+      CASE WHEN w.measured_at <= l.date THEN w.measured_at END DESC,
+      w.measured_at ASC,
+      w.created_at DESC
+    LIMIT 1
+  ), 0)::real AS left_bodyweight_kg
+FROM last_right r
+FULL OUTER JOIN last_left l
+  ON l.assessment_id = r.assessment_id
+ AND l.grip_position = r.grip_position
+JOIN assessment_definitions d
+  ON d.id = COALESCE(r.assessment_id, l.assessment_id)
+ORDER BY d.label, 7, d.id
+`
+
+type GetUserAssessmentValuesAtDateParams struct {
+	UserID pgtype.UUID
+	AsOf   pgtype.Timestamptz
+}
+
+type GetUserAssessmentValuesAtDateRow struct {
+	AssessmentID       pgtype.UUID
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
+	GripPosition       int32
+	RightValue         pgtype.Float4
+	RightMeasuredAt    pgtype.Timestamptz
+	RightBodyweightKg  float32
+	LeftValue          pgtype.Float4
+	LeftMeasuredAt     pgtype.Timestamptz
+	LeftBodyweightKg   float32
+}
+
+// The athlete's assessment results as they stood on a given day: for each
+// assessment, each grip and each hand, the last value measured at or before it.
+// GetUserLatestAssessmentValues is this query with no upper bound, and the hands
+// are tracked apart here for the same reason: an assessment carrying only one of
+// them does not discard the other hand's last measurement.
+//
+// The grip is part of the key rather than collapsed away, because a hang on a
+// 20mm edge and one on a 10mm edge are different tests to a coach reading two
+// dates side by side, and the results carry the grip they were pulled on.
+//
+// The date each value was measured travels with it, so a reader can tell a value
+// measured near the date asked for from one carried forward from months back.
+//
+// So does the bodyweight that value was pulled at, which is not the same thing as
+// the athlete's weight on the date asked for: the snapshot carries a result
+// forward, and dividing a result measured in March by a weight recorded in June
+// gives a ratio the athlete never achieved. One weight per hand, because the two
+// hands can come from different sessions months apart.
+//
+// The weigh-in the value is divided by is the last one taken at or before the
+// value itself. When nothing precedes it the search widens to the rest of that
+// day and takes the earliest one after it, because an athlete who weighs
+// themselves after training rather than before still weighed that on the day,
+// and the snapshot's own bodyweight_kg, bounded by the end of the date asked
+// for, would otherwise name a weight the same response denies to the result
+// pulled that day. Widening only where nothing precedes the value keeps the
+// morning weigh-in as the denominator for an athlete who also weighs in at
+// night, which is the weight the result was actually pulled at.
+//
+// Both are capped by @as_of as well, so a read "as of" an instant never divides
+// by a weight that did not exist yet at that instant, the same bound
+// GetUserBodyweightAtDate puts on the snapshot's own bodyweight_kg.
+//
+// The day is cut in UTC explicitly rather than through the session TimeZone, so
+// the boundary does not move with a server setting.
+//
+// Those two come back as zero when no weigh-in precedes the value, standing for
+// "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real
+// measurement strictly above zero, so the two cannot be confused. The handler
+// turns it into an absent field before it reaches a client, and a caller never
+// sees the sentinel.
+//
+// A later result wins a tie on the date, and the row id settles a tie on both, so
+// two results logged to the same instant resolve the same way on every request. A
+// comparison that flips between identical reads is worse than either answer.
+//
+// The definition is joined in, as the other read paths do, so a caller can name
+// and format the number without a second query.
+func (q *Queries) GetUserAssessmentValuesAtDate(ctx context.Context, arg GetUserAssessmentValuesAtDateParams) ([]GetUserAssessmentValuesAtDateRow, error) {
+	rows, err := q.db.Query(ctx, getUserAssessmentValuesAtDate, arg.UserID, arg.AsOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserAssessmentValuesAtDateRow
+	for rows.Next() {
+		var i GetUserAssessmentValuesAtDateRow
+		if err := rows.Scan(
+			&i.AssessmentID,
+			&i.Label,
+			&i.Unit,
+			&i.PerHand,
+			&i.BodyweightRelative,
+			&i.TrainingID,
+			&i.GripPosition,
+			&i.RightValue,
+			&i.RightMeasuredAt,
+			&i.RightBodyweightKg,
+			&i.LeftValue,
+			&i.LeftMeasuredAt,
+			&i.LeftBodyweightKg,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserAssessments = `-- name: GetUserAssessments :many
-SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date, d.label, d.unit, d.per_hand, d.training_id
+SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, s.date AS session_date, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
 FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 JOIN assessment_definitions d ON d.id = a.assessment_id
@@ -158,19 +334,20 @@ ORDER BY s.date DESC
 `
 
 type GetUserAssessmentsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	AssessmentID pgtype.UUID
-	RightValue   pgtype.Float4
-	LeftValue    pgtype.Float4
-	SessionID    pgtype.UUID
-	GripPosition pgtype.Int4
-	UpdatedAt    pgtype.Timestamptz
-	SessionDate  pgtype.Timestamptz
-	Label        string
-	Unit         string
-	PerHand      bool
-	TrainingID   pgtype.UUID
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	AssessmentID       pgtype.UUID
+	RightValue         pgtype.Float4
+	LeftValue          pgtype.Float4
+	SessionID          pgtype.UUID
+	GripPosition       pgtype.Int4
+	UpdatedAt          pgtype.Timestamptz
+	SessionDate        pgtype.Timestamptz
+	Label              string
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	TrainingID         pgtype.UUID
 }
 
 func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([]GetUserAssessmentsRow, error) {
@@ -195,6 +372,7 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 			&i.Label,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.TrainingID,
 		); err != nil {
 			return nil, err

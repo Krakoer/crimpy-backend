@@ -3,9 +3,13 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"errors"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -127,11 +131,12 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(assessmentToResponse(assessmentResult{
-		Assessment: assessment,
-		Label:      definition.Label,
-		Unit:       definition.Unit,
-		PerHand:    definition.PerHand,
-		TrainingID: definition.TrainingID,
+		Assessment:         assessment,
+		Label:              definition.Label,
+		Unit:               definition.Unit,
+		PerHand:            definition.PerHand,
+		BodyweightRelative: definition.BodyweightRelative,
+		TrainingID:         definition.TrainingID,
 	}))
 }
 
@@ -223,4 +228,175 @@ func requireRecordableAssessment(c fiber.Ctx, queries *db.Queries, assessmentID 
 		return assessmentUUID, false
 	}
 	return assessmentUUID, true
+}
+
+// AssessmentSnapshotItem is one assessment as it stood on a date: the last value
+// measured for it at or before then, per grip and per hand, with the definition
+// that names and formats it.
+//
+// The date each hand was measured travels with the value, because the snapshot
+// carries a result forward until a newer one replaces it. Two dates compared
+// side by side would otherwise read a value last measured months before the
+// second date as an unchanged result, which is not what it is.
+type AssessmentSnapshotItem struct {
+	AssessmentID string `json:"assessment_id"`
+	Label        string `json:"label"`
+	Unit         string `json:"unit" enums:"kilograms,seconds,repetitions"`
+	PerHand      bool   `json:"per_hand"`
+	// Whether the result reads as a ratio to the bodyweight it was pulled at
+	// rather than as an absolute load. Display only, see the column comment.
+	BodyweightRelative bool `json:"bodyweight_relative"`
+	// The training the assessment is run from, absent on the ones Crimpy ships.
+	TrainingID      *string  `json:"training_id,omitempty"`
+	GripPosition    int32    `json:"grip_position"`
+	RightValue      *float32 `json:"right_value,omitempty"`
+	RightMeasuredAt *string  `json:"right_measured_at,omitempty"`
+	// The weight in effect when this hand was measured, which is the denominator
+	// its ratio has to be read against. Not the snapshot's bodyweight_kg: a value
+	// carried forward from an earlier session was pulled at the weight of that
+	// day, and dividing it by a later one gives a number the athlete never
+	// achieved. Absent when no weigh-in precedes the measurement.
+	RightBodyweightKg *float32 `json:"right_bodyweight_kg,omitempty"`
+	LeftValue         *float32 `json:"left_value,omitempty"`
+	LeftMeasuredAt    *string  `json:"left_measured_at,omitempty"`
+	LeftBodyweightKg  *float32 `json:"left_bodyweight_kg,omitempty"`
+}
+
+// AssessmentSnapshotResponse is what an athlete had measured as of a date. The
+// bodyweight is the one in effect on that date, and is what the athlete weighed
+// then rather than what any particular result was pulled at: the weight a ratio
+// is read against travels with the value, on the item. Absent when nothing had
+// been recorded by then, which a reader has to say out loud rather than divide
+// by.
+type AssessmentSnapshotResponse struct {
+	Date         string                   `json:"date"`
+	BodyweightKg *float32                 `json:"bodyweight_kg,omitempty"`
+	Results      []AssessmentSnapshotItem `json:"results"`
+}
+
+// parseAssessmentSnapshotDate reads the date a snapshot is asked as of. A plain
+// day means the end of it, so a session recorded that afternoon is included:
+// a coach picking "14 March" means the state of things that evening, not at
+// midnight when nothing had happened yet.
+func parseAssessmentSnapshotDate(raw string) (pgtype.Timestamptz, error) {
+	var asOf pgtype.Timestamptz
+	if raw == "" {
+		return asOf, errors.New("date is required")
+	}
+	if day, err := time.Parse(time.DateOnly, raw); err == nil {
+		endOfDay := day.UTC().Add(24*time.Hour - time.Nanosecond)
+		return pgtype.Timestamptz{Time: endOfDay, Valid: true}, nil
+	}
+	// A query string decoder reads a raw "+" as a space, so an RFC3339 instant
+	// with a numeric offset arrives here as "2026-03-02T10:00:00 02:00" unless
+	// the caller percent encoded it. A valid instant holds no space of its own,
+	// so putting the plus back cannot turn one value into another, and it means
+	// the endpoint accepts the format its documentation promises rather than
+	// only the ones that survive the wire.
+	instant, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
+	if err != nil {
+		return asOf, errors.New("date must be a YYYY-MM-DD day or an RFC3339 instant")
+	}
+	return pgtype.Timestamptz{Time: instant.UTC(), Valid: true}, nil
+}
+
+// measuredBodyweight reads the weight a value was pulled at. The query answers
+// zero when no weigh-in precedes the measurement, which is not a weight: the
+// column's own check keeps a real one strictly above zero. Turned into an absent
+// field here so the sentinel never leaves this package.
+func measuredBodyweight(weightKg float32) *float32 {
+	if weightKg <= 0 {
+		return nil
+	}
+	return &weightKg
+}
+
+// assessmentSnapshotAt answers with the athlete's results as of the date the
+// caller asked for, having already established they may read them. Shared by
+// the athlete's own endpoint and the coach's, so the two cannot drift in what
+// they mean by a date or in the shape they return.
+func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID) error {
+	asOf, err := parseAssessmentSnapshotDate(c.Query("date"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	rows, err := queries.GetUserAssessmentValuesAtDate(c.Context(), db.GetUserAssessmentValuesAtDateParams{
+		UserID: userUUID,
+		AsOf:   asOf,
+	})
+	if err != nil {
+		slog.Error("failed to retrieve assessment snapshot", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
+	}
+
+	response := AssessmentSnapshotResponse{
+		Date:    asOf.Time.UTC().Format(time.RFC3339),
+		Results: make([]AssessmentSnapshotItem, 0, len(rows)),
+	}
+	for _, row := range rows {
+		item := AssessmentSnapshotItem{
+			AssessmentID:       row.AssessmentID.String(),
+			Label:              row.Label,
+			Unit:               row.Unit,
+			PerHand:            row.PerHand,
+			BodyweightRelative: row.BodyweightRelative,
+			GripPosition:       row.GripPosition,
+		}
+		if row.TrainingID.Valid {
+			trainingID := row.TrainingID.String()
+			item.TrainingID = &trainingID
+		}
+		if row.RightValue.Valid {
+			item.RightValue = &row.RightValue.Float32
+		}
+		if row.RightMeasuredAt.Valid {
+			measured := row.RightMeasuredAt.Time.UTC().Format(time.RFC3339)
+			item.RightMeasuredAt = &measured
+		}
+		item.RightBodyweightKg = measuredBodyweight(row.RightBodyweightKg)
+		if row.LeftValue.Valid {
+			item.LeftValue = &row.LeftValue.Float32
+		}
+		if row.LeftMeasuredAt.Valid {
+			measured := row.LeftMeasuredAt.Time.UTC().Format(time.RFC3339)
+			item.LeftMeasuredAt = &measured
+		}
+		item.LeftBodyweightKg = measuredBodyweight(row.LeftBodyweightKg)
+		response.Results = append(response.Results, item)
+	}
+
+	bodyweight, err := queries.GetUserBodyweightAtDate(c.Context(), db.GetUserBodyweightAtDateParams{
+		UserID: userUUID,
+		AsOf:   asOf,
+	})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		slog.Error("failed to retrieve bodyweight at date", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
+	}
+	if err == nil {
+		response.BodyweightKg = &bodyweight.WeightKg
+	}
+
+	return c.Status(fiber.StatusOK).JSON(response)
+}
+
+// GetMyAssessmentSnapshot godoc
+// @Summary My assessment results as of a date
+// @Description The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.
+// @Tags Assessment
+// @Produce json
+// @Security BearerAuth
+// @Param date query string true "The day to read the results as of, YYYY-MM-DD or RFC3339"
+// @Success 200 {object} AssessmentSnapshotResponse "The results as of that date"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/assessments/at [get]
+func (h *AssessmentHandler) GetMyAssessmentSnapshot(c fiber.Ctx) error {
+	userUUID, ok := requireCallerUUID(c)
+	if !ok {
+		return nil
+	}
+	return assessmentSnapshotAt(c, h.queries, userUUID)
 }

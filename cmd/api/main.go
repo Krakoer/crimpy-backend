@@ -180,6 +180,7 @@ func main() {
 	// Assessment routes
 	api.Post("/assessments", assessmentHandler.CreateAssessment)
 	api.Get("/assessments", assessmentHandler.GetAssessments)
+	api.Get("/assessments/at", assessmentHandler.GetMyAssessmentSnapshot)
 	api.Delete("/assessments/:id", assessmentHandler.DeleteAssessment)
 	api.Get("/assessment-definitions", assessmentDefinitionHandler.GetAssessmentDefinitions)
 	api.Post("/assessment-definitions", assessmentDefinitionHandler.CreateAssessmentDefinition)
@@ -232,6 +233,7 @@ func main() {
 	api.Get("/coach/clients/:user_id/sessions/:session_id", coachHandler.GetClientSession)
 	api.Put("/coach/clients/:user_id/sessions/:session_id/reply", coachHandler.SetClientSessionReply)
 	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
+	api.Get("/coach/clients/:user_id/assessments/at", coachHandler.GetClientAssessmentSnapshot)
 	api.Get("/coach/clients/:user_id/bodyweights", bodyweightHandler.GetClientBodyweights)
 
 	// Program routes (coach manages, coachee reads)

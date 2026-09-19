@@ -66,18 +66,19 @@ func (q *Queries) CountReferencesToAssessment(ctx context.Context, assessmentID 
 }
 
 const createAssessmentDefinition = `-- name: CreateAssessmentDefinition :one
-INSERT INTO assessment_definitions (user_id, training_id, label, prompt, unit, per_hand)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at
+INSERT INTO assessment_definitions (user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at
 `
 
 type CreateAssessmentDefinitionParams struct {
-	UserID     pgtype.UUID
-	TrainingID pgtype.UUID
-	Label      string
-	Prompt     pgtype.Text
-	Unit       string
-	PerHand    bool
+	UserID             pgtype.UUID
+	TrainingID         pgtype.UUID
+	Label              string
+	Prompt             pgtype.Text
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
 }
 
 func (q *Queries) CreateAssessmentDefinition(ctx context.Context, arg CreateAssessmentDefinitionParams) (AssessmentDefinition, error) {
@@ -88,6 +89,7 @@ func (q *Queries) CreateAssessmentDefinition(ctx context.Context, arg CreateAsse
 		arg.Prompt,
 		arg.Unit,
 		arg.PerHand,
+		arg.BodyweightRelative,
 	)
 	var i AssessmentDefinition
 	err := row.Scan(
@@ -98,6 +100,7 @@ func (q *Queries) CreateAssessmentDefinition(ctx context.Context, arg CreateAsse
 		&i.Prompt,
 		&i.Unit,
 		&i.PerHand,
+		&i.BodyweightRelative,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -114,7 +117,7 @@ func (q *Queries) DeleteAssessmentDefinition(ctx context.Context, id pgtype.UUID
 }
 
 const getAssessmentDefinition = `-- name: GetAssessmentDefinition :one
-SELECT id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at FROM assessment_definitions WHERE id = $1
+SELECT id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at FROM assessment_definitions WHERE id = $1
 `
 
 func (q *Queries) GetAssessmentDefinition(ctx context.Context, id pgtype.UUID) (AssessmentDefinition, error) {
@@ -128,6 +131,7 @@ func (q *Queries) GetAssessmentDefinition(ctx context.Context, id pgtype.UUID) (
 		&i.Prompt,
 		&i.Unit,
 		&i.PerHand,
+		&i.BodyweightRelative,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -135,7 +139,7 @@ func (q *Queries) GetAssessmentDefinition(ctx context.Context, id pgtype.UUID) (
 }
 
 const getAssessmentDefinitionByTraining = `-- name: GetAssessmentDefinitionByTraining :one
-SELECT id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at FROM assessment_definitions WHERE training_id = $1
+SELECT id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at FROM assessment_definitions WHERE training_id = $1
 `
 
 func (q *Queries) GetAssessmentDefinitionByTraining(ctx context.Context, trainingID pgtype.UUID) (AssessmentDefinition, error) {
@@ -149,6 +153,7 @@ func (q *Queries) GetAssessmentDefinitionByTraining(ctx context.Context, trainin
 		&i.Prompt,
 		&i.Unit,
 		&i.PerHand,
+		&i.BodyweightRelative,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -156,7 +161,7 @@ func (q *Queries) GetAssessmentDefinitionByTraining(ctx context.Context, trainin
 }
 
 const getAssessmentDefinitions = `-- name: GetAssessmentDefinitions :many
-SELECT id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at FROM assessment_definitions
+SELECT id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at FROM assessment_definitions
 WHERE user_id IS NULL OR user_id = $1
 ORDER BY user_id NULLS FIRST, label
 `
@@ -181,6 +186,7 @@ func (q *Queries) GetAssessmentDefinitions(ctx context.Context, userID pgtype.UU
 			&i.Prompt,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -195,7 +201,7 @@ func (q *Queries) GetAssessmentDefinitions(ctx context.Context, userID pgtype.UU
 }
 
 const getAssessmentDefinitionsByIDs = `-- name: GetAssessmentDefinitionsByIDs :many
-SELECT id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at FROM assessment_definitions
+SELECT id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at FROM assessment_definitions
 WHERE id = ANY($1::uuid[]) AND (user_id IS NULL OR user_id = $2)
 `
 
@@ -224,6 +230,7 @@ func (q *Queries) GetAssessmentDefinitionsByIDs(ctx context.Context, arg GetAsse
 			&i.Prompt,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -238,7 +245,7 @@ func (q *Queries) GetAssessmentDefinitionsByIDs(ctx context.Context, arg GetAsse
 }
 
 const getAssessmentDefinitionsForPrescription = `-- name: GetAssessmentDefinitionsForPrescription :many
-SELECT id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at FROM assessment_definitions WHERE id = ANY($1::uuid[])
+SELECT id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at FROM assessment_definitions WHERE id = ANY($1::uuid[])
 `
 
 // The definitions a prescription references, named by ids it already holds. No
@@ -261,6 +268,7 @@ func (q *Queries) GetAssessmentDefinitionsForPrescription(ctx context.Context, i
 			&i.Prompt,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -277,17 +285,18 @@ func (q *Queries) GetAssessmentDefinitionsForPrescription(ctx context.Context, i
 const updateAssessmentDefinition = `-- name: UpdateAssessmentDefinition :one
 UPDATE assessment_definitions
 SET label = $1, prompt = $2, unit = $3, per_hand = $4,
-    updated_at = now()
-WHERE id = $5
-RETURNING id, user_id, training_id, label, prompt, unit, per_hand, created_at, updated_at
+    bodyweight_relative = $5, updated_at = now()
+WHERE id = $6
+RETURNING id, user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative, created_at, updated_at
 `
 
 type UpdateAssessmentDefinitionParams struct {
-	Label   string
-	Prompt  pgtype.Text
-	Unit    string
-	PerHand bool
-	ID      pgtype.UUID
+	Label              string
+	Prompt             pgtype.Text
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	ID                 pgtype.UUID
 }
 
 func (q *Queries) UpdateAssessmentDefinition(ctx context.Context, arg UpdateAssessmentDefinitionParams) (AssessmentDefinition, error) {
@@ -296,6 +305,7 @@ func (q *Queries) UpdateAssessmentDefinition(ctx context.Context, arg UpdateAsse
 		arg.Prompt,
 		arg.Unit,
 		arg.PerHand,
+		arg.BodyweightRelative,
 		arg.ID,
 	)
 	var i AssessmentDefinition
@@ -307,6 +317,7 @@ func (q *Queries) UpdateAssessmentDefinition(ctx context.Context, arg UpdateAsse
 		&i.Prompt,
 		&i.Unit,
 		&i.PerHand,
+		&i.BodyweightRelative,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

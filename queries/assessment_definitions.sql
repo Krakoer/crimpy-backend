@@ -1,6 +1,6 @@
 -- name: CreateAssessmentDefinition :one
-INSERT INTO assessment_definitions (user_id, training_id, label, prompt, unit, per_hand)
-VALUES (@user_id, @training_id, @label, @prompt, @unit, @per_hand)
+INSERT INTO assessment_definitions (user_id, training_id, label, prompt, unit, per_hand, bodyweight_relative)
+VALUES (@user_id, @training_id, @label, @prompt, @unit, @per_hand, @bodyweight_relative)
 RETURNING *;
 
 -- name: GetAssessmentDefinition :one
@@ -33,7 +33,7 @@ SELECT * FROM assessment_definitions WHERE training_id = @training_id;
 -- name: UpdateAssessmentDefinition :one
 UPDATE assessment_definitions
 SET label = @label, prompt = @prompt, unit = @unit, per_hand = @per_hand,
-    updated_at = now()
+    bodyweight_relative = @bodyweight_relative, updated_at = now()
 WHERE id = @id
 RETURNING *;
 

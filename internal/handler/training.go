@@ -654,10 +654,11 @@ func trainingRowToListItem(r db.GetTrainingsRow) TrainingListItem {
 	})
 	if r.AssessmentID.Valid {
 		item.Assessment = &AssessmentDefinitionSnapshot{
-			ID:      r.AssessmentID.String(),
-			Label:   r.Label.String,
-			Unit:    r.Unit.String,
-			PerHand: r.PerHand.Bool,
+			ID:                 r.AssessmentID.String(),
+			Label:              r.Label.String,
+			Unit:               r.Unit.String,
+			PerHand:            r.PerHand.Bool,
+			BodyweightRelative: r.BodyweightRelative.Bool,
 		}
 		if r.Prompt.Valid {
 			item.Assessment.Prompt = &r.Prompt.String
