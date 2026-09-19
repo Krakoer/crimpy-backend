@@ -472,8 +472,10 @@ type UpdateSessionRequest struct {
 	// negative. Only a logged session sends it: a played one is timed by its run.
 	Duration *int32 `json:"duration,omitempty"`
 	// Only logged sessions send a date. Omitted, the stored one is kept, which is
-	// what played sessions rely on since their date is fixed by the run.
-	Date string `json:"date,omitempty"`
+	// what played sessions rely on since their date is fixed by the run. A
+	// pointer like the fields above, so this struct spells "not sent" one way
+	// rather than two.
+	Date *string `json:"date,omitempty"`
 	// The athlete's RPE answer, which this path exists to let them give after
 	// the fact: forgetting it at the end of a run is the normal case, and a
 	// played session keeps it editable even though nothing else on it is.
@@ -597,16 +599,17 @@ func optionalTimestamp(t pgtype.Timestamptz) *string {
 	return &s
 }
 
-// optionalText carries a field a request may leave out into the null the
-// statement reads as "keep what is stored".
-func optionalText(s *string) pgtype.Text {
+// toPgText carries a field a request may leave out into the null the statement
+// reads as "keep what is stored". Named for the direction it runs, since
+// optionalString above is the same conversion the other way.
+func toPgText(s *string) pgtype.Text {
 	if s == nil {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: *s, Valid: true}
 }
 
-func optionalInt4(v *int32) pgtype.Int4 {
+func toPgInt4(v *int32) pgtype.Int4 {
 	if v == nil {
 		return pgtype.Int4{}
 	}
@@ -1888,8 +1891,8 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 	}
 
 	var date pgtype.Timestamptz
-	if req.Date != "" {
-		t, err := parseSessionDate(req.Date)
+	if req.Date != nil {
+		t, err := parseSessionDate(*req.Date)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
 		}
@@ -1898,9 +1901,9 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 
 	updated, err := h.queries.UpdateSession(c.Context(), db.UpdateSessionParams{
 		ID:        sessionUUID,
-		Name:      optionalText(req.Name),
-		Notes:     optionalText(req.Notes),
-		Duration:  optionalInt4(req.Duration),
+		Name:      toPgText(req.Name),
+		Notes:     toPgText(req.Notes),
+		Duration:  toPgInt4(req.Duration),
 		Date:      date,
 		RpeGiven:  rpeGiven,
 		Rpe:       rpe.value,

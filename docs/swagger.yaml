@@ -1471,7 +1471,9 @@ definitions:
       date:
         description: |-
           Only logged sessions send a date. Omitted, the stored one is kept, which is
-          what played sessions rely on since their date is fixed by the run.
+          what played sessions rely on since their date is fixed by the run. A
+          pointer like the fields above, so this struct spells "not sent" one way
+          rather than two.
         type: string
       duration:
         description: |-
