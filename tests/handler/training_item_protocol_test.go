@@ -32,11 +32,18 @@ func TestTrainingItemProtocol_RejectsOverLength(t *testing.T) {
 	}
 }
 
+// accentedRune is the e acute the coaching spreadsheet is full of, written as
+// an escape so the source stays ASCII. Two bytes, one rune, which is the whole
+// point of the two tests below: a byte counted cap would give a coach writing
+// in French half the characters it gives one writing in English.
+const accentedRune = "\u00e9"
+
 // Counted in runes, so a rule written in the accented French the spreadsheet
 // uses gets the same 2000 characters as one written in ASCII, and the boundary
-// itself is accepted rather than refused.
+// itself is accepted rather than refused. 2000 of these are 4000 bytes, so a
+// byte counted cap refuses this and the test fails.
 func TestTrainingItemProtocol_AllowsExactlyTheLimitInMultibyteRunes(t *testing.T) {
-	protocol := strings.Repeat("e", 2000)
+	protocol := strings.Repeat(accentedRune, 2000)
 	status, result := createTrainingWithItems(t, "itemprotocolexactlimit@test.com", []map[string]interface{}{
 		{"type": "exercise", "protocol": protocol},
 	})
@@ -47,6 +54,23 @@ func TestTrainingItemProtocol_AllowsExactlyTheLimitInMultibyteRunes(t *testing.T
 	item := firstItem(t, result)
 	if item["protocol"] != protocol {
 		t.Errorf("Expected the protocol to round trip in full, got %v", item["protocol"])
+	}
+}
+
+// The other half of the same check: one rune past the cap is refused however
+// few bytes it is counted as, so the boundary is pinned from both sides in the
+// alphabet that makes byte and rune counts disagree.
+func TestTrainingItemProtocol_RefusesOneMultibyteRunePastTheLimit(t *testing.T) {
+	protocol := strings.Repeat(accentedRune, 2001)
+	status, result := createTrainingWithItems(t, "itemprotocolovermultibyte@test.com", []map[string]interface{}{
+		{"type": "exercise", "protocol": protocol},
+	})
+
+	if status != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for 2001 accented characters, got %d: %v", status, result)
+	}
+	if !strings.Contains(result["error"].(string), "protocol") {
+		t.Errorf("Expected the refusal to name the field, got %v", result["error"])
 	}
 }
 

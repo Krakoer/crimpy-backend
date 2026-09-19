@@ -424,41 +424,20 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
-// validateItemComment rejects a comment past maxItemCommentLen rather than
-// truncating it: a coach whose note gets cut silently only finds out when the
-// athlete reads half a sentence.
-func validateItemComment(comment *string) error {
-	if comment == nil {
+// validateItemText rejects free text past its cap rather than truncating it: a
+// coach whose prose gets cut silently only finds out when the athlete reads
+// half of it. The caps and why each one is the size it is live on the constants
+// above; [field] names the one being checked so the refusal says which of the
+// three the coach has to shorten.
+//
+// Counted in runes, so a line written in the accented French the coaching
+// spreadsheet uses gets the same number of characters as one written in ASCII.
+func validateItemText(field string, text *string, max int) error {
+	if text == nil {
 		return nil
 	}
-	if utf8.RuneCountInString(*comment) > maxItemCommentLen {
-		return fmt.Errorf("comment must be at most %d characters", maxItemCommentLen)
-	}
-	return nil
-}
-
-// validateItemGoal rejects a goal past maxItemGoalLen, for the same reason a
-// comment is refused rather than cut: a coach only discovers a silent
-// truncation once the athlete reads half of it.
-func validateItemGoal(goal *string) error {
-	if goal == nil {
-		return nil
-	}
-	if utf8.RuneCountInString(*goal) > maxItemGoalLen {
-		return fmt.Errorf("goal must be at most %d characters", maxItemGoalLen)
-	}
-	return nil
-}
-
-// validateItemProtocol rejects a protocol past maxItemProtocolLen, refused
-// rather than cut for the same reason a comment is: a coach only discovers a
-// silent truncation once the athlete has run half a rule.
-func validateItemProtocol(protocol *string) error {
-	if protocol == nil {
-		return nil
-	}
-	if utf8.RuneCountInString(*protocol) > maxItemProtocolLen {
-		return fmt.Errorf("protocol must be at most %d characters", maxItemProtocolLen)
+	if utf8.RuneCountInString(*text) > max {
+		return fmt.Errorf("%s must be at most %d characters", field, max)
 	}
 	return nil
 }
@@ -483,13 +462,13 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 		if err := validateRepsIsMax(item); err != nil {
 			return err
 		}
-		if err := validateItemComment(item.Comment); err != nil {
+		if err := validateItemText("comment", item.Comment, maxItemCommentLen); err != nil {
 			return err
 		}
-		if err := validateItemGoal(item.Goal); err != nil {
+		if err := validateItemText("goal", item.Goal, maxItemGoalLen); err != nil {
 			return err
 		}
-		if err := validateItemProtocol(item.Protocol); err != nil {
+		if err := validateItemText("protocol", item.Protocol, maxItemProtocolLen); err != nil {
 			return err
 		}
 		if err := validateItemConfiguration(item, units); err != nil {
