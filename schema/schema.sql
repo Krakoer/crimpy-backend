@@ -427,6 +427,20 @@ CREATE TABLE "training_items" (
   -- comment says how to execute this instance. A week that really trains
   -- something else is a different block, not the same one relabelled.
   "goal"                 TEXT,
+  -- The rule the athlete resolves while performing the block, in the coach's
+  -- own prose ("to failure or 40s; past 40s add 5kg, short of it put your feet
+  -- on the ground"). A prescription is often a condition rather than a number,
+  -- and the numeric columns above can only carry the number. Free text rather
+  -- than a condition/threshold/adjustment grammar: what the athlete does with
+  -- it is read by a person, and what came out of it is recorded on
+  -- "session_item_results" beside it. Nothing evaluates this column.
+  --
+  -- Distinct from "comment", which says how to execute the movement, and from
+  -- "goal", which says what the block is for. Not an override key either
+  -- (contract/override-keys.json), for the reason both of those are not: a week
+  -- that resolves differently is retuning the numbers the protocol reads, not
+  -- the protocol.
+  "protocol"             TEXT,
   -- Configurable fields (JSONB arrays, see the layout note above the table).
   -- Each holds exactly one entry per configuration row.
   -- loads: [{value: float, unit: string}]. Right hand of a two-handed mode,

@@ -44,6 +44,17 @@ const maxItemCommentLen = 2000
 // merged session overrides and may only refuse fields the override row carries.
 const maxItemGoalLen = 200
 
+// maxItemProtocolLen caps the per-item protocol, the rule the athlete resolves
+// while performing the block. It gets the comment's 2000 rather than the goal's
+// 200 because it is prose with a condition in it ("to failure or 40s; past 40s
+// add 5kg, short of it put your feet on the ground"), not a label.
+//
+// Like the comment and the goal, the protocol is not an override key
+// (contract/override-keys.json), so this check belongs here rather than in
+// validateItemConfiguration, which also runs on merged session overrides and
+// may only refuse fields the override row carries.
+const maxItemProtocolLen = 2000
+
 // validItemTypes is the set of accepted training item discriminators.
 var validItemTypes = map[string]bool{
 	"repeater":      true,
@@ -439,6 +450,19 @@ func validateItemGoal(goal *string) error {
 	return nil
 }
 
+// validateItemProtocol rejects a protocol past maxItemProtocolLen, refused
+// rather than cut for the same reason a comment is: a coach only discovers a
+// silent truncation once the athlete has run half a rule.
+func validateItemProtocol(protocol *string) error {
+	if protocol == nil {
+		return nil
+	}
+	if utf8.RuneCountInString(*protocol) > maxItemProtocolLen {
+		return fmt.Errorf("protocol must be at most %d characters", maxItemProtocolLen)
+	}
+	return nil
+}
+
 // validateTrainingItems rejects unknown item types, over-deep trees, rep counts
 // on a type that does not repeat and malformed configuration arrays before any
 // row is written.
@@ -463,6 +487,9 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 			return err
 		}
 		if err := validateItemGoal(item.Goal); err != nil {
+			return err
+		}
+		if err := validateItemProtocol(item.Protocol); err != nil {
 			return err
 		}
 		if err := validateItemConfiguration(item, units); err != nil {
@@ -513,6 +540,7 @@ type TrainingItemRequest struct {
 	FreeText         *string               `json:"free_text"`
 	Comment          *string               `json:"comment"`
 	Goal             *string               `json:"goal"`
+	Protocol         *string               `json:"protocol"`
 	LoadIsMax        bool                  `json:"load_is_max"`
 	Loads            json.RawMessage       `json:"loads"           swaggertype:"array,object"`
 	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
@@ -570,6 +598,7 @@ type TrainingItemResponse struct {
 	FreeText            *string                `json:"free_text,omitempty"`
 	Comment             *string                `json:"comment,omitempty"`
 	Goal                *string                `json:"goal,omitempty"`
+	Protocol            *string                `json:"protocol,omitempty"`
 	LoadIsMax           bool                   `json:"load_is_max"`
 	Loads               json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
 	LeftLoads           json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
@@ -721,6 +750,9 @@ func trainingItemParams(trainingID, parentID pgtype.UUID, position int32, req Tr
 	if req.Goal != nil {
 		params.Goal = pgtype.Text{String: *req.Goal, Valid: true}
 	}
+	if req.Protocol != nil {
+		params.Protocol = pgtype.Text{String: *req.Protocol, Valid: true}
+	}
 	params.LoadIsMax = req.LoadIsMax
 	if hasJSONValue(req.Loads) {
 		params.Loads = req.Loads
@@ -765,6 +797,7 @@ func updateTrainingItemParams(id pgtype.UUID, p db.CreateTrainingItemParams) db.
 		FreeText:         p.FreeText,
 		Comment:          p.Comment,
 		Goal:             p.Goal,
+		Protocol:         p.Protocol,
 		LoadIsMax:        p.LoadIsMax,
 		Loads:            p.Loads,
 		LeftLoads:        p.LeftLoads,
@@ -951,6 +984,9 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if r.Goal.Valid {
 		resp.Goal = &r.Goal.String
 	}
+	if r.Protocol.Valid {
+		resp.Protocol = &r.Protocol.String
+	}
 	resp.LoadIsMax = r.LoadIsMax
 	if len(r.Loads) > 0 {
 		resp.Loads = json.RawMessage(r.Loads)
@@ -1025,6 +1061,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		FreeText:         r.FreeText,
 		Comment:          r.Comment,
 		Goal:             r.Goal,
+		Protocol:         r.Protocol,
 		Loads:            r.Loads,
 		LeftLoads:        r.LeftLoads,
 		HandPositions:    r.HandPositions,
@@ -1039,7 +1076,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 
 // CreateCoachTraining godoc
 // @Summary Create a training template
-// @Description Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters and its goal at most 200.
+// @Description Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.
 // @Tags Trainings
 // @Accept json
 // @Produce json
@@ -1232,7 +1269,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 
 // UpdateCoachTraining godoc
 // @Summary Update a training template
-// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters and its goal at most 200.
+// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.
 // @Tags Trainings
 // @Accept json
 // @Produce json
