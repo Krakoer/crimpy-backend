@@ -262,6 +262,57 @@ func TestSessionHandler_UpdateSession_RejectsRPEOffTheScale(t *testing.T) {
 	}
 }
 
+// The RPE pair is the only optional half of the update body, so a request that
+// tries to send it alone is refused rather than blanking the session it meant
+// to fill an answer in on.
+func TestSessionHandler_UpdateSession_RejectsRPEWithoutTheSession(t *testing.T) {
+	app, token := rpeApp(t, "rpe-partial@test.com")
+
+	created := createRPESession(t, app, token, nil)
+	sessionID := created["id"].(string)
+
+	resp, _ := updateRPESession(t, app, token, sessionID, map[string]interface{}{"rpe": 7})
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+
+	req := testutil.NewJSONRequest(http.MethodGet, fmt.Sprintf("/api/sessions/%s", sessionID), nil)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(token))
+	readBack, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to read the session back: %v", err)
+	}
+
+	var detail map[string]interface{}
+	json.NewDecoder(readBack.Body).Decode(&detail)
+	session := detail["session"].(map[string]interface{})
+	if session["name"] != "RPE session" {
+		t.Errorf("Expected the stored name to survive a refused update, got %v", session["name"])
+	}
+	if session["duration"] != float64(3600) {
+		t.Errorf("Expected the stored duration to survive a refused update, got %v", session["duration"])
+	}
+}
+
+func TestSessionHandler_UpdateSession_RejectsNegativeDuration(t *testing.T) {
+	app, token := rpeApp(t, "rpe-duration@test.com")
+
+	created := createRPESession(t, app, token, nil)
+	sessionID := created["id"].(string)
+
+	resp, _ := updateRPESession(t, app, token, sessionID, map[string]interface{}{
+		"name":     "RPE session",
+		"notes":    "",
+		"duration": -1,
+		"rpe":      7,
+	})
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+	}
+}
+
 func TestSessionHandler_UpdateSession_RPEUserIsolation(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 

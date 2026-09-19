@@ -41,12 +41,16 @@ GROUP BY sessions.id
 ORDER BY sessions.date DESC;
 
 -- name: UpdateSession :one
--- The RPE pair is written whole rather than coalesced: the handler resolves
--- what the request left out against the row it already read, so a client that
--- knows nothing of RPE cannot wipe one by saving a note.
+-- A request that mentions neither RPE field keeps the stored answer, so a
+-- client that knows nothing of RPE cannot wipe one by saving a note. Decided
+-- here rather than in the handler against a row it read first: that read and
+-- this write are not one statement, so a note saved in the window between them
+-- would write back the answer as it read before, erasing a rating stored in
+-- between.
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4, date = COALESCE(sqlc.narg('date'), date),
-    rpe = sqlc.narg('rpe'), rpe_failed = sqlc.arg('rpe_failed'),
+    rpe = CASE WHEN sqlc.arg('rpe_given')::boolean THEN sqlc.narg('rpe')::integer ELSE rpe END,
+    rpe_failed = CASE WHEN sqlc.arg('rpe_given')::boolean THEN sqlc.arg('rpe_failed')::boolean ELSE rpe_failed END,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

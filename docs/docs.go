@@ -4347,7 +4347,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update a session's name, notes, duration and RPE. The RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it. User must own the session unless they are an admin.",
+                "description": "Update a session's name, notes, duration and RPE. The whole session is sent, not a patch of it: name, notes and duration are written as they arrive, and a request with no name is refused rather than blanking the one stored. Only the RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it, so rpe_failed false on its own takes a rating back to unrated. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],

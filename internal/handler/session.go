@@ -1816,7 +1816,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 
 // UpdateSession godoc
 // @Summary Update a session
-// @Description Update a session's name, notes, duration and RPE. The RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it. User must own the session unless they are an admin.
+// @Description Update a session's name, notes, duration and RPE. The whole session is sent, not a patch of it: name, notes and duration are written as they arrive, and a request with no name is refused rather than blanking the one stored. Only the RPE fields are optional: sending neither leaves the stored answer alone, sending either replaces it, so rpe_failed false on its own takes a rating back to unrated. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1830,7 +1830,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions/{id} [put]
 func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
-	stored, sessionUUID, ok := h.ownedSession().require(c)
+	_, sessionUUID, ok := h.ownedSession().require(c)
 	if !ok {
 		return nil
 	}
@@ -1840,15 +1840,26 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// A request that mentions neither field keeps the stored answer, so a client
-	// written before RPE existed goes on updating notes without erasing one.
-	rpe := sessionRPE{value: stored.Rpe, failed: stored.RpeFailed}
-	if req.RPE != nil || req.RPEFailed != nil {
-		resolved, err := resolveSessionRPE(req.RPE, req.RPEFailed)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-		}
-		rpe = resolved
+	// The whole session is sent on this path, not a patch of it: the name, the
+	// notes and the duration are written as they arrive. Refused rather than
+	// stored, for the same reason the create path refuses one, so a request that
+	// meant to say only "the RPE was 7" cannot quietly blank the session it was
+	// filling an answer in on.
+	if req.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Name is required"})
+	}
+	if req.Duration < 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Duration cannot be negative"})
+	}
+
+	// Only the RPE pair may be left out, and leaving both out keeps the stored
+	// answer, which is what lets a client written before RPE existed go on
+	// updating notes without erasing one. The keeping is done by the statement
+	// rather than here, so no read sits between it and the write.
+	rpeGiven := req.RPE != nil || req.RPEFailed != nil
+	rpe, err := resolveSessionRPE(req.RPE, req.RPEFailed)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	var date pgtype.Timestamptz
@@ -1866,6 +1877,7 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		Notes:     req.Notes,
 		Duration:  req.Duration,
 		Date:      date,
+		RpeGiven:  rpeGiven,
 		Rpe:       rpe.value,
 		RpeFailed: rpe.failed,
 	})

@@ -394,7 +394,8 @@ func (q *Queries) SetSessionCoachReply(ctx context.Context, arg SetSessionCoachR
 const updateSession = `-- name: UpdateSession :one
 UPDATE sessions
 SET name = $2, notes = $3, duration = $4, date = COALESCE($5, date),
-    rpe = $6, rpe_failed = $7,
+    rpe = CASE WHEN $6::boolean THEN $7::integer ELSE rpe END,
+    rpe_failed = CASE WHEN $6::boolean THEN $8::boolean ELSE rpe_failed END,
     updated_at = now()
 WHERE id = $1
 RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at
@@ -406,13 +407,17 @@ type UpdateSessionParams struct {
 	Notes     string
 	Duration  int32
 	Date      pgtype.Timestamptz
+	RpeGiven  bool
 	Rpe       pgtype.Int4
 	RpeFailed bool
 }
 
-// The RPE pair is written whole rather than coalesced: the handler resolves
-// what the request left out against the row it already read, so a client that
-// knows nothing of RPE cannot wipe one by saving a note.
+// A request that mentions neither RPE field keeps the stored answer, so a
+// client that knows nothing of RPE cannot wipe one by saving a note. Decided
+// here rather than in the handler against a row it read first: that read and
+// this write are not one statement, so a note saved in the window between them
+// would write back the answer as it read before, erasing a rating stored in
+// between.
 func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, updateSession,
 		arg.ID,
@@ -420,6 +425,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		arg.Notes,
 		arg.Duration,
 		arg.Date,
+		arg.RpeGiven,
 		arg.Rpe,
 		arg.RpeFailed,
 	)
