@@ -55,13 +55,19 @@ CREATE TABLE "coachee_day_activities" (
 -- keeps its duration under a plain label. A day that said nothing produces no
 -- activity, which is an empty day under the new shape and not a lost one: its
 -- week is already carried by the declaration above.
+--
+-- The label is cut to the 200 characters the new API accepts. The old note was
+-- allowed 2000, and the week is written whole, so a longer one carried across
+-- intact would come back on the next save of that week as a validation error
+-- about a field the athlete never typed, and the week could not be saved again
+-- until they shortened it by hand.
 INSERT INTO "coachee_day_activities"
   ("declaration_id", "day_of_week", "position", "label", "duration_minutes", "created_at")
 SELECT
   d."id",
   a."day_of_week",
   0,
-  COALESCE(NULLIF(btrim(a."note"), ''), 'Training'),
+  left(COALESCE(NULLIF(btrim(a."note"), ''), 'Training'), 200),
   CASE WHEN a."is_available" THEN a."duration_minutes" END,
   a."created_at"
 FROM "coachee_day_availabilities" a

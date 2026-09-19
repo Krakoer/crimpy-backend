@@ -66,8 +66,7 @@ type DayActivityResponse struct {
 
 type DayAvailabilityResponse struct {
 	DayOfWeek int32 `json:"day_of_week"`
-	// Never null, so a client can iterate it without a guard. An empty list is
-	// a day the athlete has nothing planned for, which is a real answer.
+	// Always present and never null. An empty list is a day with nothing planned.
 	Activities []DayActivityResponse `json:"activities"`
 }
 
@@ -76,8 +75,6 @@ type WeekAvailabilityResponse struct {
 	WeekStart string `json:"week_start"`
 	UpdatedAt string `json:"updated_at"`
 	// All seven days, Monday first, whether or not anything is planned on them.
-	// A week only ever appears here because its declaration row exists, so the
-	// response says "declared" by being present at all.
 	Days []DayAvailabilityResponse `json:"days"`
 }
 
@@ -112,6 +109,11 @@ func dayActivityToResponse(a db.CoacheeDayActivity) DayActivityResponse {
 
 // emptyWeekDays is the shape every week answers in: seven days, Monday first,
 // each holding an empty activity list until the rows fill it in.
+//
+// The list is built rather than left nil so it marshals as [] and never null,
+// which is what lets a client iterate a day without a guard. A week only
+// reaches this function because its declaration row exists, so a week present
+// in a response is a declared week whatever its days hold.
 func emptyWeekDays() []DayAvailabilityResponse {
 	days := make([]DayAvailabilityResponse, daysInWeek)
 	for day := range days {

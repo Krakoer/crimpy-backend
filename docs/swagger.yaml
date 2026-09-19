@@ -570,9 +570,8 @@ definitions:
   handler.DayAvailabilityResponse:
     properties:
       activities:
-        description: |-
-          Never null, so a client can iterate it without a guard. An empty list is
-          a day the athlete has nothing planned for, which is a real answer.
+        description: Always present and never null. An empty list is a day with nothing
+          planned.
         items:
           $ref: '#/definitions/handler.DayActivityResponse'
         type: array
@@ -1612,10 +1611,8 @@ definitions:
   handler.WeekAvailabilityResponse:
     properties:
       days:
-        description: |-
-          All seven days, Monday first, whether or not anything is planned on them.
-          A week only ever appears here because its declaration row exists, so the
-          response says "declared" by being present at all.
+        description: All seven days, Monday first, whether or not anything is planned
+          on them.
         items:
           $ref: '#/definitions/handler.DayAvailabilityResponse'
         type: array
