@@ -11,70 +11,133 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getCoacheeAvailability = `-- name: GetCoacheeAvailability :many
-SELECT id, user_id, week_start, day_of_week, is_available, duration_minutes, note, created_at, updated_at FROM coachee_day_availabilities
-WHERE user_id = $1
-ORDER BY week_start, day_of_week
+const deleteCoacheeWeekActivities = `-- name: DeleteCoacheeWeekActivities :exec
+DELETE FROM coachee_day_activities
+WHERE declaration_id = $1
 `
 
-func (q *Queries) GetCoacheeAvailability(ctx context.Context, userID pgtype.UUID) ([]CoacheeDayAvailability, error) {
-	rows, err := q.db.Query(ctx, getCoacheeAvailability, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CoacheeDayAvailability
-	for rows.Next() {
-		var i CoacheeDayAvailability
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.WeekStart,
-			&i.DayOfWeek,
-			&i.IsAvailable,
-			&i.DurationMinutes,
-			&i.Note,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) DeleteCoacheeWeekActivities(ctx context.Context, declarationID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCoacheeWeekActivities, declarationID)
+	return err
 }
 
-const getCoacheeWeekAvailability = `-- name: GetCoacheeWeekAvailability :many
-SELECT id, user_id, week_start, day_of_week, is_available, duration_minutes, note, created_at, updated_at FROM coachee_day_availabilities
+const getCoacheeWeekDeclaration = `-- name: GetCoacheeWeekDeclaration :one
+SELECT id, user_id, week_start, created_at, updated_at FROM coachee_week_declarations
 WHERE user_id = $1 AND week_start = $2
-ORDER BY day_of_week
 `
 
-type GetCoacheeWeekAvailabilityParams struct {
+type GetCoacheeWeekDeclarationParams struct {
 	UserID    pgtype.UUID
 	WeekStart pgtype.Date
 }
 
-func (q *Queries) GetCoacheeWeekAvailability(ctx context.Context, arg GetCoacheeWeekAvailabilityParams) ([]CoacheeDayAvailability, error) {
-	rows, err := q.db.Query(ctx, getCoacheeWeekAvailability, arg.UserID, arg.WeekStart)
+func (q *Queries) GetCoacheeWeekDeclaration(ctx context.Context, arg GetCoacheeWeekDeclarationParams) (CoacheeWeekDeclaration, error) {
+	row := q.db.QueryRow(ctx, getCoacheeWeekDeclaration, arg.UserID, arg.WeekStart)
+	var i CoacheeWeekDeclaration
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.WeekStart,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listCoacheeDayActivities = `-- name: ListCoacheeDayActivities :many
+SELECT a.id, a.declaration_id, a.day_of_week, a.position, a.label, a.duration_minutes, a.when_text, a.where_text, a.created_at FROM coachee_day_activities a
+JOIN coachee_week_declarations d ON d.id = a.declaration_id
+WHERE d.user_id = $1
+ORDER BY d.week_start, a.day_of_week, a.position
+`
+
+// Every activity the athlete holds, across every week they declared, ordered so
+// it zips straight onto the declarations above.
+func (q *Queries) ListCoacheeDayActivities(ctx context.Context, userID pgtype.UUID) ([]CoacheeDayActivity, error) {
+	rows, err := q.db.Query(ctx, listCoacheeDayActivities, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []CoacheeDayAvailability
+	var items []CoacheeDayActivity
 	for rows.Next() {
-		var i CoacheeDayAvailability
+		var i CoacheeDayActivity
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeclarationID,
+			&i.DayOfWeek,
+			&i.Position,
+			&i.Label,
+			&i.DurationMinutes,
+			&i.WhenText,
+			&i.WhereText,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCoacheeWeekDayActivities = `-- name: ListCoacheeWeekDayActivities :many
+SELECT id, declaration_id, day_of_week, position, label, duration_minutes, when_text, where_text, created_at FROM coachee_day_activities
+WHERE declaration_id = $1
+ORDER BY day_of_week, position
+`
+
+func (q *Queries) ListCoacheeWeekDayActivities(ctx context.Context, declarationID pgtype.UUID) ([]CoacheeDayActivity, error) {
+	rows, err := q.db.Query(ctx, listCoacheeWeekDayActivities, declarationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CoacheeDayActivity
+	for rows.Next() {
+		var i CoacheeDayActivity
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeclarationID,
+			&i.DayOfWeek,
+			&i.Position,
+			&i.Label,
+			&i.DurationMinutes,
+			&i.WhenText,
+			&i.WhereText,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCoacheeWeekDeclarations = `-- name: ListCoacheeWeekDeclarations :many
+SELECT id, user_id, week_start, created_at, updated_at FROM coachee_week_declarations
+WHERE user_id = $1
+ORDER BY week_start
+`
+
+func (q *Queries) ListCoacheeWeekDeclarations(ctx context.Context, userID pgtype.UUID) ([]CoacheeWeekDeclaration, error) {
+	rows, err := q.db.Query(ctx, listCoacheeWeekDeclarations, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CoacheeWeekDeclaration
+	for rows.Next() {
+		var i CoacheeWeekDeclaration
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
 			&i.WeekStart,
-			&i.DayOfWeek,
-			&i.IsAvailable,
-			&i.DurationMinutes,
-			&i.Note,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -88,48 +151,29 @@ func (q *Queries) GetCoacheeWeekAvailability(ctx context.Context, arg GetCoachee
 	return items, nil
 }
 
-const upsertCoacheeDayAvailability = `-- name: UpsertCoacheeDayAvailability :one
-INSERT INTO coachee_day_availabilities (
-  user_id, week_start, day_of_week, is_available, duration_minutes, note
-)
-VALUES (
-  $1, $2, $3, $4, $5, $6
-)
-ON CONFLICT (user_id, week_start, day_of_week) DO UPDATE
-  SET is_available     = EXCLUDED.is_available,
-      duration_minutes = EXCLUDED.duration_minutes,
-      note             = EXCLUDED.note,
-      updated_at       = now()
-RETURNING id, user_id, week_start, day_of_week, is_available, duration_minutes, note, created_at, updated_at
+const upsertCoacheeWeekDeclaration = `-- name: UpsertCoacheeWeekDeclaration :one
+INSERT INTO coachee_week_declarations (user_id, week_start)
+VALUES ($1, $2)
+ON CONFLICT (user_id, week_start) DO UPDATE
+  SET updated_at = now()
+RETURNING id, user_id, week_start, created_at, updated_at
 `
 
-type UpsertCoacheeDayAvailabilityParams struct {
-	UserID          pgtype.UUID
-	WeekStart       pgtype.Date
-	DayOfWeek       int32
-	IsAvailable     bool
-	DurationMinutes pgtype.Int4
-	Note            pgtype.Text
+type UpsertCoacheeWeekDeclarationParams struct {
+	UserID    pgtype.UUID
+	WeekStart pgtype.Date
 }
 
-func (q *Queries) UpsertCoacheeDayAvailability(ctx context.Context, arg UpsertCoacheeDayAvailabilityParams) (CoacheeDayAvailability, error) {
-	row := q.db.QueryRow(ctx, upsertCoacheeDayAvailability,
-		arg.UserID,
-		arg.WeekStart,
-		arg.DayOfWeek,
-		arg.IsAvailable,
-		arg.DurationMinutes,
-		arg.Note,
-	)
-	var i CoacheeDayAvailability
+// Declaring a week the athlete has already declared is a re-answer, not a new
+// one, so the row keeps its identity and only moves its updated_at. That is
+// what the coach feed dates the event by.
+func (q *Queries) UpsertCoacheeWeekDeclaration(ctx context.Context, arg UpsertCoacheeWeekDeclarationParams) (CoacheeWeekDeclaration, error) {
+	row := q.db.QueryRow(ctx, upsertCoacheeWeekDeclaration, arg.UserID, arg.WeekStart)
+	var i CoacheeWeekDeclaration
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
 		&i.WeekStart,
-		&i.DayOfWeek,
-		&i.IsAvailable,
-		&i.DurationMinutes,
-		&i.Note,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
