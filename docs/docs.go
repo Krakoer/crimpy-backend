@@ -4607,7 +4607,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters and its goal at most 200.",
+                "description": "Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4723,7 +4723,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters and its goal at most 200.",
+                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7576,6 +7576,9 @@ const docTemplate = `{
                         "type": "object"
                     }
                 },
+                "protocol": {
+                    "type": "string"
+                },
                 "reps": {
                     "type": "integer"
                 },
@@ -7695,6 +7698,9 @@ const docTemplate = `{
                 },
                 "position": {
                     "type": "integer"
+                },
+                "protocol": {
+                    "type": "string"
                 },
                 "reps": {
                     "type": "integer"
