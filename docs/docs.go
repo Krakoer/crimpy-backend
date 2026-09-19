@@ -6722,6 +6722,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "activities": {
+                    "description": "A pointer so an absent list is told apart from an empty one. They mean\nopposite things here: an empty list is the athlete saying nothing is on\nthat day, while an absent one is a client that does not know about\nactivities at all. Read as empty, the second would answer 200 and wipe\nthe week an installed older app was trying to write.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.DayActivityRequest"

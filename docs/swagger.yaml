@@ -559,6 +559,12 @@ definitions:
   handler.DayAvailabilityRequest:
     properties:
       activities:
+        description: |-
+          A pointer so an absent list is told apart from an empty one. They mean
+          opposite things here: an empty list is the athlete saying nothing is on
+          that day, while an absent one is a client that does not know about
+          activities at all. Read as empty, the second would answer 200 and wipe
+          the week an installed older app was trying to write.
         items:
           $ref: '#/definitions/handler.DayActivityRequest'
         type: array

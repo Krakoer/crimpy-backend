@@ -285,6 +285,25 @@ func TestAvailability_InvalidInput(t *testing.T) {
 		tooMany = append(tooMany, activity("Climb", nil))
 	}
 
+	// The body an app built against the previous shape sends: seven days, each
+	// describing itself with is_available and a note and carrying no activities
+	// key at all. Read as an empty list it would answer 200 and erase the week
+	// the athlete was trying to write, so it has to be refused.
+	previousShape := map[string]interface{}{"days": func() []map[string]interface{} {
+		days := make([]map[string]interface{}, 0, 7)
+		for day := 0; day < 7; day++ {
+			days = append(days, map[string]interface{}{
+				"day_of_week":  day,
+				"is_available": day == 1,
+				"note":         "gym after work",
+			})
+		}
+		return days
+	}()}
+
+	nullActivities := fullWeek(nil)
+	nullActivities["days"].([]map[string]interface{})[3]["activities"] = nil
+
 	cases := []struct {
 		name      string
 		weekStart string
@@ -313,6 +332,8 @@ func TestAvailability_InvalidInput(t *testing.T) {
 		{"too many activities on a day", testWeekStart, fullWeek(map[int][]map[string]interface{}{
 			1: tooMany,
 		})},
+		{"a day carrying no activities key", testWeekStart, previousShape},
+		{"a day whose activities are null", testWeekStart, nullActivities},
 	}
 
 	for _, tc := range cases {
@@ -328,6 +349,78 @@ func TestAvailability_InvalidInput(t *testing.T) {
 	// never answered, and the reminder has to keep saying so.
 	if weeks := listWeeks(t, app, userToken); len(weeks) != 0 {
 		t.Errorf("Expected no week declared by the refused writes, got %d", len(weeks))
+	}
+}
+
+// An app still on the previous request shape must not be able to erase a week
+// it thinks it is writing. The fields it sends are ignored by the new binding,
+// so the day would bind with no activities, and a write that read that as
+// "nothing planned" would answer 200 over the top of a full week.
+func TestAvailability_PreviousRequestShapeLeavesTheWeekAlone(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail9user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+
+	putWeek(t, app, userToken, testWeekStart, fullWeek(map[int][]map[string]interface{}{
+		1: {activity("Bouldering", map[string]interface{}{"duration_minutes": 90})},
+		3: {activity("Lead climbing", nil)},
+	}))
+
+	oldShape := map[string]interface{}{"days": func() []map[string]interface{} {
+		days := make([]map[string]interface{}, 0, 7)
+		for day := 0; day < 7; day++ {
+			days = append(days, map[string]interface{}{
+				"day_of_week":  day,
+				"is_available": day == 1,
+			})
+		}
+		return days
+	}()}
+
+	resp := putWeek(t, app, userToken, testWeekStart, oldShape)
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("Expected 400 for the previous request shape, got %d", resp.StatusCode)
+	}
+
+	weeks := listWeeks(t, app, userToken)
+	if len(weeks) != 1 {
+		t.Fatalf("Expected the week to survive, got %d weeks", len(weeks))
+	}
+	if len(dayActivities(t, weeks[0], 1)) != 1 || len(dayActivities(t, weeks[0], 3)) != 1 {
+		t.Errorf("Expected the refused write to leave both days as they were")
+	}
+}
+
+// The length rule is about what gets stored, so a value that only passes the
+// limit because of surrounding whitespace is accepted and stored trimmed.
+func TestAvailability_LengthIsMeasuredOnWhatIsStored(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail10user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+
+	label := strings.Repeat("a", 200)
+	resp := putWeek(t, app, userToken, testWeekStart, fullWeek(map[int][]map[string]interface{}{
+		1: {activity("  "+label+"  ", nil)},
+	}))
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 for a label that is at the limit once trimmed, got %d", resp.StatusCode)
+	}
+
+	var week map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&week)
+	tuesday := dayActivities(t, week, 1)
+	if len(tuesday) != 1 || tuesday[0].(map[string]interface{})["label"] != label {
+		t.Errorf("Expected the label stored trimmed, got %v", tuesday)
 	}
 }
 

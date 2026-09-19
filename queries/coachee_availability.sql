@@ -12,7 +12,10 @@ RETURNING *;
 DELETE FROM coachee_day_activities
 WHERE declaration_id = @declaration_id;
 
--- name: InsertCoacheeDayActivity :exec
+-- name: InsertCoacheeDayActivity :batchexec
+-- Batched rather than issued one at a time: a week may carry as many as
+-- 7 x maxActivitiesPerDay activities, and a round trip each would hold the
+-- write transaction open against the request deadline for no reason.
 INSERT INTO coachee_day_activities (
   declaration_id, day_of_week, position, label, duration_minutes, when_text, where_text
 )

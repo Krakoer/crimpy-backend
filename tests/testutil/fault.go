@@ -128,6 +128,37 @@ func (f *FaultyDBTX) QueryRow(ctx context.Context, sql string, args ...interface
 	return f.inner.QueryRow(ctx, sql, args...)
 }
 
+// SendBatch fails the whole batch when any statement in it is one the matcher
+// names. A batch is sent as a unit, so a fault aimed at one of its statements
+// cannot let the rest through, and the count moves once per matching statement
+// because that is how many the caller is about to be told failed.
+func (f *FaultyDBTX) SendBatch(ctx context.Context, batch *pgx.Batch) pgx.BatchResults {
+	faulted := false
+	for _, queued := range batch.QueuedQueries {
+		if f.fails(queued.SQL) {
+			faulted = true
+		}
+	}
+	if faulted {
+		return faultyBatchResults{}
+	}
+	return f.inner.SendBatch(ctx, batch)
+}
+
+// faultyBatchResults answers the injected error to every result of a batch the
+// fault named, which is what a caller draining one sees when the batch failed.
+type faultyBatchResults struct{}
+
+func (faultyBatchResults) Exec() (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, ErrInjectedFault
+}
+
+func (faultyBatchResults) Query() (pgx.Rows, error) { return nil, ErrInjectedFault }
+
+func (faultyBatchResults) QueryRow() pgx.Row { return faultyRow{} }
+
+func (faultyBatchResults) Close() error { return ErrInjectedFault }
+
 // faultyRow hands the injected error to whoever scans it, which is how a
 // QueryRow call fails: pgx reports the error from Scan, not from the call.
 type faultyRow struct{}

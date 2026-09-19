@@ -55,7 +55,9 @@ func insertItemCount(t *testing.T, pool *pgxpool.Pool, userID, sessionID string,
 	}
 }
 
-func insertDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) {
+// A week the coachee answered with nothing planned in it. The declaration row
+// is the whole record, which is what the feed now reads.
+func insertEmptyDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) string {
 	t.Helper()
 	var declarationID string
 	err := pool.QueryRow(context.Background(),
@@ -65,6 +67,12 @@ func insertDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart stri
 	if err != nil {
 		t.Fatalf("Failed to declare availability: %v", err)
 	}
+	return declarationID
+}
+
+func insertDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) {
+	t.Helper()
+	declarationID := insertEmptyDeclaredWeek(t, pool, userID, weekStart)
 	for day := 0; day < 7; day += 2 {
 		_, err := pool.Exec(context.Background(),
 			`INSERT INTO coachee_day_activities (declaration_id, day_of_week, position, label)
@@ -254,6 +262,54 @@ func TestCoachFeed_ReportsWhatCoacheesDid(t *testing.T) {
 			t.Fatalf("Expected the feed ordered newest first, got %v", events)
 		}
 	}
+}
+
+// The feed reads the declaration row rather than grouping the day rows under it,
+// which is the only behaviour change in the query. A week declared with nothing
+// planned has no day rows at all, so under the previous shape it could not
+// produce an event, and an athlete answering "nothing on next week" was silent
+// to their coach.
+func TestCoachFeed_ReportsAWeekDeclaredWithNothingOnIt(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "feedemptycoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "feedemptyathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	weekStart := mondayOfTestWeek(now, 1)
+	insertEmptyDeclaredWeek(t, pool, userID, weekStart)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/feed", nil, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to get the feed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 getting the feed, got %d", resp.StatusCode)
+	}
+
+	var events []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&events)
+
+	for _, event := range events {
+		if event["kind"] == "availability_declared" {
+			if event["week_start"] != weekStart {
+				t.Errorf("Expected the declared week on the event, got %v", event["week_start"])
+			}
+			if event["user_id"] != userID {
+				t.Errorf("Expected the event to name the coachee, got %v", event)
+			}
+			return
+		}
+	}
+	t.Fatalf("Expected an availability_declared event for an empty week, got %v", events)
 }
 
 func TestCoachFeed_HonoursLimitAndBefore(t *testing.T) {

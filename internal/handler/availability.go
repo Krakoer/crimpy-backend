@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -49,8 +48,13 @@ type DayActivityRequest struct {
 }
 
 type DayAvailabilityRequest struct {
-	DayOfWeek  int32                `json:"day_of_week"`
-	Activities []DayActivityRequest `json:"activities"`
+	DayOfWeek int32 `json:"day_of_week"`
+	// A pointer so an absent list is told apart from an empty one. They mean
+	// opposite things here: an empty list is the athlete saying nothing is on
+	// that day, while an absent one is a client that does not know about
+	// activities at all. Read as empty, the second would answer 200 and wipe
+	// the week an installed older app was trying to write.
+	Activities *[]DayActivityRequest `json:"activities"`
 }
 
 type WeekAvailabilityRequest struct {
@@ -200,10 +204,13 @@ func validateWeekAvailability(days []DayAvailabilityRequest) error {
 			return fmt.Errorf("day_of_week %d is declared twice", day.DayOfWeek)
 		}
 		seen[day.DayOfWeek] = true
-		if len(day.Activities) > maxActivitiesPerDay {
+		if day.Activities == nil {
+			return errors.New("every day must carry an activities list, empty when nothing is planned")
+		}
+		if len(*day.Activities) > maxActivitiesPerDay {
 			return fmt.Errorf("a day carries at most %d activities", maxActivitiesPerDay)
 		}
-		for _, activity := range day.Activities {
+		for _, activity := range *day.Activities {
 			if err := validateDayActivity(activity); err != nil {
 				return err
 			}
@@ -212,24 +219,35 @@ func validateWeekAvailability(days []DayAvailabilityRequest) error {
 	return nil
 }
 
+// validateDayActivity measures the trimmed value rather than what was sent,
+// since trimming is what reaches the column: a label of exactly the limit with
+// a trailing space would otherwise be refused for a length it does not store.
 func validateDayActivity(activity DayActivityRequest) error {
-	if strings.TrimSpace(activity.Label) == "" {
+	label := strings.TrimSpace(activity.Label)
+	if label == "" {
 		return errors.New("every activity needs a label")
 	}
-	if err := checkActivityTextLength("label", &activity.Label); err != nil {
+	if err := checkActivityTextLength("label", label); err != nil {
 		return err
 	}
 	if activity.DurationMinutes != nil && *activity.DurationMinutes <= 0 {
 		return errors.New("duration_minutes must be greater than 0")
 	}
-	if err := checkActivityTextLength("when", activity.When); err != nil {
+	if err := checkActivityTextLength("when", trimmedValue(activity.When)); err != nil {
 		return err
 	}
-	return checkActivityTextLength("where", activity.Where)
+	return checkActivityTextLength("where", trimmedValue(activity.Where))
 }
 
-func checkActivityTextLength(field string, value *string) error {
-	if value == nil || utf8.RuneCountInString(*value) <= maxActivityTextLength {
+func trimmedValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func checkActivityTextLength(field, value string) error {
+	if utf8.RuneCountInString(value) <= maxActivityTextLength {
 		return nil
 	}
 	return fmt.Errorf("%s must be at most %d characters", field, maxActivityTextLength)
@@ -239,10 +257,7 @@ func checkActivityTextLength(field string, value *string) error {
 // string, so a client can tell "not said" from "said nothing" without comparing
 // against "".
 func trimmedText(value *string) pgtype.Text {
-	if value == nil {
-		return pgtype.Text{}
-	}
-	trimmed := strings.TrimSpace(*value)
+	trimmed := trimmedValue(value)
 	if trimmed == "" {
 		return pgtype.Text{}
 	}
@@ -315,6 +330,27 @@ func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID) ([]We
 	return availabilityToWeeks(declarations, activities), nil
 }
 
+// insertWeekActivities sends the whole week's activities as one batch. The
+// first error is kept and the results are drained either way: leaving a batch
+// unread poisons the connection for whatever runs on it next, including the
+// rollback this error is about to trigger.
+func insertWeekActivities(c fiber.Ctx, qtx *db.Queries, inserts []db.InsertCoacheeDayActivityParams) error {
+	if len(inserts) == 0 {
+		return nil
+	}
+	results := qtx.InsertCoacheeDayActivity(c.Context(), inserts)
+	var firstErr error
+	results.Exec(func(_ int, err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	})
+	if closeErr := results.Close(); closeErr != nil && firstErr == nil {
+		firstErr = closeErr
+	}
+	return firstErr
+}
+
 // UpsertMyWeekAvailability godoc
 // @Summary Declare my schedule for a calendar week
 // @Description Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday, each with the activities planned on it. A day may carry none, and a week where no day carries any is still a declared week.
@@ -348,13 +384,6 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Written in a fixed order rather than the order the body listed them, so
-	// two concurrent writes of the same week take the row locks the same way
-	// round and cannot deadlock each other.
-	sort.Slice(req.Days, func(i, j int) bool {
-		return req.Days[i].DayOfWeek < req.Days[j].DayOfWeek
-	})
-
 	tx, err := h.pool.Begin(c.Context())
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
@@ -363,8 +392,11 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 	defer tx.Rollback(c.Context())
 
 	qtx := h.queries.WithTx(tx)
-	// The declaration first: it is what says the week was answered, and it has
-	// to exist even when every day below turns out to be empty.
+	// The declaration first, for two reasons. It is what says the week was
+	// answered, so it has to exist even when every day below turns out to be
+	// empty; and it is one row per week, so two concurrent writes of the same
+	// week serialise on it here rather than racing over the activities under
+	// it.
 	declaration, err := qtx.UpsertCoacheeWeekDeclaration(c.Context(), db.UpsertCoacheeWeekDeclarationParams{
 		UserID:    userUUID,
 		WeekStart: weekStart,
@@ -382,8 +414,9 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
 	}
 
+	inserts := []db.InsertCoacheeDayActivityParams{}
 	for _, day := range req.Days {
-		for position, activity := range day.Activities {
+		for position, activity := range *day.Activities {
 			params := db.InsertCoacheeDayActivityParams{
 				DeclarationID: declaration.ID,
 				DayOfWeek:     day.DayOfWeek,
@@ -395,11 +428,12 @@ func (h *AvailabilityHandler) UpsertMyWeekAvailability(c fiber.Ctx) error {
 			if activity.DurationMinutes != nil {
 				params.DurationMinutes = pgtype.Int4{Int32: *activity.DurationMinutes, Valid: true}
 			}
-			if err := qtx.InsertCoacheeDayActivity(c.Context(), params); err != nil {
-				slog.Error("failed to save availability activity", "user_id", userUUID.String(), "day_of_week", day.DayOfWeek, "error", err)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
-			}
+			inserts = append(inserts, params)
 		}
+	}
+	if err := insertWeekActivities(c, qtx, inserts); err != nil {
+		slog.Error("failed to save availability activities", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save availability"})
 	}
 
 	if err := tx.Commit(c.Context()); err != nil {

@@ -44,38 +44,6 @@ func (q *Queries) GetCoacheeWeekDeclaration(ctx context.Context, arg GetCoacheeW
 	return i, err
 }
 
-const insertCoacheeDayActivity = `-- name: InsertCoacheeDayActivity :exec
-INSERT INTO coachee_day_activities (
-  declaration_id, day_of_week, position, label, duration_minutes, when_text, where_text
-)
-VALUES (
-  $1, $2, $3, $4, $5, $6, $7
-)
-`
-
-type InsertCoacheeDayActivityParams struct {
-	DeclarationID   pgtype.UUID
-	DayOfWeek       int32
-	Position        int32
-	Label           string
-	DurationMinutes pgtype.Int4
-	WhenText        pgtype.Text
-	WhereText       pgtype.Text
-}
-
-func (q *Queries) InsertCoacheeDayActivity(ctx context.Context, arg InsertCoacheeDayActivityParams) error {
-	_, err := q.db.Exec(ctx, insertCoacheeDayActivity,
-		arg.DeclarationID,
-		arg.DayOfWeek,
-		arg.Position,
-		arg.Label,
-		arg.DurationMinutes,
-		arg.WhenText,
-		arg.WhereText,
-	)
-	return err
-}
-
 const listCoacheeDayActivities = `-- name: ListCoacheeDayActivities :many
 SELECT a.id, a.declaration_id, a.day_of_week, a.position, a.label, a.duration_minutes, a.when_text, a.where_text, a.created_at FROM coachee_day_activities a
 JOIN coachee_week_declarations d ON d.id = a.declaration_id
