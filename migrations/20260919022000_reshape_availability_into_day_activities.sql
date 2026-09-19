@@ -56,23 +56,41 @@ CREATE TABLE "coachee_day_activities" (
 -- activity, which is an empty day under the new shape and not a lost one: its
 -- week is already carried by the declaration above.
 --
+-- The trim is widened past what btrim strips by default, which is the space
+-- alone, to the set Go's strings.TrimSpace takes off. The old write path stored
+-- the note untrimmed, so a note of nothing but a tab or a non breaking space is
+-- a row that can exist; trimmed only of spaces it would migrate into a label
+-- that looks blank on screen and that the new API refuses, and the week could
+-- not be saved again. Computed once in the CTE so the test for "did this day
+-- say anything" and the value written cannot disagree.
+--
 -- The label is cut to the 200 characters the new API accepts. The old note was
 -- allowed 2000, and the week is written whole, so a longer one carried across
 -- intact would come back on the next save of that week as a validation error
--- about a field the athlete never typed, and the week could not be saved again
--- until they shortened it by hand.
+-- about a field the athlete never typed.
+WITH "trimmed" AS (
+  SELECT
+    a."user_id",
+    a."week_start",
+    a."day_of_week",
+    a."is_available",
+    a."duration_minutes",
+    a."created_at",
+    NULLIF(btrim(a."note", E' \t\n\r\f\v\u00a0'), '') AS "clean_note"
+  FROM "coachee_day_availabilities" a
+)
 INSERT INTO "coachee_day_activities"
   ("declaration_id", "day_of_week", "position", "label", "duration_minutes", "created_at")
 SELECT
   d."id",
-  a."day_of_week",
+  t."day_of_week",
   0,
-  left(COALESCE(NULLIF(btrim(a."note"), ''), 'Training'), 200),
-  CASE WHEN a."is_available" THEN a."duration_minutes" END,
-  a."created_at"
-FROM "coachee_day_availabilities" a
+  left(COALESCE(t."clean_note", 'Training'), 200),
+  CASE WHEN t."is_available" THEN t."duration_minutes" END,
+  t."created_at"
+FROM "trimmed" t
 JOIN "coachee_week_declarations" d
-  ON d."user_id" = a."user_id" AND d."week_start" = a."week_start"
-WHERE a."is_available" OR NULLIF(btrim(a."note"), '') IS NOT NULL;
+  ON d."user_id" = t."user_id" AND d."week_start" = t."week_start"
+WHERE t."is_available" OR t."clean_note" IS NOT NULL;
 
 DROP TABLE "coachee_day_availabilities";

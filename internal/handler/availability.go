@@ -356,7 +356,7 @@ func insertWeekActivities(c fiber.Ctx, qtx *db.Queries, inserts []db.InsertCoach
 
 // UpsertMyWeekAvailability godoc
 // @Summary Declare my schedule for a calendar week
-// @Description Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. Every day must carry an activities array, empty when nothing is planned on it; leaving the key out is refused. A week where every day is empty is still a declared week.
+// @Description Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. Every day must carry an activities array, empty when nothing is planned on it; leaving the key out is refused. A day's activities come back in the order they were sent. A week where every day is empty is still a declared week.
 // @Tags Availability
 // @Accept json
 // @Produce json

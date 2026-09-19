@@ -1,4 +1,4 @@
-h1:5JDcwl4dxg+/2f+07zIUwDMre523AMpEJqxhK+O2iEc=
+h1:lZiL2QxBM21OCgEvTfcRkT0ipxD8mcmpee6mEUvhpRA=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -59,4 +59,4 @@ h1:5JDcwl4dxg+/2f+07zIUwDMre523AMpEJqxhK+O2iEc=
 20260918132343_add_user_bodyweights.sql h1:xiT0n+LAWQbW6u8OGU61zH9xcbIweHbroz0Ox2crs+o=
 20260918220724_add_assessment_bodyweight_relative.sql h1:PfS9FKeZYh5bKYRyIZUZnsiZEjIIjLzKdvsq3o0vttY=
 20260919002039_add_session_rpe.sql h1:KbSeSvTwcSC+/BHi9V9ZhRdOQe2PgB4759iB7kBFAQY=
-20260919022000_reshape_availability_into_day_activities.sql h1:pSfW2GCgGUHa4/cF2W1+s2/wKryhqksloNC+1r20MAE=
+20260919022000_reshape_availability_into_day_activities.sql h1:qkHCSrsmHbxgaHUfYLQIzkQG/ktbvm77hcbfiw+UtAo=
