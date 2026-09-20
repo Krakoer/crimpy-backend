@@ -197,6 +197,9 @@ type HandlerConfig struct {
 		DeleteMyBodyweight(fiber.Ctx) error
 		GetClientBodyweights(fiber.Ctx) error
 	}
+	CoachTrainingLoadHandler interface {
+		GetClientTrainingLoad(fiber.Ctx) error
+	}
 	CoachTodoHandler interface {
 		GetCoachFeed(fiber.Ctx) error
 		GetCoachTodo(fiber.Ctx) error
@@ -330,6 +333,10 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/user/bodyweights", config.BodyweightHandler.GetMyBodyweights)
 		api.Delete("/user/bodyweights/:id", config.BodyweightHandler.DeleteMyBodyweight)
 		api.Get("/coach/clients/:user_id/bodyweights", config.BodyweightHandler.GetClientBodyweights)
+	}
+
+	if config.CoachTrainingLoadHandler != nil {
+		api.Get("/coach/clients/:user_id/training-load", config.CoachTrainingLoadHandler.GetClientTrainingLoad)
 	}
 
 	if config.CoachTodoHandler != nil {

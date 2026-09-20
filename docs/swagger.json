@@ -2393,6 +2393,79 @@
                 }
             }
         },
+        "/api/coach/clients/{user_id}/training-load": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, which is what tz_offset_minutes carries, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, and chronic_weeks says how many weeks it rested on. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Get a client's weekly training load",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many weeks to return, 1 to 52, defaults to 12",
+                        "name": "weeks",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Caller's offset east of UTC in minutes, defaults to 0",
+                        "name": "tz_offset_minutes",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The weekly series",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingLoadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach, or client not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/coach/enrollment-token": {
             "post": {
                 "security": [
@@ -7801,6 +7874,17 @@
                 }
             }
         },
+        "handler.TrainingLoadResponse": {
+            "type": "object",
+            "properties": {
+                "weeks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.WeeklyTrainingLoadResponse"
+                    }
+                }
+            }
+        },
         "handler.TrainingProgramUsage": {
             "type": "object",
             "properties": {
@@ -8262,6 +8346,63 @@
                     "type": "string"
                 },
                 "training_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.WeeklyTrainingLoadResponse": {
+            "type": "object",
+            "properties": {
+                "acute_chronic_ratio": {
+                    "description": "AcuteChronicRatio is acute over chronic, null when there is no chronic\nbaseline to divide by yet.",
+                    "type": "number"
+                },
+                "acute_load": {
+                    "type": "number"
+                },
+                "chronic_load": {
+                    "description": "ChronicLoad averages the acute load of this week and the weeks before it,\nChronicWeeks of them in all, never more than three and never reaching\nbefore the athlete's first recorded session.",
+                    "type": "number"
+                },
+                "chronic_weeks": {
+                    "type": "integer"
+                },
+                "climbing_minutes": {
+                    "type": "integer"
+                },
+                "failed_sessions": {
+                    "description": "FailedSessions counts the sessions marked ECHEC. They are deliberately\noutside mean_rpe: see the note on the endpoint.",
+                    "type": "integer"
+                },
+                "load_change_percent": {
+                    "description": "LoadChangePercent is this week's acute load as a percentage of last\nweek's, null when last week's is unknown or zero.",
+                    "type": "number"
+                },
+                "mean_rpe": {
+                    "type": "number"
+                },
+                "program_name": {
+                    "type": "string"
+                },
+                "rated_sessions": {
+                    "description": "RatedSessions is how many of the week's sessions carry an RPE, so the\ncoach can see how much of the week the mean actually speaks for.",
+                    "type": "integer"
+                },
+                "session_count": {
+                    "type": "integer"
+                },
+                "strength_minutes": {
+                    "type": "integer"
+                },
+                "total_minutes": {
+                    "type": "integer"
+                },
+                "week_number": {
+                    "description": "WeekNumber and ProgramName name the program week this calendar week is,\nwhen a program of this coach covers it. Both null otherwise.",
+                    "type": "integer"
+                },
+                "week_start": {
+                    "description": "WeekStart is the Monday the week opens on, read on the caller's clock.",
                     "type": "string"
                 }
             }
