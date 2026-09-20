@@ -51,8 +51,8 @@ type CountCoachSessionsInWindowParams struct {
 }
 
 // How many sessions the coach's athletes did in one window. The dashboard shows
-// it for the current week, whose bounds only the caller's timezone offset can
-// place, which is why the window arrives as two instants rather than a week.
+// it for the current week, whose bounds only the caller's own clock can place,
+// which is why the window arrives as two instants rather than a week.
 func (q *Queries) CountCoachSessionsInWindow(ctx context.Context, arg CountCoachSessionsInWindowParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCoachSessionsInWindow, arg.CoachID, arg.WindowStart, arg.WindowEnd)
 	var count int64

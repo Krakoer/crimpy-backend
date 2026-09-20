@@ -597,6 +597,9 @@ func TestTrainingLoadCutsWeeksAcrossADaylightSavingChange(t *testing.T) {
 			// in the query. Placed a week either side it would read as a rest
 			// week to average in, or as silence before the history started.
 			firstWeek := beforeSwitch.AddDate(0, 0, -7).Format(time.DateOnly)
+			if _, found := byWeek[firstWeek]; !found {
+				t.Fatalf("Week %s is missing from the series", firstWeek)
+			}
 			if got := numberAt(t, byWeek[firstWeek], "chronic_weeks"); got != 1 {
 				t.Fatalf("Expected week %s to be the first of the history and rest on itself alone, got %v weeks", firstWeek, got)
 			}
@@ -644,6 +647,11 @@ func TestTrainingLoadRejectsAnUnusableTimezone(t *testing.T) {
 		"timezone=localtime",
 		"timezone=" + url.QueryEscape("posix/Europe/Paris"),
 		"timezone=" + url.QueryEscape("right/Europe/Paris"),
+		// Path forms a host with a zoneinfo directory resolves, because
+		// LoadLocation lets the kernel tidy the name it builds a path out of,
+		// and Postgres then refuses the name it is handed.
+		"timezone=" + url.QueryEscape("./Europe/Paris"),
+		"timezone=" + url.QueryEscape("Europe//Paris"),
 		"timezone=" + url.QueryEscape("Europe/Paris") + "&tz_offset_minutes=9999",
 	} {
 		requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?%s", userID, query)

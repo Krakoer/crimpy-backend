@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,14 @@ const (
 	posixZonePrefix = "posix/"
 	leapZonePrefix  = "right/"
 )
+
+// zoneNameShape is what an IANA zone name looks like, Area/Location with an
+// optional further part, as in America/Argentina/Buenos_Aires. It is matched
+// rather than merely looked for a separator in, because time.LoadLocation
+// builds a path out of the name and lets the kernel tidy it: "./Europe/Paris"
+// and "Europe//Paris" both resolve on a host with a zoneinfo directory, and
+// Postgres then refuses the name it is handed.
+var zoneNameShape = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z][A-Za-z0-9_+-]*)+$`)
 
 // callerClock is the clock an endpoint cuts its weeks on.
 //
@@ -115,12 +124,19 @@ func (clock callerClock) offsetMinutes() int32 {
 // directory, which LoadLocation answers with the host's own zone and Postgres
 // does not know at all.
 //
-// The posix/ and right/ trees are the remaining names Go may resolve from a
-// host's zoneinfo and Postgres cannot, so they are named here.
+// The posix/ and right/ trees have the shape but are alternative encodings of
+// the same zones that Postgres does not carry, so they are named here.
+//
+// The rule is deliberately stricter than it has to be. Of the 46 names without
+// a slash that Postgres carries, only those four actually disagree with Go; the
+// other 42, EST5EDT and Japan and the rest, would have been answered correctly.
+// They are refused all the same, because a visible 400 on a name no client
+// sends beats a rule with exceptions in it, and the message says which shape is
+// wanted.
 func loadCallerZone(name string) (*time.Location, error) {
-	invalid := errors.New("timezone must be an IANA zone name such as Europe/Paris")
+	invalid := errors.New("timezone must be an IANA zone name of the form Area/Location, such as Europe/Paris")
 	if name != utcZoneName {
-		if !strings.Contains(name, "/") ||
+		if !zoneNameShape.MatchString(name) ||
 			strings.HasPrefix(name, posixZonePrefix) ||
 			strings.HasPrefix(name, leapZonePrefix) {
 			return nil, invalid

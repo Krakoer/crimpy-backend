@@ -173,8 +173,8 @@ WHERE p.coach_id = @coach_id
 ORDER BY u.lastname, u.firstname, p.name;
 
 -- How many sessions the coach's athletes did in one window. The dashboard shows
--- it for the current week, whose bounds only the caller's timezone offset can
--- place, which is why the window arrives as two instants rather than a week.
+-- it for the current week, whose bounds only the caller's own clock can place,
+-- which is why the window arrives as two instants rather than a week.
 -- name: CountCoachSessionsInWindow :one
 SELECT COUNT(*) FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
