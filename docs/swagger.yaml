@@ -2788,14 +2788,25 @@ paths:
       - Coaching
   /api/coach/clients/{user_id}/availability:
     get:
-      description: Retrieve every calendar week a user enrolled with the authenticated
+      description: Retrieve the calendar weeks a user enrolled with the authenticated
         coach has declared, each carrying the seven days and the activities planned
-        on them.
+        on them. from and to bound the answer to a range of calendar weeks, both Mondays
+        and both inclusive. Either may be left out for an unbounded end, and leaving
+        both out returns every week ever declared. A program page should ask for the
+        weeks the program covers rather than the athlete's whole history.
       parameters:
       - description: Client user ID
         in: path
         name: user_id
         required: true
+        type: string
+      - description: First calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: Last calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: to
         type: string
       produces:
       - application/json
@@ -2807,7 +2818,7 @@ paths:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'
             type: array
         "400":
-          description: Invalid client ID
+          description: Invalid client ID or window
           schema:
             additionalProperties:
               type: string
@@ -5257,8 +5268,23 @@ paths:
       - Authentication
   /api/user/availability:
     get:
-      description: Retrieve every calendar week the authenticated user has declared,
-        each carrying the seven days and the activities planned on them.
+      description: 'Retrieve the calendar weeks the authenticated user has declared,
+        each carrying the seven days and the activities planned on them. from and
+        to bound the answer to a range of calendar weeks, both Mondays and both inclusive.
+        Either may be left out for an unbounded end, and leaving both out returns
+        every week ever declared. A week carrying up to 140 activities makes the unbounded
+        answer large, so a screen showing one week at a time should ask for that week.
+        The set of declared weeks is not a window question: read /api/user/availability/declared-weeks
+        for that.'
+      parameters:
+      - description: First calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: Last calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: to
+        type: string
       produces:
       - application/json
       responses:
@@ -5268,6 +5294,12 @@ paths:
             items:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'
             type: array
+        "400":
+          description: Invalid window
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Invalid user ID
           schema:
@@ -5369,6 +5401,40 @@ paths:
       security:
       - BearerAuth: []
       summary: Declare my schedule for a calendar week
+      tags:
+      - Availability
+  /api/user/availability/declared-weeks:
+    get:
+      description: 'Every calendar week the authenticated user has declared, as Mondays
+        in YYYY-MM-DD, oldest first, with no activities and no window. This is what
+        the athlete app plans its declaration reminders from: a nudge is dropped for
+        a week that was already answered, so the planner needs the whole set and not
+        the window a screen happens to be showing. Carrying no activities keeps it
+        small enough to answer in full.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Declared week starts
+          schema:
+            items:
+              type: string
+            type: array
+        "401":
+          description: Invalid user ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List the Mondays I have declared
       tags:
       - Availability
   /api/user/bodyweights:

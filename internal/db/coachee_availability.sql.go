@@ -48,13 +48,22 @@ const listCoacheeDayActivities = `-- name: ListCoacheeDayActivities :many
 SELECT a.id, a.declaration_id, a.day_of_week, a.position, a.label, a.duration_minutes, a.when_text, a.where_text, a.created_at FROM coachee_day_activities a
 JOIN coachee_week_declarations d ON d.id = a.declaration_id
 WHERE d.user_id = $1
+  AND d.week_start >= COALESCE($2::date, '-infinity')
+  AND d.week_start <= COALESCE($3::date, 'infinity')
 ORDER BY d.week_start, a.day_of_week, a.position
 `
 
-// Every activity the athlete holds, across every week they declared, ordered so
-// it zips straight onto the declarations above.
-func (q *Queries) ListCoacheeDayActivities(ctx context.Context, userID pgtype.UUID) ([]CoacheeDayActivity, error) {
-	rows, err := q.db.Query(ctx, listCoacheeDayActivities, userID)
+type ListCoacheeDayActivitiesParams struct {
+	UserID   pgtype.UUID
+	FromWeek pgtype.Date
+	ToWeek   pgtype.Date
+}
+
+// The activities of the weeks the window above keeps, ordered so it zips
+// straight onto the declarations. The two filters must be given the same
+// bounds, or a week would come back without what was planned in it.
+func (q *Queries) ListCoacheeDayActivities(ctx context.Context, arg ListCoacheeDayActivitiesParams) ([]CoacheeDayActivity, error) {
+	rows, err := q.db.Query(ctx, listCoacheeDayActivities, arg.UserID, arg.FromWeek, arg.ToWeek)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +85,37 @@ func (q *Queries) ListCoacheeDayActivities(ctx context.Context, userID pgtype.UU
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCoacheeDeclaredWeekStarts = `-- name: ListCoacheeDeclaredWeekStarts :many
+SELECT week_start FROM coachee_week_declarations
+WHERE user_id = $1
+ORDER BY week_start
+`
+
+// Every week the athlete ever declared, as dates alone and never windowed.
+// The app plans its declaration reminders off this: a nudge is dropped for a
+// week already answered, so a list missing one nudges the athlete about a week
+// they have already sent. It carries no activities, so answering it in full
+// costs one small row per declared week.
+func (q *Queries) ListCoacheeDeclaredWeekStarts(ctx context.Context, userID pgtype.UUID) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, listCoacheeDeclaredWeekStarts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.Date
+	for rows.Next() {
+		var week_start pgtype.Date
+		if err := rows.Scan(&week_start); err != nil {
+			return nil, err
+		}
+		items = append(items, week_start)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -122,11 +162,22 @@ func (q *Queries) ListCoacheeWeekDayActivities(ctx context.Context, declarationI
 const listCoacheeWeekDeclarations = `-- name: ListCoacheeWeekDeclarations :many
 SELECT id, user_id, week_start, created_at, updated_at FROM coachee_week_declarations
 WHERE user_id = $1
+  AND week_start >= COALESCE($2::date, '-infinity')
+  AND week_start <= COALESCE($3::date, 'infinity')
 ORDER BY week_start
 `
 
-func (q *Queries) ListCoacheeWeekDeclarations(ctx context.Context, userID pgtype.UUID) ([]CoacheeWeekDeclaration, error) {
-	rows, err := q.db.Query(ctx, listCoacheeWeekDeclarations, userID)
+type ListCoacheeWeekDeclarationsParams struct {
+	UserID   pgtype.UUID
+	FromWeek pgtype.Date
+	ToWeek   pgtype.Date
+}
+
+// The window is optional on each end. A caller that sends neither gets every
+// week the athlete declared, which is what the clients read before the window
+// existed, so an older build keeps working unchanged.
+func (q *Queries) ListCoacheeWeekDeclarations(ctx context.Context, arg ListCoacheeWeekDeclarationsParams) ([]CoacheeWeekDeclaration, error) {
+	rows, err := q.db.Query(ctx, listCoacheeWeekDeclarations, arg.UserID, arg.FromWeek, arg.ToWeek)
 	if err != nil {
 		return nil, err
 	}

@@ -256,6 +256,7 @@ func main() {
 
 	// Availability routes (coachee declares, coach reads)
 	api.Get("/user/availability", availabilityHandler.GetMyAvailability)
+	api.Get("/user/availability/declared-weeks", availabilityHandler.GetMyDeclaredWeeks)
 	api.Put("/user/availability/:week_start", availabilityHandler.UpsertMyWeekAvailability)
 	api.Get("/user/availability-reminder", availabilityHandler.GetMyAvailabilityReminder)
 	api.Get("/coach/clients/:user_id/availability", availabilityHandler.GetClientAvailability)

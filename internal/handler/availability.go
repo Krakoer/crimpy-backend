@@ -172,14 +172,60 @@ func reminderToResponse(r db.CoachAvailabilityReminder) AvailabilityReminderResp
 // to Sunday, so a declaration keyed to any other day would never line up with a
 // week the coach edits.
 func parseWeekStart(raw string) (pgtype.Date, error) {
+	return parseWeekMonday("week_start", raw)
+}
+
+// parseWeekMonday is parseWeekStart named after whichever field carried the
+// date, so a rejected window bound says which end was wrong.
+func parseWeekMonday(field, raw string) (pgtype.Date, error) {
 	t, err := time.Parse(time.DateOnly, raw)
 	if err != nil {
-		return pgtype.Date{}, errors.New("week_start must be in YYYY-MM-DD format")
+		return pgtype.Date{}, fmt.Errorf("%s must be in YYYY-MM-DD format", field)
 	}
 	if t.Weekday() != time.Monday {
-		return pgtype.Date{}, errors.New("week_start must be a Monday")
+		return pgtype.Date{}, fmt.Errorf("%s must be a Monday", field)
 	}
 	return pgtype.Date{Time: t, Valid: true}, nil
+}
+
+// availabilityWindow is the range of calendar weeks a listing answers for, both
+// ends inclusive and both optional.
+//
+// An absent end is unbounded on that side, and an absent window is every week
+// the athlete ever declared, which is what the endpoints answered before the
+// window existed. A client that knows nothing about it therefore keeps reading
+// exactly what it read before.
+type availabilityWindow struct {
+	from pgtype.Date
+	to   pgtype.Date
+}
+
+// parseAvailabilityWindow reads the window off the query string. The bounds are
+// Mondays, like every other week_start in this API: a range keyed to a Thursday
+// would take in half of two weeks and read as neither.
+func parseAvailabilityWindow(c fiber.Ctx) (availabilityWindow, error) {
+	var window availabilityWindow
+	if raw := strings.TrimSpace(c.Query("from", "")); raw != "" {
+		parsed, err := parseWeekMonday("from", raw)
+		if err != nil {
+			return availabilityWindow{}, err
+		}
+		window.from = parsed
+	}
+	if raw := strings.TrimSpace(c.Query("to", "")); raw != "" {
+		parsed, err := parseWeekMonday("to", raw)
+		if err != nil {
+			return availabilityWindow{}, err
+		}
+		window.to = parsed
+	}
+	// Refused rather than answered with an empty list: an inverted range is a
+	// caller that built its bounds wrong, and a silent [] reads on the screen
+	// as an athlete who declared nothing.
+	if window.from.Valid && window.to.Valid && window.to.Time.Before(window.from.Time) {
+		return availabilityWindow{}, errors.New("to must not be before from")
+	}
+	return window, nil
 }
 
 // validateWeekAvailability demands the whole week rather than the days that
@@ -294,11 +340,14 @@ func requireCallerUUID(c fiber.Ctx) (pgtype.UUID, bool) {
 
 // GetMyAvailability godoc
 // @Summary Get my declared weeks
-// @Description Retrieve every calendar week the authenticated user has declared, each carrying the seven days and the activities planned on them.
+// @Description Retrieve the calendar weeks the authenticated user has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A week carrying up to 140 activities makes the unbounded answer large, so a screen showing one week at a time should ask for that week. The set of declared weeks is not a window question: read /api/user/availability/declared-weeks for that.
 // @Tags Availability
 // @Produce json
 // @Security BearerAuth
+// @Param from query string false "First calendar week to return, Monday, YYYY-MM-DD"
+// @Param to query string false "Last calendar week to return, Monday, YYYY-MM-DD"
 // @Success 200 {array} WeekAvailabilityResponse "Declared weeks"
+// @Failure 400 {object} map[string]string "Invalid window"
 // @Failure 401 {object} map[string]string "Invalid user ID"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/user/availability [get]
@@ -308,7 +357,12 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 		return nil
 	}
 
-	weeks, err := h.loadWeeks(c, userUUID)
+	window, err := parseAvailabilityWindow(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	weeks, err := h.loadWeeks(c, userUUID, window)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
@@ -316,16 +370,61 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(weeks)
 }
 
-// loadWeeks reads every week a coachee declared, with what they planned in it.
-// The declarations are read on their own rather than derived from the activity
-// rows, so a week holding no activity is still in the answer.
-func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID) ([]WeekAvailabilityResponse, error) {
-	declarations, err := h.queries.ListCoacheeWeekDeclarations(c.Context(), userUUID)
+// GetMyDeclaredWeeks godoc
+// @Summary List the Mondays I have declared
+// @Description Every calendar week the authenticated user has declared, as Mondays in YYYY-MM-DD, oldest first, with no activities and no window. This is what the athlete app plans its declaration reminders from: a nudge is dropped for a week that was already answered, so the planner needs the whole set and not the window a screen happens to be showing. Carrying no activities keeps it small enough to answer in full.
+// @Tags Availability
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} string "Declared week starts"
+// @Failure 401 {object} map[string]string "Invalid user ID"
+// @Failure 500 {object} map[string]string "Server error"
+// @Router /api/user/availability/declared-weeks [get]
+func (h *AvailabilityHandler) GetMyDeclaredWeeks(c fiber.Ctx) error {
+	userUUID, ok := requireCallerUUID(c)
+	if !ok {
+		return nil
+	}
+
+	weekStarts, err := h.queries.ListCoacheeDeclaredWeekStarts(c.Context(), userUUID)
+	if err != nil {
+		slog.Error("failed to retrieve declared weeks", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
+	}
+
+	// Built rather than left nil so it marshals as [] and never null: an
+	// athlete who has declared nothing is an empty set, which the planner
+	// iterates without a guard.
+	days := make([]string, 0, len(weekStarts))
+	for _, weekStart := range weekStarts {
+		days = append(days, weekStart.Time.Format(time.DateOnly))
+	}
+
+	return c.Status(fiber.StatusOK).JSON(days)
+}
+
+// loadWeeks reads the weeks a coachee declared inside the window, with what
+// they planned in them. The declarations are read on their own rather than
+// derived from the activity rows, so a week holding no activity is still in the
+// answer.
+//
+// Both queries take the same window, so a week that is in the answer carries
+// all of its activities and a week that is out carries none.
+func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID, window availabilityWindow) ([]WeekAvailabilityResponse, error) {
+	declarations, err := h.queries.ListCoacheeWeekDeclarations(c.Context(), db.ListCoacheeWeekDeclarationsParams{
+		UserID:   userUUID,
+		FromWeek: window.from,
+		ToWeek:   window.to,
+	})
 	if err != nil {
 		slog.Error("failed to retrieve availability", "user_id", userUUID.String(), "error", err)
 		return nil, err
 	}
-	activities, err := h.queries.ListCoacheeDayActivities(c.Context(), userUUID)
+	activities, err := h.queries.ListCoacheeDayActivities(c.Context(), db.ListCoacheeDayActivitiesParams{
+		UserID:   userUUID,
+		FromWeek: window.from,
+		ToWeek:   window.to,
+	})
 	if err != nil {
 		slog.Error("failed to retrieve availability activities", "user_id", userUUID.String(), "error", err)
 		return nil, err
@@ -497,13 +596,15 @@ func (h *AvailabilityHandler) GetMyAvailabilityReminder(c fiber.Ctx) error {
 
 // GetClientAvailability godoc
 // @Summary Get a client's declared weeks
-// @Description Retrieve every calendar week a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them.
+// @Description Retrieve the calendar weeks a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A program page should ask for the weeks the program covers rather than the athlete's whole history.
 // @Tags Availability
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
+// @Param from query string false "First calendar week to return, Monday, YYYY-MM-DD"
+// @Param to query string false "Last calendar week to return, Monday, YYYY-MM-DD"
 // @Success 200 {array} WeekAvailabilityResponse "Declared weeks"
-// @Failure 400 {object} map[string]string "Invalid client ID"
+// @Failure 400 {object} map[string]string "Invalid client ID or window"
 // @Failure 403 {object} map[string]string "Not a validated coach or client not enrolled"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/coach/clients/{user_id}/availability [get]
@@ -517,7 +618,12 @@ func (h *AvailabilityHandler) GetClientAvailability(c fiber.Ctx) error {
 		return nil
 	}
 
-	weeks, err := h.loadWeeks(c, clientUUID)
+	window, err := parseAvailabilityWindow(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	weeks, err := h.loadWeeks(c, clientUUID, window)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
