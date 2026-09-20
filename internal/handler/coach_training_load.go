@@ -143,13 +143,18 @@ func deriveWeek(row db.GetCoacheeWeeklyTrainingLoadRow) weeklyLoad {
 		// This is what keeps a rest week in the chronic mean.
 		zero := 0.0
 		week.acuteLoad = &zero
-	case week.totalMinutes == 0:
+	case row.TotalSeconds == 0:
 		// Sessions were recorded but none of them carries a duration. duration
 		// is NOT NULL DEFAULT 0, so a client that omits it writes a zero that
 		// means "not recorded" rather than "no time spent". Multiplying by it
 		// would hand back a load of zero for a week that was trained, which is
 		// the same misreport an unrated session would make, in the same
 		// direction. Left unknown for the same reason.
+		//
+		// Gated on the raw seconds rather than on totalMinutes, which is
+		// rounded: a week holding half a minute of training really did record a
+		// duration, and its load really is about zero, so it keeps a measured
+		// zero rather than being called unrecorded.
 	case week.meanRpe != nil:
 		load := *week.meanRpe * float64(week.totalMinutes)
 		week.acuteLoad = &load

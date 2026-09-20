@@ -29,15 +29,20 @@ func loadTestMonday(weeksBack int) time.Time {
 
 // insertLoadSession writes one session at an instant given on the caller's
 // shifted clock, converting it back to the UTC the column stores.
-func insertLoadSession(t *testing.T, pool *pgxpool.Pool, userID string, localAt time.Time, activity, durationSeconds int, rpe *int, failed bool) {
+func insertLoadSessionAt(t *testing.T, pool *pgxpool.Pool, userID string, localAt time.Time, offsetMinutes int, activity, durationSeconds int, rpe *int, failed bool) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),
 		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, duration, rpe, rpe_failed)
 		 VALUES ($1, 'Load session', '', $2, $3, 'logged', $4, $5, $6)`,
-		userID, localAt.Add(-loadTestOffsetMinutes*time.Minute), activity, durationSeconds, rpe, failed)
+		userID, localAt.Add(-time.Duration(offsetMinutes)*time.Minute), activity, durationSeconds, rpe, failed)
 	if err != nil {
 		t.Fatalf("Failed to insert session: %v", err)
 	}
+}
+
+func insertLoadSession(t *testing.T, pool *pgxpool.Pool, userID string, localAt time.Time, activity, durationSeconds int, rpe *int, failed bool) {
+	t.Helper()
+	insertLoadSessionAt(t, pool, userID, localAt, loadTestOffsetMinutes, activity, durationSeconds, rpe, failed)
 }
 
 func rpeOf(value int) *int { return &value }
@@ -92,11 +97,14 @@ func TestTrainingLoadAggregatesAWeek(t *testing.T) {
 
 	monday := loadTestMonday(0)
 	// 90 minutes climbing at 8, 30 minutes hangboard at 6, 60 minutes of
-	// workout left unrated, and a failed 45 minute session.
+	// workout left unrated, a failed 45 minute session, and 30 minutes of
+	// stretching at 7, which belongs to the total and to neither side of the
+	// climbing to strength split.
 	insertLoadSession(t, pool, userID, monday.Add(18*time.Hour), 1, 5400, rpeOf(8), false)
 	insertLoadSession(t, pool, userID, monday.AddDate(0, 0, 2).Add(18*time.Hour), 0, 1800, rpeOf(6), false)
 	insertLoadSession(t, pool, userID, monday.AddDate(0, 0, 3).Add(18*time.Hour), 3, 3600, nil, false)
 	insertLoadSession(t, pool, userID, monday.AddDate(0, 0, 4).Add(18*time.Hour), 0, 2700, nil, true)
+	insertLoadSession(t, pool, userID, monday.AddDate(0, 0, 5).Add(18*time.Hour), 2, 1800, rpeOf(7), false)
 
 	weeks := fetchTrainingLoad(t, app, coachToken, userID, 4)
 	if len(weeks) != 4 {
@@ -107,11 +115,11 @@ func TestTrainingLoadAggregatesAWeek(t *testing.T) {
 	if current["week_start"] != monday.Format(time.DateOnly) {
 		t.Fatalf("Expected the last week to start on %s, got %v", monday.Format(time.DateOnly), current["week_start"])
 	}
-	if got := numberAt(t, current, "session_count"); got != 4 {
-		t.Fatalf("Expected 4 sessions, got %v", got)
+	if got := numberAt(t, current, "session_count"); got != 5 {
+		t.Fatalf("Expected 5 sessions, got %v", got)
 	}
-	if got := numberAt(t, current, "total_minutes"); got != 225 {
-		t.Fatalf("Expected 225 total minutes, got %v", got)
+	if got := numberAt(t, current, "total_minutes"); got != 255 {
+		t.Fatalf("Expected 255 total minutes, got %v", got)
 	}
 	if got := numberAt(t, current, "climbing_minutes"); got != 90 {
 		t.Fatalf("Expected 90 climbing minutes, got %v", got)
@@ -120,19 +128,27 @@ func TestTrainingLoadAggregatesAWeek(t *testing.T) {
 	if got := numberAt(t, current, "strength_minutes"); got != 135 {
 		t.Fatalf("Expected 135 strength minutes, got %v", got)
 	}
-	if got := numberAt(t, current, "rated_sessions"); got != 2 {
-		t.Fatalf("Expected 2 rated sessions, got %v", got)
+	// Stretching is neither side. It has to stay in the total and out of both
+	// buckets, or widening either filter would leave the whole suite green
+	// while the ratio the coach reads moves.
+	total := numberAt(t, current, "total_minutes")
+	split := numberAt(t, current, "climbing_minutes") + numberAt(t, current, "strength_minutes")
+	if total-split != 30 {
+		t.Fatalf("Expected the 30 stretching minutes to sit outside the split, got %v", total-split)
+	}
+	if got := numberAt(t, current, "rated_sessions"); got != 3 {
+		t.Fatalf("Expected 3 rated sessions, got %v", got)
 	}
 	if got := numberAt(t, current, "failed_sessions"); got != 1 {
 		t.Fatalf("Expected 1 failed session, got %v", got)
 	}
 	// The unrated session and the failed one are both outside the mean, so it
-	// is 8 and 6 rather than anything dragged towards zero.
+	// is 8, 6 and 7 rather than anything dragged towards zero.
 	if got := numberAt(t, current, "mean_rpe"); got != 7 {
 		t.Fatalf("Expected a mean RPE of 7, got %v", got)
 	}
-	if got := numberAt(t, current, "acute_load"); got != 7*225 {
-		t.Fatalf("Expected an acute load of %v, got %v", 7*225, got)
+	if got := numberAt(t, current, "acute_load"); got != 7*255 {
+		t.Fatalf("Expected an acute load of %v, got %v", 7*255, got)
 	}
 }
 
@@ -419,13 +435,7 @@ func TestTrainingLoadCutsTheWeekOnANegativeOffset(t *testing.T) {
 	// Sunday 23:30 on the caller's clock, which is already Monday in UTC. It
 	// belongs to the week that closes, not to the one that opens.
 	lastMomentOfTheWeek := monday.Add(-30 * time.Minute)
-	_, err := pool.Exec(context.Background(),
-		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, duration, rpe)
-		 VALUES ($1, 'Late Sunday', '', $2, 1, 'logged', 3600, 7)`,
-		userID, lastMomentOfTheWeek.Add(-offsetMinutes*time.Minute))
-	if err != nil {
-		t.Fatalf("Failed to insert session: %v", err)
-	}
+	insertLoadSessionAt(t, pool, userID, lastMomentOfTheWeek, offsetMinutes, 1, 3600, rpeOf(7), false)
 
 	url := fmt.Sprintf("/api/coach/clients/%s/training-load?weeks=2&tz_offset_minutes=%d", userID, offsetMinutes)
 	resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, url, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
