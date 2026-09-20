@@ -671,6 +671,21 @@ func weekStarts(weeks []map[string]interface{}) []string {
 	return starts
 }
 
+// assertWeekStarts compares the Mondays a listing answered with, in order. One
+// message naming both lists reads better than a length check followed by an
+// index by index one saying the same thing.
+func assertWeekStarts(t *testing.T, want, got []string) {
+	t.Helper()
+	if len(want) != len(got) {
+		t.Fatalf("Expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if want[i] != got[i] {
+			t.Fatalf("Expected %v, got %v", want, got)
+		}
+	}
+}
+
 func declaredWeeks(t *testing.T, app *fiber.App, token, query string) (*http.Response, []string) {
 	t.Helper()
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability/declared-weeks"+query, nil, token)
@@ -712,16 +727,7 @@ func TestAvailability_WindowKeepsItsBoundsAndDropsTheWeeksOutside(t *testing.T) 
 	if resp.StatusCode != fiber.StatusOK {
 		t.Fatalf("Expected 200, got %d", resp.StatusCode)
 	}
-	got := weekStarts(weeks)
-	want := []string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"}
-	if len(got) != len(want) {
-		t.Fatalf("Expected %v, got %v", want, got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("Expected %v, got %v", want, got)
-		}
-	}
+	assertWeekStarts(t, []string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"}, weekStarts(weeks))
 
 	// A week on the bound keeps the activities planned in it: the declarations
 	// and the activities are filtered by the same window, so neither can come
@@ -781,15 +787,7 @@ func TestAvailability_AbsentWindowIsUnbounded(t *testing.T) {
 			if resp.StatusCode != fiber.StatusOK {
 				t.Fatalf("Expected 200, got %d", resp.StatusCode)
 			}
-			got := weekStarts(weeks)
-			if len(got) != len(tc.want) {
-				t.Fatalf("Expected %v, got %v", tc.want, got)
-			}
-			for i := range tc.want {
-				if got[i] != tc.want[i] {
-					t.Fatalf("Expected %v, got %v", tc.want, got)
-				}
-			}
+			assertWeekStarts(t, tc.want, weekStarts(weeks))
 		})
 	}
 }
@@ -851,11 +849,7 @@ func TestAvailability_DeclaredWeeksIgnoreTheWindow(t *testing.T) {
 		if len(got) != len(want) {
 			t.Fatalf("Expected every declared week %v for query %q, got %v", want, query, got)
 		}
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("Expected %v for query %q, got %v", want, query, got)
-			}
-		}
+		assertWeekStarts(t, want, got)
 	}
 
 	// Another athlete's weeks are not in the answer: the endpoint is keyed to
@@ -921,16 +915,7 @@ func TestAvailability_CoachWindowsClientWeeks(t *testing.T) {
 	if resp.StatusCode != fiber.StatusOK {
 		t.Fatalf("Expected 200, got %d", resp.StatusCode)
 	}
-	got := weekStarts(weeks)
-	want := []string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"}
-	if len(got) != len(want) {
-		t.Fatalf("Expected %v, got %v", want, got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("Expected %v, got %v", want, got)
-		}
-	}
+	assertWeekStarts(t, []string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"}, weekStarts(weeks))
 
 	resp, weeks = readClient("")
 	if resp.StatusCode != fiber.StatusOK {

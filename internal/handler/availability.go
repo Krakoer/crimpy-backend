@@ -395,12 +395,12 @@ func (h *AvailabilityHandler) GetMyDeclaredWeeks(c fiber.Ctx) error {
 	// Built rather than left nil so it marshals as [] and never null: an
 	// athlete who has declared nothing is an empty set, which the planner
 	// iterates without a guard.
-	days := make([]string, 0, len(weekStarts))
+	mondays := make([]string, 0, len(weekStarts))
 	for _, weekStart := range weekStarts {
-		days = append(days, weekStart.Time.Format(time.DateOnly))
+		mondays = append(mondays, weekStart.Time.Format(time.DateOnly))
 	}
 
-	return c.Status(fiber.StatusOK).JSON(days)
+	return c.Status(fiber.StatusOK).JSON(mondays)
 }
 
 // loadWeeks reads the weeks a coachee declared inside the window, with what
