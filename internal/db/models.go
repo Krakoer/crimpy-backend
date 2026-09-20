@@ -111,16 +111,24 @@ type CoachTodoSetting struct {
 	UpdatedAt          pgtype.Timestamptz
 }
 
-type CoacheeDayAvailability struct {
+type CoacheeDayActivity struct {
 	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	WeekStart       pgtype.Date
+	DeclarationID   pgtype.UUID
 	DayOfWeek       int32
-	IsAvailable     bool
+	Position        int32
+	Label           string
 	DurationMinutes pgtype.Int4
-	Note            pgtype.Text
+	WhenText        pgtype.Text
+	WhereText       pgtype.Text
 	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+}
+
+type CoacheeWeekDeclaration struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	WeekStart pgtype.Date
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 type EnrollmentToken struct {

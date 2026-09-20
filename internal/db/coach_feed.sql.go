@@ -178,8 +178,8 @@ UNION ALL
 
 SELECT
   'availability_declared',
-  MAX(a.updated_at),
-  a.user_id,
+  d.updated_at,
+  d.user_id,
   u.firstname,
   u.lastname,
   NULL::uuid,
@@ -187,13 +187,12 @@ SELECT
   NULL::integer,
   NULL::text,
   NULL::text,
-  a.week_start
-FROM coachee_day_availabilities a
-JOIN coach_enrollments e ON e.user_id = a.user_id
-JOIN users u ON u.id = a.user_id
+  d.week_start
+FROM coachee_week_declarations d
+JOIN coach_enrollments e ON e.user_id = d.user_id
+JOIN users u ON u.id = d.user_id
 WHERE e.coach_id = $2
-GROUP BY a.user_id, a.week_start, u.firstname, u.lastname
-HAVING MAX(a.updated_at) < COALESCE($3::timestamptz, 'infinity')
+  AND d.updated_at < COALESCE($3::timestamptz, 'infinity')
 
 ORDER BY occurred_at DESC
 LIMIT $1
@@ -225,8 +224,9 @@ type GetCoachFeedRow struct {
 // optional before cursor walks the list backwards: pass the occurred_at of the
 // oldest row already held to get the page under it. The branch carrying a NULL
 // in every optional column comes first so the union reads as nullable there.
-// A declared week is written whole, so its seven rows are one event, dated by
-// the last of them to be touched.
+// A declared week is one event, dated by the declaration row rather than by
+// what is planned inside it: a week declared empty is still an answer the coach
+// wants to see go past.
 func (q *Queries) GetCoachFeed(ctx context.Context, arg GetCoachFeedParams) ([]GetCoachFeedRow, error) {
 	rows, err := q.db.Query(ctx, getCoachFeed, arg.RowLimit, arg.CoachID, arg.Before)
 	if err != nil {
