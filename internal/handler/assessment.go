@@ -142,7 +142,7 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 
 // GetAssessments godoc
 // @Summary Get all assessments for the current user
-// @Description Retrieve all assessment results for the authenticated user, ordered by session date descending
+// @Description Retrieve all assessment results for the authenticated user, ordered by session date descending. Each row carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one.
 // @Tags Assessment
 // @Produce json
 // @Security BearerAuth
@@ -260,9 +260,15 @@ type AssessmentSnapshotItem struct {
 	// day, and dividing it by a later one gives a number the athlete never
 	// achieved. Absent when no weigh-in precedes the measurement.
 	RightBodyweightKg *float32 `json:"right_bodyweight_kg,omitempty"`
-	LeftValue         *float32 `json:"left_value,omitempty"`
-	LeftMeasuredAt    *string  `json:"left_measured_at,omitempty"`
-	LeftBodyweightKg  *float32 `json:"left_bodyweight_kg,omitempty"`
+	// When that weigh-in was taken. A denominator is only worth dividing by while
+	// it is near the result it divides, and a weight on its own cannot say how
+	// near it was: the last weigh-in at or before a result can be the same
+	// morning or months earlier. Absent exactly when the weight is.
+	RightBodyweightMeasuredAt *string  `json:"right_bodyweight_measured_at,omitempty"`
+	LeftValue                 *float32 `json:"left_value,omitempty"`
+	LeftMeasuredAt            *string  `json:"left_measured_at,omitempty"`
+	LeftBodyweightKg          *float32 `json:"left_bodyweight_kg,omitempty"`
+	LeftBodyweightMeasuredAt  *string  `json:"left_bodyweight_measured_at,omitempty"`
 }
 
 // AssessmentSnapshotResponse is what an athlete had measured as of a date. The
@@ -314,6 +320,18 @@ func measuredBodyweight(weightKg float32) *float32 {
 	return &weightKg
 }
 
+// bodyweightMeasuredAt reads when the denominator beside it was weighed. Tied to
+// the weight rather than answered on its own, so a caller never receives a date
+// for a weight it was not given and cannot read the two as describing different
+// weigh-ins.
+func bodyweightMeasuredAt(weightKg *float32, measuredAt pgtype.Timestamptz) *string {
+	if weightKg == nil || !measuredAt.Valid {
+		return nil
+	}
+	formatted := measuredAt.Time.UTC().Format(time.RFC3339)
+	return &formatted
+}
+
 // assessmentSnapshotAt answers with the athlete's results as of the date the
 // caller asked for, having already established they may read them. Shared by
 // the athlete's own endpoint and the coach's, so the two cannot drift in what
@@ -358,6 +376,7 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 			item.RightMeasuredAt = &measured
 		}
 		item.RightBodyweightKg = measuredBodyweight(row.RightBodyweightKg)
+		item.RightBodyweightMeasuredAt = bodyweightMeasuredAt(item.RightBodyweightKg, row.RightBodyweightMeasuredAt)
 		if row.LeftValue.Valid {
 			item.LeftValue = &row.LeftValue.Float32
 		}
@@ -366,6 +385,7 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 			item.LeftMeasuredAt = &measured
 		}
 		item.LeftBodyweightKg = measuredBodyweight(row.LeftBodyweightKg)
+		item.LeftBodyweightMeasuredAt = bodyweightMeasuredAt(item.LeftBodyweightKg, row.LeftBodyweightMeasuredAt)
 		response.Results = append(response.Results, item)
 	}
 
@@ -386,7 +406,7 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 
 // GetMyAssessmentSnapshot godoc
 // @Summary My assessment results as of a date
-// @Description The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.
+// @Description The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured, the bodyweight in effect then, which is the denominator a bodyweight relative score is read against, and the date that weigh-in was taken, which says how stale the denominator is; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.
 // @Tags Assessment
 // @Produce json
 // @Security BearerAuth

@@ -864,15 +864,27 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 }
 
 // AssessmentListItem is an assessment as the list endpoints return it, with the
-// date of the session it was measured in.
+// date of the session it was measured in and the weigh-in a bodyweight relative
+// score is divided by.
+//
+// The denominator travels with the row rather than being left to the caller to
+// pick out of a bodyweight series, so every screen reads one result against one
+// weight: the last weigh-in at or before the session, which is the rule the two
+// date snapshot already answers by. The date says how stale that weigh-in is,
+// which decides whether the ratio means anything at all. Both absent when no
+// weigh-in qualifies, which is a ratio a reader has to decline rather than
+// invent.
 type AssessmentListItem struct {
 	AssessmentResponse
-	SessionDate string `json:"session_date"`
+	SessionDate          string   `json:"session_date"`
+	BodyweightKg         *float32 `json:"bodyweight_kg,omitempty"`
+	BodyweightMeasuredAt *string  `json:"bodyweight_measured_at,omitempty"`
 }
 
 func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentListItem {
 	items := make([]AssessmentListItem, 0, len(rows))
 	for _, r := range rows {
+		bodyweightKg := measuredBodyweight(r.BodyweightKg)
 		items = append(items, AssessmentListItem{
 			AssessmentResponse: assessmentToResponse(assessmentResult{
 				Assessment: db.Assessment{
@@ -891,7 +903,9 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 				BodyweightRelative: r.BodyweightRelative,
 				TrainingID:         r.TrainingID,
 			}),
-			SessionDate: r.SessionDate.Time.UTC().Format(time.RFC3339),
+			SessionDate:          r.SessionDate.Time.UTC().Format(time.RFC3339),
+			BodyweightKg:         bodyweightKg,
+			BodyweightMeasuredAt: bodyweightMeasuredAt(bodyweightKg, r.BodyweightMeasuredAt),
 		})
 	}
 	return items

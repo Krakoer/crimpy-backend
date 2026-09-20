@@ -15,10 +15,51 @@ JOIN assessment_definitions d ON d.id = a.assessment_id
 WHERE a.session_id = $1;
 
 -- name: GetUserAssessments :many
-SELECT a.*, s.date AS session_date, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
+-- Every result the athlete has recorded, each with the assessment that defines
+-- it and the weigh-in it has to be divided by to read as a ratio to bodyweight.
+--
+-- The weigh-in is picked by the same rule GetUserAssessmentValuesAtDate uses for
+-- the snapshot the comparison panel is drawn from: the last one taken at or
+-- before the result, widening to the earliest one later the same day when
+-- nothing precedes it, because an athlete who weighs themselves after training
+-- rather than before still weighed that on the day. Two rules would let the
+-- cards and the comparison panel print two different ratios for one result.
+--
+-- The day is cut in UTC explicitly rather than through a server setting, so the
+-- boundary does not move with one.
+--
+-- Its own date travels with it, because how stale a denominator is decides
+-- whether the ratio means anything, and a weight alone cannot say.
+--
+-- weight_kg comes back as zero when no weigh-in qualifies, standing for
+-- "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real
+-- measurement strictly above zero, so the two cannot be confused. The handler
+-- turns it into an absent field before it reaches a client.
+SELECT
+  a.*,
+  s.date AS session_date,
+  d.label,
+  d.unit,
+  d.per_hand,
+  d.bodyweight_relative,
+  d.training_id,
+  COALESCE(w.weight_kg, 0)::real AS bodyweight_kg,
+  w.measured_at AS bodyweight_measured_at
 FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 JOIN assessment_definitions d ON d.id = a.assessment_id
+LEFT JOIN LATERAL (
+  SELECT b.weight_kg, b.measured_at
+  FROM user_bodyweights b
+  WHERE b.user_id = s.user_id
+    AND b.measured_at < date_trunc('day', s.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+  ORDER BY
+    (b.measured_at <= s.date) DESC,
+    CASE WHEN b.measured_at <= s.date THEN b.measured_at END DESC,
+    b.measured_at ASC,
+    b.created_at DESC
+  LIMIT 1
+) w ON true
 WHERE s.user_id = $1
 ORDER BY s.date DESC;
 
@@ -97,6 +138,9 @@ ORDER BY 1;
 -- The day is cut in UTC explicitly rather than through the session TimeZone, so
 -- the boundary does not move with a server setting.
 --
+-- The date of that weigh-in travels with it, because how stale a denominator is
+-- decides whether the ratio means anything, and a weight alone cannot say.
+--
 -- Those two come back as zero when no weigh-in precedes the value, standing for
 -- "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real
 -- measurement strictly above zero, so the two cannot be confused. The handler
@@ -144,36 +188,42 @@ SELECT
   COALESCE(r.grip_position, l.grip_position)::int AS grip_position,
   r.right_value,
   r.date AS right_measured_at,
-  COALESCE((
-    SELECT w.weight_kg FROM user_bodyweights w
-    WHERE w.user_id = @user_id
-      AND w.measured_at <= @as_of
-      AND w.measured_at < date_trunc('day', r.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
-    ORDER BY
-      (w.measured_at <= r.date) DESC,
-      CASE WHEN w.measured_at <= r.date THEN w.measured_at END DESC,
-      w.measured_at ASC,
-      w.created_at DESC
-    LIMIT 1
-  ), 0)::real AS right_bodyweight_kg,
+  COALESCE(rw.weight_kg, 0)::real AS right_bodyweight_kg,
+  rw.measured_at AS right_bodyweight_measured_at,
   l.left_value,
   l.date AS left_measured_at,
-  COALESCE((
-    SELECT w.weight_kg FROM user_bodyweights w
-    WHERE w.user_id = @user_id
-      AND w.measured_at <= @as_of
-      AND w.measured_at < date_trunc('day', l.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
-    ORDER BY
-      (w.measured_at <= l.date) DESC,
-      CASE WHEN w.measured_at <= l.date THEN w.measured_at END DESC,
-      w.measured_at ASC,
-      w.created_at DESC
-    LIMIT 1
-  ), 0)::real AS left_bodyweight_kg
+  COALESCE(lw.weight_kg, 0)::real AS left_bodyweight_kg,
+  lw.measured_at AS left_bodyweight_measured_at
 FROM last_right r
 FULL OUTER JOIN last_left l
   ON l.assessment_id = r.assessment_id
  AND l.grip_position = r.grip_position
 JOIN assessment_definitions d
   ON d.id = COALESCE(r.assessment_id, l.assessment_id)
+LEFT JOIN LATERAL (
+  SELECT w.weight_kg, w.measured_at
+  FROM user_bodyweights w
+  WHERE w.user_id = @user_id
+    AND w.measured_at <= @as_of
+    AND w.measured_at < date_trunc('day', r.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+  ORDER BY
+    (w.measured_at <= r.date) DESC,
+    CASE WHEN w.measured_at <= r.date THEN w.measured_at END DESC,
+    w.measured_at ASC,
+    w.created_at DESC
+  LIMIT 1
+) rw ON true
+LEFT JOIN LATERAL (
+  SELECT w.weight_kg, w.measured_at
+  FROM user_bodyweights w
+  WHERE w.user_id = @user_id
+    AND w.measured_at <= @as_of
+    AND w.measured_at < date_trunc('day', l.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
+  ORDER BY
+    (w.measured_at <= l.date) DESC,
+    CASE WHEN w.measured_at <= l.date THEN w.measured_at END DESC,
+    w.measured_at ASC,
+    w.created_at DESC
+  LIMIT 1
+) lw ON true
 ORDER BY d.label, 7, d.id;
