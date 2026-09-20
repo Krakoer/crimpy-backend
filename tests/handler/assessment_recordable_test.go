@@ -273,32 +273,48 @@ func TestAssessmentDefinitions_RecordableReportsTheSameUnitLockAsTheCatalog(t *t
 // access question: reading it under a block they have moved on from, or have
 // not started, leaves a prescribed percentage with nothing to label it.
 //
-// The dates are relative to today so the test does not rot, and the block that
-// should win is created before the one that should not, so an order on the row
-// creation time answers differently whichever way it is pointed.
+// The blocks are placed so that every part of the ordering is load bearing.
+// The one that should win started three weeks ago. One starts within the week,
+// so it is nearer today and loses only because it has not started. One starts
+// two months out. One started half a year ago and is created last, so it wins
+// on row creation time and loses on distance. Every date is derived from the
+// next Monday, which is the only day a block may start on, so the test does not
+// rot and does not depend on which day it runs.
 func TestAssessmentDefinitions_RecordableNamesTheProgramInProgress(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	s := setupRecordable(t, "recinprog")
 
-	today := time.Now().UTC()
-	current := createProgramStarting(t, s, mondayOnOrBefore(today.AddDate(0, 0, -5)))
-	planned := createProgramStarting(t, s, mondayOnOrBefore(today.AddDate(0, 0, 60)))
-	for _, programID := range []string{current, planned} {
+	monday := nextMonday(time.Now().UTC())
+	inProgress := createProgramStarting(t, s, monday.AddDate(0, 0, -21))
+	imminent := createProgramStarting(t, s, monday)
+	planned := createProgramStarting(t, s, monday.AddDate(0, 0, 56))
+	longPast := createProgramStarting(t, s, monday.AddDate(0, 0, -182))
+	for _, programID := range []string{inProgress, imminent, planned, longPast} {
 		prescribeSession(t, s.App, s.CoachToken, s.UserID, programID, s.PrescribedTrainingID, nil)
 	}
 
 	recordable := listAssessmentDefinitions(t, s.App, s.UserToken, "?recordable=true")
 	named := recordable[s.PrescribedID]["program_id"]
-	if named != current {
+	if named != inProgress {
 		switch named {
+		case imminent:
+			t.Errorf("Expected the block in progress, got the one that has not started yet")
 		case planned:
 			t.Errorf("Expected the block in progress, got the one starting in two months")
+		case longPast:
+			t.Errorf("Expected the block in progress, got the one that started half a year ago")
 		case s.ProgramID:
 			t.Errorf("Expected the block in progress, got the one that started months ago")
 		default:
-			t.Errorf("Expected the block in progress %v, got %v", current, named)
+			t.Errorf("Expected the block in progress %v, got %v", inProgress, named)
 		}
 	}
+}
+
+// nextMonday is the first Monday strictly after a day, so a block placed on it
+// has not started and one placed three weeks before it has.
+func nextMonday(day time.Time) time.Time {
+	return day.AddDate(0, 0, 7-int((day.Weekday()+6)%7))
 }
 
 // createProgramStarting is createTestProgram with a start date of its own, so a
@@ -320,11 +336,4 @@ func createProgramStarting(t *testing.T, s recordableSetup, start time.Time) str
 	var created map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&created)
 	return created["id"].(string)
-}
-
-// mondayOnOrBefore snaps a date back to its Monday, which is the only day a
-// program may start on. Snapping backwards keeps a past date past; the future
-// date it is used on is far enough ahead to stay future.
-func mondayOnOrBefore(day time.Time) time.Time {
-	return day.AddDate(0, 0, -int((day.Weekday()+6)%7))
 }
