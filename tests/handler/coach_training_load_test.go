@@ -555,9 +555,9 @@ func TestTrainingLoadCutsWeeksAcrossADaylightSavingChange(t *testing.T) {
 				t.Fatalf("The last change in %s is %d weeks back, too far for the window", zone, switchBack)
 			}
 			_, nowOffset := thisMonday.Zone()
-			url := fmt.Sprintf("/api/coach/clients/%s/training-load?weeks=%d&tz_offset_minutes=%d&timezone=%s",
+			requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?weeks=%d&tz_offset_minutes=%d&timezone=%s",
 				userID, weeksWanted, nowOffset/60, zoneName)
-			resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, url, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
+			resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, requestURL, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
 			if err != nil {
 				t.Fatalf("Request failed: %v", err)
 			}
@@ -605,19 +605,26 @@ func TestTrainingLoadCutsWeeksAcrossADaylightSavingChange(t *testing.T) {
 }
 
 // The zone is the caller's, not the server's, and not a name the database would
-// choke on later.
+// choke on later. A malformed offset is still refused alongside a good zone,
+// rather than being dropped unread because the zone would have won anyway.
 func TestTrainingLoadRejectsAnUnusableTimezone(t *testing.T) {
 	app, pool, _, _, userID, coachToken := setupTrainingLoadApp(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	for _, timezone := range []string{"Europe/Nowhere", "Local", "../../etc/passwd", "CEST"} {
-		requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?timezone=%s", userID, url.QueryEscape(timezone))
+	for _, query := range []string{
+		"timezone=" + url.QueryEscape("Europe/Nowhere"),
+		"timezone=Local",
+		"timezone=" + url.QueryEscape("../../etc/passwd"),
+		"timezone=CEST",
+		"timezone=" + url.QueryEscape("Europe/Paris") + "&tz_offset_minutes=9999",
+	} {
+		requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?%s", userID, query)
 		resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, requestURL, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
 		if resp.StatusCode != http.StatusBadRequest {
-			t.Fatalf("Expected 400 for timezone %q, got %d", timezone, resp.StatusCode)
+			t.Fatalf("Expected 400 for %s, got %d", query, resp.StatusCode)
 		}
 	}
 }

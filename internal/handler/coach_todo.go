@@ -271,9 +271,14 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 
 	coachNow := time.Now().In(clock.zone)
 	thisMonday := clock.mondayOfWeek(coachNow)
-	checkMoment := thisMonday.
-		AddDate(0, 0, int(settings.EmptyWeekDayOfWeek)).
-		Add(time.Duration(settings.EmptyWeekHour)*time.Hour + time.Duration(settings.EmptyWeekMinute)*time.Minute)
+	// The moment the coach configured is a wall clock time in their week, so it
+	// is built as one rather than as a duration counted from the Monday. In the
+	// week a daylight saving change falls, counting hours lands an hour off the
+	// time they actually set: from the Monday of the spring forward week,
+	// 21:00 on the Sunday counted as 6 days and 21 hours is 22:00 there.
+	checkMoment := time.Date(
+		thisMonday.Year(), thisMonday.Month(), thisMonday.Day()+int(settings.EmptyWeekDayOfWeek),
+		int(settings.EmptyWeekHour), int(settings.EmptyWeekMinute), 0, 0, clock.zone)
 	nextMonday := thisMonday.AddDate(0, 0, daysInWeek)
 
 	pendingTotal, err := h.queries.CountCoachPendingSessionFeedback(c.Context(), coachUUID)

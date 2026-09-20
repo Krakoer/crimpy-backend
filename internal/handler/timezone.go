@@ -13,8 +13,10 @@ import (
 	// The API image is built on bare alpine, which carries no zoneinfo, so
 	// time.LoadLocation below would fail there with nothing to read. Embedding
 	// the database costs a little binary size and removes the dependency on
-	// what the image happens to ship, which also keeps the tests reading the
-	// same rules the deployed binary reads.
+	// what the image happens to ship. It does not make every build read the
+	// same rules: LoadLocation reads $ZONEINFO and /usr/share/zoneinfo first
+	// and only falls back on the embedded copy, so a host that has zoneinfo,
+	// which is every development machine, still resolves from its own.
 	_ "time/tzdata"
 )
 
