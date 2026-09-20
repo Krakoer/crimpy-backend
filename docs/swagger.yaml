@@ -87,14 +87,22 @@ definitions:
       assessment_id:
         type: string
       bodyweight_kg:
+        description: |-
+          The weigh-in a bodyweight relative score is divided by: the last one taken
+          at or before the session. Absent when no weigh-in qualifies, which is a
+          ratio a reader declines rather than invents.
         type: number
       bodyweight_measured_at:
+        description: |-
+          When that weigh-in was taken, which is how near the denominator is to the
+          result it divides. Absent exactly when the weight is.
         type: string
       bodyweight_relative:
         description: |-
           Whether the result reads as a ratio to the bodyweight it was pulled at
           rather than as an absolute load. Display only: the value beside it is the
-          raw measurement, and the bodyweight series holds the denominator.
+          raw measurement. The list endpoints send the denominator on the row, see
+          AssessmentListItem; the read paths that do not have to be given one.
         type: boolean
       grip_position:
         type: integer
@@ -146,7 +154,8 @@ definitions:
         description: |-
           Whether the result reads as a ratio to the bodyweight it was pulled at
           rather than as an absolute load. Display only: the value beside it is the
-          raw measurement, and the bodyweight series holds the denominator.
+          raw measurement. The list endpoints send the denominator on the row, see
+          AssessmentListItem; the read paths that do not have to be given one.
         type: boolean
       grip_position:
         type: integer

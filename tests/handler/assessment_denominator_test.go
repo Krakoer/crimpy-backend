@@ -138,13 +138,83 @@ func TestCoachAssessmentList_CarriesTheSameDenominator(t *testing.T) {
 	f.recordBodyweight(t, "2026-06-01T08:00:00Z", 75)
 	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
 
+	// The coach weighs in too, nearer the athlete's result than the athlete's own
+	// weigh-in is. The denominator belongs to whoever did the assessment, and a
+	// lookup correlated on the caller rather than the session owner would put the
+	// coach's weight on the client's card.
+	status, body := postJSON(t, f.app, "/api/user/bodyweights", f.coachToken, map[string]interface{}{
+		"weight_kg": 88, "measured_at": "2026-03-02T06:00:00Z",
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 recording the coach's own bodyweight, got %d: %v", status, body)
+	}
+
 	list := listAssessments(t, f, fmt.Sprintf("/api/coach/clients/%s/assessments", f.userID), f.coachToken)
 	march := findListedResult(t, list, "2026-03-02T10:00:00Z")
 	if march["bodyweight_kg"] != float64(71) {
-		t.Errorf("Expected the March weigh-in for the coach too, got %v", march["bodyweight_kg"])
+		t.Errorf("Expected the athlete's March weigh-in for the coach too, got %v", march["bodyweight_kg"])
 	}
 	if march["bodyweight_measured_at"] != "2026-03-01T08:00:00Z" {
-		t.Errorf("Expected the March weigh-in date for the coach too, got %v", march["bodyweight_measured_at"])
+		t.Errorf("Expected the athlete's March weigh-in date for the coach too, got %v", march["bodyweight_measured_at"])
+	}
+}
+
+// The listing and the snapshot are two reads of one rule, and a client asks the
+// snapshot for a day. They have to name the same weigh-in for the same result,
+// or the cards and the comparison panel below them print two different ratios.
+func TestAssessmentDenominator_ListAndSnapshotAgreeForADay(t *testing.T) {
+	f := setupSnapshotFixture(t, "denom9")
+
+	// A weigh-in the morning of the result, one the evening of it, and one from
+	// months before: every branch of the rule has something to choose between.
+	f.recordBodyweight(t, "2026-01-05T08:00:00Z", 68)
+	f.recordBodyweight(t, "2026-03-02T07:00:00Z", 71)
+	f.recordBodyweight(t, "2026-03-02T21:00:00Z", 72.5)
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+
+	list := listAssessments(t, f, "/api/assessments", f.userToken)
+	listed := findListedResult(t, list, "2026-03-02T10:00:00Z")
+
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the max force result on the snapshot, got %v", body)
+	}
+
+	if listed["bodyweight_kg"] != result["right_bodyweight_kg"] {
+		t.Errorf("Expected one weight for one result, got %v on the listing and %v on the snapshot",
+			listed["bodyweight_kg"], result["right_bodyweight_kg"])
+	}
+	if listed["bodyweight_measured_at"] != result["right_bodyweight_measured_at"] {
+		t.Errorf("Expected one weigh-in date for one result, got %v on the listing and %v on the snapshot",
+			listed["bodyweight_measured_at"], result["right_bodyweight_measured_at"])
+	}
+	if listed["bodyweight_kg"] != float64(71) {
+		t.Errorf("Expected the morning weigh-in on both, got %v", listed["bodyweight_kg"])
+	}
+}
+
+// A result measured before the athlete ever weighed in has no denominator on
+// either read, rather than one read inventing one.
+func TestAssessmentDenominator_ListAndSnapshotAgreeOnHavingNoWeight(t *testing.T) {
+	f := setupSnapshotFixture(t, "denom10")
+
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(25), nil)
+	f.recordBodyweight(t, "2026-06-01T08:00:00Z", 75)
+
+	list := listAssessments(t, f, "/api/assessments", f.userToken)
+	listed := findListedResult(t, list, "2026-03-02T10:00:00Z")
+	_, body := f.snapshot(t, "/api/assessments/at?date=2026-03-02", f.userToken)
+	result := findResult(snapshotResults(t, body), testutil.BuiltinMaxForceID, 0)
+	if result == nil {
+		t.Fatalf("Expected the max force result on the snapshot, got %v", body)
+	}
+
+	_, onList := listed["bodyweight_kg"]
+	_, onSnapshot := result["right_bodyweight_kg"]
+	if onList || onSnapshot {
+		t.Errorf("Expected no weight on either read, got list=%v snapshot=%v",
+			listed["bodyweight_kg"], result["right_bodyweight_kg"])
 	}
 }
 

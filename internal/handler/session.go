@@ -814,7 +814,8 @@ type AssessmentResponse struct {
 	PerHand      bool   `json:"per_hand"`
 	// Whether the result reads as a ratio to the bodyweight it was pulled at
 	// rather than as an absolute load. Display only: the value beside it is the
-	// raw measurement, and the bodyweight series holds the denominator.
+	// raw measurement. The list endpoints send the denominator on the row, see
+	// AssessmentListItem; the read paths that do not have to be given one.
 	BodyweightRelative bool `json:"bodyweight_relative"`
 	// The training the assessment is run from, absent for the ones Crimpy ships.
 	TrainingID   *string  `json:"training_id,omitempty"`
@@ -876,9 +877,14 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 // invent.
 type AssessmentListItem struct {
 	AssessmentResponse
-	SessionDate          string   `json:"session_date"`
-	BodyweightKg         *float32 `json:"bodyweight_kg,omitempty"`
-	BodyweightMeasuredAt *string  `json:"bodyweight_measured_at,omitempty"`
+	SessionDate string `json:"session_date"`
+	// The weigh-in a bodyweight relative score is divided by: the last one taken
+	// at or before the session. Absent when no weigh-in qualifies, which is a
+	// ratio a reader declines rather than invents.
+	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
+	// When that weigh-in was taken, which is how near the denominator is to the
+	// result it divides. Absent exactly when the weight is.
+	BodyweightMeasuredAt *string `json:"bodyweight_measured_at,omitempty"`
 }
 
 func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentListItem {
