@@ -213,7 +213,10 @@ func requireRecordableAssessment(c fiber.Ctx, queries *db.Queries, assessmentID 
 		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment_id"})
 		return assessmentUUID, false
 	}
-	count, err := queries.CountRecordableAssessment(c.Context(), db.CountRecordableAssessmentParams{
+	// The same query the recordable listing is served from, asked about one
+	// assessment rather than all of them, so an assessment the athlete was
+	// offered is never refused here.
+	rows, err := queries.GetRecordableAssessmentDefinitions(c.Context(), db.GetRecordableAssessmentDefinitionsParams{
 		AssessmentID: assessmentUUID,
 		UserID:       userID,
 	})
@@ -222,7 +225,7 @@ func requireRecordableAssessment(c fiber.Ctx, queries *db.Queries, assessmentID 
 		c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 		return assessmentUUID, false
 	}
-	if count == 0 {
+	if len(rows) == 0 {
 		slog.Warn("assessment not recordable", "user_id", userID.String(), "assessment_id", assessmentID)
 		c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Unknown assessment_id"})
 		return assessmentUUID, false

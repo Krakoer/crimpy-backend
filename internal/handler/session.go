@@ -1019,24 +1019,26 @@ func assessmentDefinitionToSnapshot(d db.AssessmentDefinition) AssessmentDefinit
 }
 
 // lockedAssessmentUnits answers, for each named assessment, whether its unit and
-// hands are still free to change. Read once for a whole tree rather than per
-// definition.
+// its hands are frozen: a result was measured under them, or a training item or
+// a program week override reads a number against them.
+//
+// One query for the whole set, because the reference half of that question
+// reads a table through and a listing asks it of every row it serves.
 func lockedAssessmentUnits(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map[string]bool, error) {
 	locked := make(map[string]bool, len(ids))
 	for _, id := range ids {
-		measured, err := q.CountAssessmentsForDefinition(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if measured > 0 {
-			locked[id.String()] = true
-			continue
-		}
-		referenced, err := q.CountReferencesToAssessment(ctx, id.String())
-		if err != nil {
-			return nil, err
-		}
-		locked[id.String()] = referenced > 0
+		locked[id.String()] = false
+	}
+	if len(ids) == 0 {
+		return locked, nil
+	}
+
+	frozen, err := q.GetLockedAssessmentDefinitions(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range frozen {
+		locked[id.String()] = true
 	}
 	return locked, nil
 }
