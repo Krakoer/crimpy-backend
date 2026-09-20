@@ -16,7 +16,9 @@ import (
 // written by a coach they have nothing to do with.
 type recordableSetup struct {
 	App                  *fiber.App
+	CoachToken           string
 	UserToken            string
+	UserID               string
 	ProgramID            string
 	OwnID                string
 	OwnTrainingID        string
@@ -54,7 +56,9 @@ func setupRecordable(t *testing.T, prefix string) recordableSetup {
 
 	return recordableSetup{
 		App:                  app,
+		CoachToken:           coachToken,
 		UserToken:            userToken,
+		UserID:               userID,
 		ProgramID:            programID,
 		OwnID:                ownID,
 		OwnTrainingID:        ownTrainingID,
@@ -205,5 +209,66 @@ func TestAssessmentDefinitions_RecordableRefusesAValueThatIsNotABoolean(t *testi
 	}
 	if resp.StatusCode != fiber.StatusBadRequest {
 		t.Errorf("Expected 400 for a recordable that is not a boolean, got %d", resp.StatusCode)
+	}
+}
+
+// unit_locked is a per definition question neither listing query answers, and
+// both listings fill it in. One definition must read the same whichever of them
+// served it, or a client is told the unit is free on one screen and frozen on
+// the next.
+func TestAssessmentDefinitions_RecordableReportsTheSameUnitLockAsTheCatalog(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	s := setupRecordable(t, "reclock")
+
+	lockedIn := func(query string) bool {
+		listing := listAssessmentDefinitions(t, s.App, s.UserToken, query)
+		definition, listed := listing[s.OwnID]
+		if !listed {
+			t.Fatalf("Expected the caller's own assessment in the listing %q", query)
+		}
+		return definition["unit_locked"] == true
+	}
+
+	if lockedIn("") || lockedIn("?recordable=true") {
+		t.Fatalf("Expected a fresh assessment to be free to re-unit in both listings")
+	}
+
+	// A measured result freezes it, since the number was read under that unit.
+	sessionID := playSession(t, s.App, s.UserToken, nil)["id"].(string)
+	status, body := postJSON(t, s.App, "/api/assessments", s.UserToken, map[string]interface{}{
+		"session_id":    sessionID,
+		"assessment_id": s.OwnID,
+		"right_value":   9.0,
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 recording a result, got %d: %v", status, body)
+	}
+
+	if !lockedIn("") {
+		t.Errorf("Expected the catalog to report the unit locked once a result was measured")
+	}
+	if !lockedIn("?recordable=true") {
+		t.Errorf("Expected the recordable listing to report the unit locked too")
+	}
+}
+
+// The program named is the one the athlete is running now. Any program that
+// prescribes the training authorizes reading it, but the training is served
+// with the assessments that program's week overrides name, so an older program
+// would label the run against a prescription the athlete has moved on from.
+func TestAssessmentDefinitions_RecordableNamesTheMostRecentProgram(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	s := setupRecordable(t, "recrecent")
+
+	later := createTestProgram(t, s.CoachToken, s.UserID, s.App)
+	if later == s.ProgramID {
+		t.Fatalf("Expected a second program")
+	}
+	prescribeSession(t, s.App, s.CoachToken, s.UserID, later, s.PrescribedTrainingID, nil)
+
+	recordable := listAssessmentDefinitions(t, s.App, s.UserToken, "?recordable=true")
+	if recordable[s.PrescribedID]["program_id"] != later {
+		t.Errorf("Expected the most recent program that prescribes it, got %v want %v",
+			recordable[s.PrescribedID]["program_id"], later)
 	}
 }

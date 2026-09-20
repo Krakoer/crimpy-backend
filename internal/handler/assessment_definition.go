@@ -167,11 +167,13 @@ func (h *AssessmentDefinitionHandler) referenceableDefinitions(c fiber.Ctx, user
 		return nil, err
 	}
 
+	ids := make([]pgtype.UUID, 0, len(rows))
 	responses := make([]AssessmentDefinitionResponse, 0, len(rows))
 	for _, row := range rows {
+		ids = append(ids, row.ID)
 		responses = append(responses, assessmentDefinitionToResponse(row))
 	}
-	return h.withUnitLocks(c, responses)
+	return h.withUnitLocks(c, responses, ids)
 }
 
 // recordableDefinitions is what a result may be recorded against, which is the
@@ -186,6 +188,7 @@ func (h *AssessmentDefinitionHandler) recordableDefinitions(c fiber.Ctx, userUUI
 		return nil, err
 	}
 
+	ids := make([]pgtype.UUID, 0, len(rows))
 	responses := make([]AssessmentDefinitionResponse, 0, len(rows))
 	for _, row := range rows {
 		response := assessmentDefinitionToResponse(row.AssessmentDefinition)
@@ -193,23 +196,16 @@ func (h *AssessmentDefinitionHandler) recordableDefinitions(c fiber.Ctx, userUUI
 			programID := row.ProgramID.String()
 			response.ProgramID = &programID
 		}
+		ids = append(ids, row.AssessmentDefinition.ID)
 		responses = append(responses, response)
 	}
-	return h.withUnitLocks(c, responses)
+	return h.withUnitLocks(c, responses, ids)
 }
 
 // withUnitLocks fills in UnitLocked, which is a per definition question the
 // listing queries do not answer. Kept on both listings so one row never reads
 // differently depending on which of them served it.
-func (h *AssessmentDefinitionHandler) withUnitLocks(c fiber.Ctx, responses []AssessmentDefinitionResponse) ([]AssessmentDefinitionResponse, error) {
-	ids := make([]pgtype.UUID, 0, len(responses))
-	for _, response := range responses {
-		var id pgtype.UUID
-		if err := id.Scan(response.ID); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
+func (h *AssessmentDefinitionHandler) withUnitLocks(c fiber.Ctx, responses []AssessmentDefinitionResponse, ids []pgtype.UUID) ([]AssessmentDefinitionResponse, error) {
 	locked, err := lockedAssessmentUnits(c.Context(), h.queries, ids)
 	if err != nil {
 		return nil, err

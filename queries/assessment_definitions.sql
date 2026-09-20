@@ -50,8 +50,10 @@ DELETE FROM assessment_definitions WHERE id = @id;
 -- when nothing prescribes the training. It is what makes such a row usable: a
 -- coach's training is only readable under a program of the caller's, so a row
 -- that reaches the caller by prescription alone carries the id that reads it.
--- Any of them will do when several programs prescribe the same training, so the
--- oldest is taken and the pick does not move between two calls.
+-- Several programs may prescribe the same training, and any of them authorizes
+-- reading it, so the most recent is taken: it is the one the athlete is running
+-- now, and it is its week overrides that name the assessments the training
+-- itself does not.
 --
 -- assessment_id narrows the answer to a single member of that set, which is how
 -- the record path asks whether one assessment may be written against. Omitting
@@ -70,7 +72,7 @@ LEFT JOIN LATERAL (
   JOIN coach_program_weeks w ON w.id = s.week_id
   JOIN coach_programs p ON p.id = w.program_id
   WHERE s.training_id = d.training_id AND p.user_id = @user_id
-  ORDER BY p.created_at, p.id
+  ORDER BY p.created_at DESC, p.id
   LIMIT 1
 ) prescribed ON TRUE
 WHERE (sqlc.narg('assessment_id')::uuid IS NULL OR d.id = sqlc.narg('assessment_id')::uuid)
@@ -95,3 +97,27 @@ SELECT (
   SELECT COUNT(*) FROM coach_program_session_overrides o
   WHERE o.overrides::text LIKE '%' || @assessment_id::text || '%'
 ) AS total;
+
+-- name: GetLockedAssessmentDefinitions :many
+-- Which of the named assessments can no longer move their unit or their hands:
+-- a result was measured under them, or a training item or a program week
+-- override reads a number against them.
+--
+-- Asked for the whole set at once rather than one assessment at a time. The
+-- reference half matches an id inside opaque JSON with LIKE, which no index
+-- serves and so reads the table through; asking it per assessment read the
+-- table through once per assessment, and a listing asks about every row it
+-- serves. Driving the scan from the items and testing each one against every
+-- named id reads it through once whatever the set holds.
+SELECT wanted.id::uuid AS id FROM unnest(@ids::uuid[]) AS wanted(id)
+JOIN assessments a ON a.assessment_id = wanted.id
+UNION
+SELECT wanted.id::uuid AS id FROM unnest(@ids::uuid[]) AS wanted(id)
+JOIN training_items i
+  ON i.variable_targets::text LIKE '%' || wanted.id::text || '%'
+  OR i.loads::text LIKE '%' || wanted.id::text || '%'
+  OR i.left_loads::text LIKE '%' || wanted.id::text || '%'
+UNION
+SELECT wanted.id::uuid AS id FROM unnest(@ids::uuid[]) AS wanted(id)
+JOIN coach_program_session_overrides o
+  ON o.overrides::text LIKE '%' || wanted.id::text || '%';
