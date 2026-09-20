@@ -24,17 +24,35 @@ VALUES (
 );
 
 -- name: ListCoacheeWeekDeclarations :many
+-- The window is optional on each end. A caller that sends neither gets every
+-- week the athlete declared, which is what the clients read before the window
+-- existed, so an older build keeps working unchanged.
 SELECT * FROM coachee_week_declarations
 WHERE user_id = @user_id
+  AND week_start >= COALESCE(sqlc.narg('from_week')::date, '-infinity')
+  AND week_start <= COALESCE(sqlc.narg('to_week')::date, 'infinity')
 ORDER BY week_start;
 
 -- name: ListCoacheeDayActivities :many
--- Every activity the athlete holds, across every week they declared, ordered so
--- it zips straight onto the declarations above.
+-- The activities of the weeks the window above keeps, ordered so it zips
+-- straight onto the declarations. The two filters must be given the same
+-- bounds, or a week would come back without what was planned in it.
 SELECT a.* FROM coachee_day_activities a
 JOIN coachee_week_declarations d ON d.id = a.declaration_id
 WHERE d.user_id = @user_id
+  AND d.week_start >= COALESCE(sqlc.narg('from_week')::date, '-infinity')
+  AND d.week_start <= COALESCE(sqlc.narg('to_week')::date, 'infinity')
 ORDER BY d.week_start, a.day_of_week, a.position;
+
+-- name: ListCoacheeDeclaredWeekStarts :many
+-- Every week the athlete ever declared, as dates alone and never windowed.
+-- The app plans its declaration reminders off this: a nudge is dropped for a
+-- week already answered, so a list missing one nudges the athlete about a week
+-- they have already sent. It carries no activities, so answering it in full
+-- costs one small row per declared week.
+SELECT week_start FROM coachee_week_declarations
+WHERE user_id = @user_id
+ORDER BY week_start;
 
 -- name: GetCoacheeWeekDeclaration :one
 SELECT * FROM coachee_week_declarations

@@ -4,6 +4,7 @@ import (
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -69,15 +70,11 @@ func dayActivities(t *testing.T, week map[string]interface{}, dayOfWeek int) []i
 	return list
 }
 
+// listWeeks reads the whole list, which is what a caller sending no window
+// gets. listWeeksWithQuery below is the same request with a window on it.
 func listWeeks(t *testing.T, app *fiber.App, token string) []map[string]interface{} {
 	t.Helper()
-	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability", nil, token)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Failed to list availability: %v", err)
-	}
-	var weeks []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&weeks)
+	_, weeks := listWeeksWithQuery(t, app, token, "")
 	return weeks
 }
 
@@ -636,5 +633,296 @@ func TestAvailabilityReminder_InvalidInput(t *testing.T) {
 				t.Errorf("Expected 400, got %d", resp.StatusCode)
 			}
 		})
+	}
+}
+
+// The weeks the window tests declare: six consecutive Mondays, written out as
+// literals rather than derived from the bounds under test. A boundary computed
+// from the same expression as the code agrees with whatever that expression
+// becomes, and would survive the window being moved or switched off.
+//
+// The windows below run 2026-05-18 to 2026-06-08, so 2026-05-11 sits one week
+// outside the near end and 2026-06-15 one week outside the far end.
+func allWindowWeeks() []string {
+	return []string{"2026-05-11", "2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08", "2026-06-15"}
+}
+
+func listWeeksWithQuery(t *testing.T, app *fiber.App, token, query string) (*http.Response, []map[string]interface{}) {
+	t.Helper()
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability"+query, nil, token)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to list availability: %v", err)
+	}
+	var weeks []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&weeks)
+	return resp, weeks
+}
+
+func weekStarts(weeks []map[string]interface{}) []string {
+	starts := make([]string, 0, len(weeks))
+	for _, week := range weeks {
+		starts = append(starts, week["week_start"].(string))
+	}
+	return starts
+}
+
+// assertWeekStarts compares the Mondays a listing answered with, in order. One
+// message naming both lists reads better than a length check followed by an
+// index by index one saying the same thing.
+func assertWeekStarts(t *testing.T, want, got []string) {
+	t.Helper()
+	if len(want) != len(got) {
+		t.Fatalf("Expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if want[i] != got[i] {
+			t.Fatalf("Expected %v, got %v", want, got)
+		}
+	}
+}
+
+func declaredWeeks(t *testing.T, app *fiber.App, token, query string) (*http.Response, []string) {
+	t.Helper()
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability/declared-weeks"+query, nil, token)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to list declared weeks: %v", err)
+	}
+	var raw []string
+	json.NewDecoder(resp.Body).Decode(&raw)
+	return resp, raw
+}
+
+func declareWindowWeeks(t *testing.T, app *fiber.App, token string) {
+	t.Helper()
+	for _, week := range allWindowWeeks() {
+		resp := putWeek(t, app, token, week, fullWeek(map[int][]map[string]interface{}{
+			2: {activity("Session in "+week, nil)},
+		}))
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("Expected 200 declaring %s, got %d", week, resp.StatusCode)
+		}
+	}
+}
+
+// The window keeps the weeks on its bounds and drops the ones a single week
+// either side of them, which is the pair of mistakes a range gets wrong.
+func TestAvailability_WindowKeepsItsBoundsAndDropsTheWeeksOutside(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail11user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	declareWindowWeeks(t, app, userToken)
+
+	resp, weeks := listWeeksWithQuery(t, app, userToken, "?from=2026-05-18&to=2026-06-08")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	assertWeekStarts(t, []string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"}, weekStarts(weeks))
+
+	// A week on the bound keeps the activities planned in it: the declarations
+	// and the activities are filtered by the same window, so neither can come
+	// back without the other.
+	wednesday := dayActivities(t, weeks[0], 2)
+	if len(wednesday) != 1 || wednesday[0].(map[string]interface{})["label"] != "Session in 2026-05-18" {
+		t.Errorf("Expected the first week in the window to carry its activity, got %v", wednesday)
+	}
+	wednesday = dayActivities(t, weeks[3], 2)
+	if len(wednesday) != 1 || wednesday[0].(map[string]interface{})["label"] != "Session in 2026-06-08" {
+		t.Errorf("Expected the last week in the window to carry its activity, got %v", wednesday)
+	}
+}
+
+// An absent parameter is an unbounded end, on either side and on both.
+func TestAvailability_AbsentWindowIsUnbounded(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail12user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	declareWindowWeeks(t, app, userToken)
+
+	cases := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{
+			"no window at all reads every declared week",
+			"",
+			[]string{"2026-05-11", "2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08", "2026-06-15"},
+		},
+		{
+			"from alone keeps its own week and everything after it",
+			"?from=2026-05-18",
+			[]string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08", "2026-06-15"},
+		},
+		{
+			"to alone keeps its own week and everything before it",
+			"?to=2026-06-08",
+			[]string{"2026-05-11", "2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"},
+		},
+		{
+			"a window of one week keeps that week alone",
+			"?from=2026-05-25&to=2026-05-25",
+			[]string{"2026-05-25"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, weeks := listWeeksWithQuery(t, app, userToken, tc.query)
+			if resp.StatusCode != fiber.StatusOK {
+				t.Fatalf("Expected 200, got %d", resp.StatusCode)
+			}
+			assertWeekStarts(t, tc.want, weekStarts(weeks))
+		})
+	}
+}
+
+func TestAvailability_InvalidWindowRefused(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail13user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+
+	cases := []struct {
+		name  string
+		query string
+	}{
+		{"from is not a date", "?from=last-monday"},
+		{"to is not a date", "?to=2026-13-40"},
+		{"from is not a Monday", "?from=2026-05-19"},
+		{"to is not a Monday", "?to=2026-06-07"},
+		{"to is before from", "?from=2026-06-08&to=2026-05-18"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, _ := listWeeksWithQuery(t, app, userToken, tc.query)
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Errorf("Expected 400, got %d", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// The declared weeks endpoint is what the app plans its reminders from, so it
+// answers every week whatever the caller asks for. A window handed to it is not
+// an error and is not applied: truncating this set is what brings a nudge back
+// for a week the athlete already answered.
+func TestAvailability_DeclaredWeeksIgnoreTheWindow(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail14user@test.com")
+	_, otherToken := testutil.CreateTestUser(t, queries, "avail14other@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	declareWindowWeeks(t, app, userToken)
+	putWeek(t, app, otherToken, "2026-07-06", fullWeek(nil))
+
+	want := []string{"2026-05-11", "2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08", "2026-06-15"}
+	for _, query := range []string{"", "?from=2026-05-25&to=2026-05-25"} {
+		resp, got := declaredWeeks(t, app, userToken, query)
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("Expected 200, got %d", resp.StatusCode)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("Expected every declared week %v for query %q, got %v", want, query, got)
+		}
+		assertWeekStarts(t, want, got)
+	}
+
+	// Another athlete's weeks are not in the answer: the endpoint is keyed to
+	// the caller, and a leak here would nudge from someone else's schedule.
+	_, othersWeeks := declaredWeeks(t, app, otherToken, "")
+	if len(othersWeeks) != 1 || othersWeeks[0] != "2026-07-06" {
+		t.Errorf("Expected the other athlete to read only their own week, got %v", othersWeeks)
+	}
+}
+
+func TestAvailability_DeclaredWeeksEmptyWhenNothingDeclared(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, userToken := testutil.CreateTestUser(t, queries, "avail15user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability/declared-weeks", nil, userToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to list declared weeks: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if strings.TrimSpace(string(body)) != "[]" {
+		t.Errorf("Expected an empty list rather than null, got %s", body)
+	}
+}
+
+// The coach endpoint takes the same window, and the enrollment check still runs
+// before it.
+func TestAvailability_CoachWindowsClientWeeks(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "avail16coach@test.com")
+	userID, userToken := testutil.CreateTestUser(t, queries, "avail16user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	declareWindowWeeks(t, app, userToken)
+
+	readClient := func(query string) (*http.Response, []map[string]interface{}) {
+		req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/clients/"+userID+"/availability"+query, nil, coachToken)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("Failed to read client availability: %v", err)
+		}
+		var weeks []map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&weeks)
+		return resp, weeks
+	}
+
+	resp, weeks := readClient("?from=2026-05-18&to=2026-06-08")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	assertWeekStarts(t, []string{"2026-05-18", "2026-05-25", "2026-06-01", "2026-06-08"}, weekStarts(weeks))
+
+	resp, weeks = readClient("")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 without a window, got %d", resp.StatusCode)
+	}
+	if len(weeks) != len(allWindowWeeks()) {
+		t.Errorf("Expected every declared week without a window, got %v", weekStarts(weeks))
+	}
+
+	resp, _ = readClient("?from=2026-05-19")
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 for a bound that is not a Monday, got %d", resp.StatusCode)
 	}
 }

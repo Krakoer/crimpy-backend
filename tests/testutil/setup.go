@@ -185,6 +185,7 @@ type HandlerConfig struct {
 	}
 	AvailabilityHandler interface {
 		GetMyAvailability(fiber.Ctx) error
+		GetMyDeclaredWeeks(fiber.Ctx) error
 		UpsertMyWeekAvailability(fiber.Ctx) error
 		GetMyAvailabilityReminder(fiber.Ctx) error
 		GetClientAvailability(fiber.Ctx) error
@@ -321,6 +322,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 
 	if config.AvailabilityHandler != nil {
 		api.Get("/user/availability", config.AvailabilityHandler.GetMyAvailability)
+		api.Get("/user/availability/declared-weeks", config.AvailabilityHandler.GetMyDeclaredWeeks)
 		api.Put("/user/availability/:week_start", config.AvailabilityHandler.UpsertMyWeekAvailability)
 		api.Get("/user/availability-reminder", config.AvailabilityHandler.GetMyAvailabilityReminder)
 		api.Get("/coach/clients/:user_id/availability", config.AvailabilityHandler.GetClientAvailability)

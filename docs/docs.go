@@ -1462,7 +1462,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve every calendar week a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them.",
+                "description": "Retrieve the calendar weeks a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A program page should ask for the weeks the program covers rather than the athlete's whole history.",
                 "produces": [
                     "application/json"
                 ],
@@ -1477,6 +1477,18 @@ const docTemplate = `{
                         "name": "user_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "First calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1490,7 +1502,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid client ID",
+                        "description": "Invalid client ID or window",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5030,7 +5042,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve every calendar week the authenticated user has declared, each carrying the seven days and the activities planned on them.",
+                "description": "Retrieve the calendar weeks the authenticated user has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A week carrying up to 140 activities makes the unbounded answer large, so a screen showing one week at a time should ask for that week. The set of declared weeks is not a window question: read /api/user/availability/declared-weeks for that.",
                 "produces": [
                     "application/json"
                 ],
@@ -5038,6 +5050,20 @@ const docTemplate = `{
                     "Availability"
                 ],
                 "summary": "Get my declared weeks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "First calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Declared weeks",
@@ -5045,6 +5071,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.WeekAvailabilityResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid window",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -5102,6 +5137,52 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "No coach, or no reminder configured",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/availability/declared-weeks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Every calendar week the authenticated user has declared, as Mondays in YYYY-MM-DD, oldest first, with no activities and no window. This is what the athlete app plans its declaration reminders from: a nudge is dropped for a week that was already answered, so the planner needs the whole set and not the window a screen happens to be showing. Carrying no activities keeps it small enough to answer in full.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Availability"
+                ],
+                "summary": "List the Mondays I have declared",
+                "responses": {
+                    "200": {
+                        "description": "Declared week starts",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid user ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
