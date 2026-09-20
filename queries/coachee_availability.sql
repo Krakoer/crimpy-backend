@@ -27,10 +27,19 @@ VALUES (
 -- The window is optional on each end. A caller that sends neither gets every
 -- week the athlete declared, which is what the clients read before the window
 -- existed, so an older build keeps working unchanged.
-SELECT * FROM coachee_week_declarations
-WHERE user_id = @user_id
-  AND week_start >= COALESCE(sqlc.narg('from_week')::date, '-infinity')
-  AND week_start <= COALESCE(sqlc.narg('to_week')::date, 'infinity')
+--
+-- row_limit is what keeps "every week" finite. It cuts the far end rather than
+-- the near one: the inner order takes the most recent weeks, which is what
+-- every caller renders, and the outer one hands them back oldest first, the
+-- order the activities zip onto.
+SELECT * FROM (
+  SELECT * FROM coachee_week_declarations
+  WHERE user_id = @user_id
+    AND week_start >= COALESCE(sqlc.narg('from_week')::date, '-infinity')
+    AND week_start <= COALESCE(sqlc.narg('to_week')::date, 'infinity')
+  ORDER BY week_start DESC
+  LIMIT @row_limit
+) recent
 ORDER BY week_start;
 
 -- name: ListCoacheeDayActivities :many

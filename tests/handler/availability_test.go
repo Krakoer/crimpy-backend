@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"context"
 	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // A Monday, so every week_start in these tests satisfies the schema check.
@@ -924,5 +926,236 @@ func TestAvailability_CoachWindowsClientWeeks(t *testing.T) {
 	resp, _ = readClient("?from=2026-05-19")
 	if resp.StatusCode != fiber.StatusBadRequest {
 		t.Errorf("Expected 400 for a bound that is not a Monday, got %d", resp.StatusCode)
+	}
+}
+
+// Every week count in the ceiling tests below is a literal rather than read off
+// handler.MaxAvailabilityWeeks. A test that derives its expectation from the
+// constant it is testing agrees with whatever that constant becomes, so it
+// would survive the ceiling being moved to something that truncates real
+// athletes.
+//
+// The newest Monday the ceiling fixtures count back from, and the two weeks the
+// boundary turns on. 2026-06-01 minus 519 weeks is the oldest week a 520 week
+// answer reaches back to, whether 520 or 521 were declared; minus 520 weeks is
+// the extra one, and the one the ceiling drops.
+const (
+	ceilingNewestWeek     = "2026-06-01"
+	ceilingOldestKeptWeek = "2016-06-20"
+	ceilingDroppedWeek    = "2016-06-13"
+)
+
+// The header a cut answer carries. Spelled out here rather than taken from the
+// handler, for the same reason as the count above.
+const availabilityTruncatedHeader = "X-Availability-Weeks-Truncated"
+
+// seedDeclaredWeeks declares count consecutive weeks ending on newestMonday, in
+// one statement. Going through the API would be a transaction per week, and the
+// counts these tests need are in the hundreds.
+func seedDeclaredWeeks(t *testing.T, pool *pgxpool.Pool, userID, newestMonday string, count int) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO coachee_week_declarations (user_id, week_start)
+		 SELECT $1::uuid, $2::date - (weeks_back * 7)
+		 FROM generate_series(0, $3::int - 1) AS weeks_back`,
+		userID, newestMonday, count)
+	if err != nil {
+		t.Fatalf("Failed to seed %d declared weeks: %v", count, err)
+	}
+}
+
+// The constant itself, pinned on its own. The tests below assert behaviour at
+// 520 and 521 weeks; this one says which number that behaviour is supposed to
+// be about, so moving the ceiling fails here with the reason rather than only
+// as a row count somewhere else.
+func TestAvailability_CeilingIsTenYearsOfWeeks(t *testing.T) {
+	if handler.MaxAvailabilityWeeks != 520 {
+		t.Fatalf("Expected the availability ceiling to be 520 weeks, ten years, got %d", handler.MaxAvailabilityWeeks)
+	}
+}
+
+// An athlete sitting exactly on the ceiling reads their whole history, header
+// and all weeks. This is the side of the boundary that must not move: a ceiling
+// that cut here would be truncating a caller it was set not to touch.
+func TestAvailability_ListingOnTheCeilingComesBackWhole(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	userID, userToken := testutil.CreateTestUser(t, queries, "avail17user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 520)
+
+	resp, weeks := listWeeksWithQuery(t, app, userToken, "")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	if len(weeks) != 520 {
+		t.Fatalf("Expected all 520 declared weeks, got %d", len(weeks))
+	}
+	starts := weekStarts(weeks)
+	if starts[0] != ceilingOldestKeptWeek {
+		t.Errorf("Expected the oldest week %s to survive, got %s", ceilingOldestKeptWeek, starts[0])
+	}
+	if starts[len(starts)-1] != ceilingNewestWeek {
+		t.Errorf("Expected the newest week %s last, got %s", ceilingNewestWeek, starts[len(starts)-1])
+	}
+	if got := resp.Header.Get(availabilityTruncatedHeader); got != "" {
+		t.Errorf("Expected no truncation header on a whole answer, got %q", got)
+	}
+}
+
+// One week past the ceiling. The answer is cut, the caller is told it was cut,
+// and what went is the oldest week rather than the newest: a test that only
+// counted the rows back would pass with the cut made at either end.
+func TestAvailability_ListingPastTheCeilingDropsTheOldestWeeksAndSaysSo(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	userID, userToken := testutil.CreateTestUser(t, queries, "avail18user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 521)
+
+	resp, weeks := listWeeksWithQuery(t, app, userToken, "")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	if len(weeks) != 520 {
+		t.Fatalf("Expected the answer cut to 520 weeks, got %d", len(weeks))
+	}
+	if got := resp.Header.Get(availabilityTruncatedHeader); got != "true" {
+		t.Errorf("Expected the cut answer to carry %s: true, got %q", availabilityTruncatedHeader, got)
+	}
+
+	starts := weekStarts(weeks)
+	if starts[len(starts)-1] != ceilingNewestWeek {
+		t.Errorf("Expected the most recent week %s to be kept, got %s", ceilingNewestWeek, starts[len(starts)-1])
+	}
+	if starts[0] != ceilingOldestKeptWeek {
+		t.Errorf("Expected the oldest kept week to be %s, got %s", ceilingOldestKeptWeek, starts[0])
+	}
+	for _, start := range starts {
+		if start == ceilingDroppedWeek {
+			t.Fatalf("Expected the oldest week %s to be the one dropped, but it came back", ceilingDroppedWeek)
+		}
+	}
+}
+
+// A cut answer still carries what was planned in the weeks it kept. The
+// activities are read for the weeks that survived rather than for the window
+// asked for, so this is what says that narrowing did not narrow too far.
+func TestAvailability_TruncatedListingKeepsTheActivitiesOfTheWeeksItKept(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	userID, userToken := testutil.CreateTestUser(t, queries, "avail19user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 521)
+
+	// Declared through the API so the activity rows hang off the seeded week
+	// the same way a real one would.
+	resp := putWeek(t, app, userToken, ceilingNewestWeek, fullWeek(map[int][]map[string]interface{}{
+		2: {activity("Session in the newest week", nil)},
+	}))
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 declaring the newest week, got %d", resp.StatusCode)
+	}
+	resp = putWeek(t, app, userToken, ceilingOldestKeptWeek, fullWeek(map[int][]map[string]interface{}{
+		2: {activity("Session in the oldest kept week", nil)},
+	}))
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 declaring the oldest kept week, got %d", resp.StatusCode)
+	}
+
+	listResp, weeks := listWeeksWithQuery(t, app, userToken, "")
+	if listResp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", listResp.StatusCode)
+	}
+	if len(weeks) != 520 {
+		t.Fatalf("Expected the answer cut to 520 weeks, got %d", len(weeks))
+	}
+	newest := dayActivities(t, weeks[len(weeks)-1], 2)
+	if len(newest) != 1 || newest[0].(map[string]interface{})["label"] != "Session in the newest week" {
+		t.Errorf("Expected the newest kept week to carry its activity, got %v", newest)
+	}
+	oldest := dayActivities(t, weeks[0], 2)
+	if len(oldest) != 1 || oldest[0].(map[string]interface{})["label"] != "Session in the oldest kept week" {
+		t.Errorf("Expected the oldest kept week to carry its activity, got %v", oldest)
+	}
+}
+
+// The coach reading a client's history hits the same ceiling, cut at the same
+// end, and is told the same way. The two endpoints answer from one loader, and
+// this is what keeps them from drifting apart.
+func TestAvailability_CoachListingHitsTheSameCeiling(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "avail20coach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "avail20user@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 521)
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/clients/"+userID+"/availability", nil, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to read client availability: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	var weeks []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&weeks)
+	if len(weeks) != 520 {
+		t.Fatalf("Expected the coach answer cut to 520 weeks, got %d", len(weeks))
+	}
+	if got := resp.Header.Get(availabilityTruncatedHeader); got != "true" {
+		t.Errorf("Expected the coach's cut answer to carry %s: true, got %q", availabilityTruncatedHeader, got)
+	}
+	starts := weekStarts(weeks)
+	if starts[0] != ceilingOldestKeptWeek || starts[len(starts)-1] != ceilingNewestWeek {
+		t.Errorf("Expected the coach to read %s to %s, got %s to %s",
+			ceilingOldestKeptWeek, ceilingNewestWeek, starts[0], starts[len(starts)-1])
+	}
+}
+
+// The window is not a way past the ceiling: a caller asking for more weeks than
+// it allows is cut and told, exactly as an unwindowed one is.
+func TestAvailability_CeilingAppliesToAWindowedListingToo(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	userID, userToken := testutil.CreateTestUser(t, queries, "avail21user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 521)
+
+	resp, weeks := listWeeksWithQuery(t, app, userToken, "?from="+ceilingDroppedWeek+"&to="+ceilingNewestWeek)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	if len(weeks) != 520 {
+		t.Fatalf("Expected the windowed answer cut to 520 weeks, got %d", len(weeks))
+	}
+	if got := resp.Header.Get(availabilityTruncatedHeader); got != "true" {
+		t.Errorf("Expected the windowed cut answer to carry %s: true, got %q", availabilityTruncatedHeader, got)
+	}
+	if starts := weekStarts(weeks); starts[0] != ceilingOldestKeptWeek {
+		t.Errorf("Expected the oldest kept week to be %s, got %s", ceilingOldestKeptWeek, starts[0])
 	}
 }

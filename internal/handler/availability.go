@@ -26,6 +26,24 @@ const (
 	// An unbounded list still needs a ceiling, or one athlete decides how big
 	// every coach's week response is.
 	maxActivitiesPerDay = 20
+	// The same reasoning one level up. A listing with no window answers with
+	// every week the athlete ever declared, which is what app builds that
+	// predate the window read, so the count has to stay finite without any
+	// client asking it to.
+	//
+	// Ten years of weeks sits far above any declaration history that exists:
+	// an athlete declaring every week for two years is about a hundred of
+	// them. This is a backstop against a pathological answer, not a page size,
+	// and it is set where it truncates nobody real.
+	//
+	// Exported because it is part of what the endpoint promises, and because
+	// the tests that pin it live outside this package.
+	MaxAvailabilityWeeks = 520
+	// What a truncated listing says so the caller is not left guessing. The
+	// answer is a bare JSON array that old clients parse, so the fact cannot
+	// ride in the body without breaking them, and a short answer with nothing
+	// on it reads exactly like an athlete who declared fewer weeks.
+	availabilityTruncatedHeader = "X-Availability-Weeks-Truncated"
 )
 
 type AvailabilityHandler struct {
@@ -340,13 +358,14 @@ func requireCallerUUID(c fiber.Ctx) (pgtype.UUID, bool) {
 
 // GetMyAvailability godoc
 // @Summary Get my declared weeks
-// @Description Retrieve the calendar weeks the authenticated user has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A week carrying up to 140 activities makes the unbounded answer large, so a screen showing one week at a time should ask for that week. The set of declared weeks is not a window question: read /api/user/availability/declared-weeks for that.
+// @Description Retrieve the calendar weeks the authenticated user has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A week carrying up to 140 activities makes the unbounded answer large, so a screen showing one week at a time should ask for that week. At most 520 weeks come back whatever the window; when older weeks were dropped the response carries X-Availability-Weeks-Truncated: true, and the weeks kept are the most recent ones. The set of declared weeks is not a window question: read /api/user/availability/declared-weeks for that.
 // @Tags Availability
 // @Produce json
 // @Security BearerAuth
 // @Param from query string false "First calendar week to return, Monday, YYYY-MM-DD"
 // @Param to query string false "Last calendar week to return, Monday, YYYY-MM-DD"
 // @Success 200 {array} WeekAvailabilityResponse "Declared weeks"
+// @Header 200 {string} X-Availability-Weeks-Truncated "true when older weeks were dropped at the 520 week ceiling, absent otherwise"
 // @Failure 400 {object} map[string]string "Invalid window"
 // @Failure 401 {object} map[string]string "Invalid user ID"
 // @Failure 500 {object} map[string]string "Server error"
@@ -362,12 +381,12 @@ func (h *AvailabilityHandler) GetMyAvailability(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	weeks, err := h.loadWeeks(c, userUUID, window)
+	weeks, truncated, err := h.loadWeeks(c, userUUID, window)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(weeks)
+	return respondWithWeeks(c, weeks, truncated)
 }
 
 // GetMyDeclaredWeeks godoc
@@ -404,32 +423,57 @@ func (h *AvailabilityHandler) GetMyDeclaredWeeks(c fiber.Ctx) error {
 }
 
 // loadWeeks reads the weeks a coachee declared inside the window, with what
-// they planned in them. The declarations are read on their own rather than
-// derived from the activity rows, so a week holding no activity is still in the
-// answer.
+// they planned in them, and says whether the ceiling cut the answer short. The
+// declarations are read on their own rather than derived from the activity
+// rows, so a week holding no activity is still in the answer.
 //
-// Both queries take the same window, so a week that is in the answer carries
-// all of its activities and a week that is out carries none.
-func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID, window availabilityWindow) ([]WeekAvailabilityResponse, error) {
+// The activities are read for the weeks that survived the ceiling rather than
+// for the window asked for, so a week that is in the answer carries all of its
+// activities and a week the ceiling dropped carries none of the megabytes it
+// would have contributed.
+func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID, window availabilityWindow) ([]WeekAvailabilityResponse, bool, error) {
+	// One row past the ceiling, which is what tells a whole answer from a cut
+	// one without paying for a second counting query.
 	declarations, err := h.queries.ListCoacheeWeekDeclarations(c.Context(), db.ListCoacheeWeekDeclarationsParams{
 		UserID:   userUUID,
 		FromWeek: window.from,
 		ToWeek:   window.to,
+		RowLimit: MaxAvailabilityWeeks + 1,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve availability", "user_id", userUUID.String(), "error", err)
-		return nil, err
+		return nil, false, err
+	}
+	truncated := len(declarations) > MaxAvailabilityWeeks
+	if truncated {
+		// The oldest go, since the rows arrive oldest first and recent weeks
+		// are what every caller renders.
+		declarations = declarations[len(declarations)-MaxAvailabilityWeeks:]
+		slog.Warn("availability listing truncated", "user_id", userUUID.String(), "max_weeks", MaxAvailabilityWeeks)
+	}
+	if len(declarations) == 0 {
+		return []WeekAvailabilityResponse{}, false, nil
 	}
 	activities, err := h.queries.ListCoacheeDayActivities(c.Context(), db.ListCoacheeDayActivitiesParams{
 		UserID:   userUUID,
-		FromWeek: window.from,
+		FromWeek: declarations[0].WeekStart,
 		ToWeek:   window.to,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve availability activities", "user_id", userUUID.String(), "error", err)
-		return nil, err
+		return nil, false, err
 	}
-	return availabilityToWeeks(declarations, activities), nil
+	return availabilityToWeeks(declarations, activities), truncated, nil
+}
+
+// respondWithWeeks answers a listing, flagging the answer when the ceiling cut
+// it. The header is set only on a cut answer, so its absence is a caller's
+// proof that it read the athlete's whole history rather than the start of it.
+func respondWithWeeks(c fiber.Ctx, weeks []WeekAvailabilityResponse, truncated bool) error {
+	if truncated {
+		c.Set(availabilityTruncatedHeader, "true")
+	}
+	return c.Status(fiber.StatusOK).JSON(weeks)
 }
 
 // insertWeekActivities sends the whole week's activities as one batch. The
@@ -596,7 +640,7 @@ func (h *AvailabilityHandler) GetMyAvailabilityReminder(c fiber.Ctx) error {
 
 // GetClientAvailability godoc
 // @Summary Get a client's declared weeks
-// @Description Retrieve the calendar weeks a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A program page should ask for the weeks the program covers rather than the athlete's whole history.
+// @Description Retrieve the calendar weeks a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A program page should ask for the weeks the program covers rather than the athlete's whole history. At most 520 weeks come back whatever the window; when older weeks were dropped the response carries X-Availability-Weeks-Truncated: true, and the weeks kept are the most recent ones.
 // @Tags Availability
 // @Produce json
 // @Security BearerAuth
@@ -604,6 +648,7 @@ func (h *AvailabilityHandler) GetMyAvailabilityReminder(c fiber.Ctx) error {
 // @Param from query string false "First calendar week to return, Monday, YYYY-MM-DD"
 // @Param to query string false "Last calendar week to return, Monday, YYYY-MM-DD"
 // @Success 200 {array} WeekAvailabilityResponse "Declared weeks"
+// @Header 200 {string} X-Availability-Weeks-Truncated "true when older weeks were dropped at the 520 week ceiling, absent otherwise"
 // @Failure 400 {object} map[string]string "Invalid client ID or window"
 // @Failure 403 {object} map[string]string "Not a validated coach or client not enrolled"
 // @Failure 500 {object} map[string]string "Server error"
@@ -623,12 +668,12 @@ func (h *AvailabilityHandler) GetClientAvailability(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	weeks, err := h.loadWeeks(c, clientUUID, window)
+	weeks, truncated, err := h.loadWeeks(c, clientUUID, window)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve availability"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(weeks)
+	return respondWithWeeks(c, weeks, truncated)
 }
 
 // GetAvailabilityReminder godoc

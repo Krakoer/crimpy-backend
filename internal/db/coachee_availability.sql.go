@@ -160,10 +160,14 @@ func (q *Queries) ListCoacheeWeekDayActivities(ctx context.Context, declarationI
 }
 
 const listCoacheeWeekDeclarations = `-- name: ListCoacheeWeekDeclarations :many
-SELECT id, user_id, week_start, created_at, updated_at FROM coachee_week_declarations
-WHERE user_id = $1
-  AND week_start >= COALESCE($2::date, '-infinity')
-  AND week_start <= COALESCE($3::date, 'infinity')
+SELECT id, user_id, week_start, created_at, updated_at FROM (
+  SELECT id, user_id, week_start, created_at, updated_at FROM coachee_week_declarations
+  WHERE user_id = $1
+    AND week_start >= COALESCE($2::date, '-infinity')
+    AND week_start <= COALESCE($3::date, 'infinity')
+  ORDER BY week_start DESC
+  LIMIT $4
+) recent
 ORDER BY week_start
 `
 
@@ -171,13 +175,24 @@ type ListCoacheeWeekDeclarationsParams struct {
 	UserID   pgtype.UUID
 	FromWeek pgtype.Date
 	ToWeek   pgtype.Date
+	RowLimit int32
 }
 
 // The window is optional on each end. A caller that sends neither gets every
 // week the athlete declared, which is what the clients read before the window
 // existed, so an older build keeps working unchanged.
+//
+// row_limit is what keeps "every week" finite. It cuts the far end rather than
+// the near one: the inner order takes the most recent weeks, which is what
+// every caller renders, and the outer one hands them back oldest first, the
+// order the activities zip onto.
 func (q *Queries) ListCoacheeWeekDeclarations(ctx context.Context, arg ListCoacheeWeekDeclarationsParams) ([]CoacheeWeekDeclaration, error) {
-	rows, err := q.db.Query(ctx, listCoacheeWeekDeclarations, arg.UserID, arg.FromWeek, arg.ToWeek)
+	rows, err := q.db.Query(ctx, listCoacheeWeekDeclarations,
+		arg.UserID,
+		arg.FromWeek,
+		arg.ToWeek,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
