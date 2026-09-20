@@ -6191,7 +6191,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "bodyweight_relative": {
-                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement. The list endpoints send the denominator on the row, see\nAssessmentListItem; the read paths that do not have to be given one.",
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement. The list endpoints send the denominator on the row, see\nAssessmentListItem; the other read paths do not carry one.",
                     "type": "boolean"
                 },
                 "grip_position": {
@@ -6262,7 +6262,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "bodyweight_relative": {
-                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement. The list endpoints send the denominator on the row, see\nAssessmentListItem; the read paths that do not have to be given one.",
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement. The list endpoints send the denominator on the row, see\nAssessmentListItem; the other read paths do not carry one.",
                     "type": "boolean"
                 },
                 "grip_position": {
@@ -6323,6 +6323,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "left_bodyweight_kg": {
+                    "description": "The weight the left hand was pulled at, chosen and absent by the same rule\nas the right, and its own weigh-in: the two hands can come from sessions\nmonths apart, so neither answers for the other.",
                     "type": "number"
                 },
                 "left_bodyweight_measured_at": {

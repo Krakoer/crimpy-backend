@@ -102,7 +102,7 @@ definitions:
           Whether the result reads as a ratio to the bodyweight it was pulled at
           rather than as an absolute load. Display only: the value beside it is the
           raw measurement. The list endpoints send the denominator on the row, see
-          AssessmentListItem; the read paths that do not have to be given one.
+          AssessmentListItem; the other read paths do not carry one.
         type: boolean
       grip_position:
         type: integer
@@ -155,7 +155,7 @@ definitions:
           Whether the result reads as a ratio to the bodyweight it was pulled at
           rather than as an absolute load. Display only: the value beside it is the
           raw measurement. The list endpoints send the denominator on the row, see
-          AssessmentListItem; the read paths that do not have to be given one.
+          AssessmentListItem; the other read paths do not carry one.
         type: boolean
       grip_position:
         type: integer
@@ -200,6 +200,10 @@ definitions:
       label:
         type: string
       left_bodyweight_kg:
+        description: |-
+          The weight the left hand was pulled at, chosen and absent by the same rule
+          as the right, and its own weigh-in: the two hands can come from sessions
+          months apart, so neither answers for the other.
         type: number
       left_bodyweight_measured_at:
         type: string

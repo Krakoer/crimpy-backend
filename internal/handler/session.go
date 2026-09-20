@@ -815,7 +815,7 @@ type AssessmentResponse struct {
 	// Whether the result reads as a ratio to the bodyweight it was pulled at
 	// rather than as an absolute load. Display only: the value beside it is the
 	// raw measurement. The list endpoints send the denominator on the row, see
-	// AssessmentListItem; the read paths that do not have to be given one.
+	// AssessmentListItem; the other read paths do not carry one.
 	BodyweightRelative bool `json:"bodyweight_relative"`
 	// The training the assessment is run from, absent for the ones Crimpy ships.
 	TrainingID   *string  `json:"training_id,omitempty"`

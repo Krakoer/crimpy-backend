@@ -451,6 +451,13 @@ type GetUserAssessmentsRow struct {
 // expression would fetch and sort every weigh-in the athlete ever recorded, once
 // per result row.
 //
+// It runs for every row rather than only for a bodyweight_relative definition,
+// which costs two index probes on a result nothing will divide. That is the
+// price of one row shape: the flag is free to toggle at any time, since nothing
+// derived from it is stored, and a listing that carried the weight only where
+// the flag is set today would come back without it for a whole history the
+// moment a coach turns the flag on.
+//
 // The day is cut in UTC explicitly rather than through a server setting, so the
 // boundary does not move with one.
 //

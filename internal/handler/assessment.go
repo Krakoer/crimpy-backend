@@ -267,8 +267,11 @@ type AssessmentSnapshotItem struct {
 	RightBodyweightMeasuredAt *string  `json:"right_bodyweight_measured_at,omitempty"`
 	LeftValue                 *float32 `json:"left_value,omitempty"`
 	LeftMeasuredAt            *string  `json:"left_measured_at,omitempty"`
-	LeftBodyweightKg          *float32 `json:"left_bodyweight_kg,omitempty"`
-	LeftBodyweightMeasuredAt  *string  `json:"left_bodyweight_measured_at,omitempty"`
+	// The weight the left hand was pulled at, chosen and absent by the same rule
+	// as the right, and its own weigh-in: the two hands can come from sessions
+	// months apart, so neither answers for the other.
+	LeftBodyweightKg         *float32 `json:"left_bodyweight_kg,omitempty"`
+	LeftBodyweightMeasuredAt *string  `json:"left_bodyweight_measured_at,omitempty"`
 }
 
 // AssessmentSnapshotResponse is what an athlete had measured as of a date. The
