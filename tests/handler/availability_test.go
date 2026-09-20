@@ -70,15 +70,11 @@ func dayActivities(t *testing.T, week map[string]interface{}, dayOfWeek int) []i
 	return list
 }
 
+// listWeeks reads the whole list, which is what a caller sending no window
+// gets. listWeeksWithQuery below is the same request with a window on it.
 func listWeeks(t *testing.T, app *fiber.App, token string) []map[string]interface{} {
 	t.Helper()
-	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability", nil, token)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("Failed to list availability: %v", err)
-	}
-	var weeks []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&weeks)
+	_, weeks := listWeeksWithQuery(t, app, token, "")
 	return weeks
 }
 
