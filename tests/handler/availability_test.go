@@ -694,7 +694,7 @@ func assertWeekStarts(t *testing.T, want, got []string) {
 func declaredWeeks(t *testing.T, app *fiber.App, token, query string) (*http.Response, []string) {
 	t.Helper()
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability/declared-weeks"+query, nil, token)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: availabilityTestTimeout})
 	if err != nil {
 		t.Fatalf("Failed to list declared weeks: %v", err)
 	}
@@ -1164,5 +1164,42 @@ func TestAvailability_CeilingAppliesToAWindowedListingToo(t *testing.T) {
 	}
 	if starts := weekStarts(weeks); starts[0] != ceilingOldestKeptWeek {
 		t.Errorf("Expected the oldest kept week to be %s, got %s", ceilingOldestKeptWeek, starts[0])
+	}
+}
+
+// The carve-out the ceiling's safety rests on. App builds that predate the
+// window plan their declaration reminders off this endpoint, so a cap here
+// brings back a nudge for a week the athlete already answered, which is the
+// regression #127 names as unacceptable. The listing beside it is capped at
+// 520 and this one sits a few lines away in the same query file, so the guard
+// is a week count past that ceiling rather than an argument in a comment.
+func TestAvailability_DeclaredWeeksStayUncappedPastTheListingCeiling(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	userID, userToken := testutil.CreateTestUser(t, queries, "avail22user@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AvailabilityHandler: handler.NewAvailabilityHandler(queries, pool),
+	})
+	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 521)
+
+	resp, mondays := declaredWeeks(t, app, userToken, "")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	if len(mondays) != 521 {
+		t.Fatalf("Expected all 521 declared weeks, got %d", len(mondays))
+	}
+	// The week the listing's ceiling drops is the one a cap here would drop
+	// first, so naming it is what fails loudly rather than as a count.
+	if mondays[0] != ceilingDroppedWeek {
+		t.Errorf("Expected the oldest declared week %s, got %s", ceilingDroppedWeek, mondays[0])
+	}
+	if mondays[len(mondays)-1] != ceilingNewestWeek {
+		t.Errorf("Expected the newest declared week %s, got %s", ceilingNewestWeek, mondays[len(mondays)-1])
+	}
+	if got := resp.Header.Get(availabilityTruncatedHeader); got != "" {
+		t.Errorf("Expected no truncation header on the declared weeks, got %q", got)
 	}
 }

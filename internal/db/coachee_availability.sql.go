@@ -59,9 +59,17 @@ type ListCoacheeDayActivitiesParams struct {
 	ToWeek   pgtype.Date
 }
 
-// The activities of the weeks the window above keeps, ordered so it zips
-// straight onto the declarations. The two filters must be given the same
-// bounds, or a week would come back without what was planned in it.
+// The activities of the weeks the query above hands back, ordered so they zip
+// straight onto the declarations.
+//
+// from_week here is the oldest week that survived the row limit, not the
+// window the caller asked for, and the two are different whenever the limit
+// cut the answer. It must never be earlier than that week: handing this query
+// the caller's window instead would read every activity of every week the
+// ceiling dropped, which is the read the ceiling exists to avoid, and the
+// response would look identical, so nothing would fail. It must never be later
+// either, or a week would come back without what was planned in it. to_week is
+// the caller's, since the limit only ever cuts the old end.
 func (q *Queries) ListCoacheeDayActivities(ctx context.Context, arg ListCoacheeDayActivitiesParams) ([]CoacheeDayActivity, error) {
 	rows, err := q.db.Query(ctx, listCoacheeDayActivities, arg.UserID, arg.FromWeek, arg.ToWeek)
 	if err != nil {
