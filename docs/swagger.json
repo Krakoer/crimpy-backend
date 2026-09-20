@@ -611,7 +611,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all assessment results for the authenticated user, ordered by session date descending",
+                "description": "Retrieve all assessment results for the authenticated user, ordered by session date descending. Each row carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one.",
                 "produces": [
                     "application/json"
                 ],
@@ -739,7 +739,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.",
+                "description": "The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured, the bodyweight in effect then, which is the denominator a bodyweight relative score is read against, and the date that weigh-in was taken, which says how stale the denominator is; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.",
                 "produces": [
                     "application/json"
                 ],
@@ -1345,7 +1345,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all assessments for a user enrolled with the authenticated coach.",
+                "description": "Retrieve all assessments for a user enrolled with the authenticated coach. Each row carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one.",
                 "produces": [
                     "application/json"
                 ],
@@ -1391,7 +1391,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach. Each hand carries the date it was measured and the bodyweight in effect then, which is the denominator a bodyweight relative score is read against. Two reads give the two sides of a comparison between blocks.",
+                "description": "The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach. Each hand carries the date it was measured, the bodyweight in effect then, which is the denominator a bodyweight relative score is read against, and the date that weigh-in was taken, which says how stale the denominator is. Two reads give the two sides of a comparison between blocks.",
                 "produces": [
                     "application/json"
                 ],
@@ -6179,8 +6179,16 @@
                 "assessment_id": {
                     "type": "string"
                 },
+                "bodyweight_kg": {
+                    "description": "The weigh-in a bodyweight relative score is divided by: the last one taken\nat or before the session. Absent when no weigh-in qualifies, which is a\nratio a reader declines rather than invents.",
+                    "type": "number"
+                },
+                "bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken, which is how near the denominator is to the\nresult it divides. Absent exactly when the weight is.",
+                    "type": "string"
+                },
                 "bodyweight_relative": {
-                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the bodyweight series holds the denominator.",
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement. The list endpoints send the denominator on the row, see\nAssessmentListItem; the other read paths do not carry one.",
                     "type": "boolean"
                 },
                 "grip_position": {
@@ -6251,7 +6259,7 @@
                     "type": "string"
                 },
                 "bodyweight_relative": {
-                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the bodyweight series holds the denominator.",
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement. The list endpoints send the denominator on the row, see\nAssessmentListItem; the other read paths do not carry one.",
                     "type": "boolean"
                 },
                 "grip_position": {
@@ -6312,7 +6320,12 @@
                     "type": "string"
                 },
                 "left_bodyweight_kg": {
+                    "description": "The weight the left hand was pulled at, chosen and absent by the same rule\nas the right, and its own weigh-in: the two hands can come from sessions\nmonths apart, so neither answers for the other.",
                     "type": "number"
+                },
+                "left_bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken, read as RightBodyweightMeasuredAt is and\nabsent exactly when the weight beside it is.",
+                    "type": "string"
                 },
                 "left_measured_at": {
                     "type": "string"
@@ -6326,6 +6339,10 @@
                 "right_bodyweight_kg": {
                     "description": "The weight in effect when this hand was measured, which is the denominator\nits ratio has to be read against. Not the snapshot's bodyweight_kg: a value\ncarried forward from an earlier session was pulled at the weight of that\nday, and dividing it by a later one gives a number the athlete never\nachieved. Absent when no weigh-in precedes the measurement.",
                     "type": "number"
+                },
+                "right_bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken. A denominator is only worth dividing by while\nit is near the result it divides, and a weight on its own cannot say how\nnear it was: the last weigh-in at or before a result can be the same\nmorning or months earlier. Absent exactly when the weight is.",
+                    "type": "string"
                 },
                 "right_measured_at": {
                     "type": "string"
