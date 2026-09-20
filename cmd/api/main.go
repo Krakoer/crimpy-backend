@@ -99,6 +99,7 @@ func main() {
 	availabilityHandler := handler.NewAvailabilityHandler(queries, pool)
 	bodyweightHandler := handler.NewBodyweightHandler(queries, pool)
 	coachTodoHandler := handler.NewCoachTodoHandler(queries, pool)
+	coachTrainingLoadHandler := handler.NewCoachTrainingLoadHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -235,6 +236,7 @@ func main() {
 	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
 	api.Get("/coach/clients/:user_id/assessments/at", coachHandler.GetClientAssessmentSnapshot)
 	api.Get("/coach/clients/:user_id/bodyweights", bodyweightHandler.GetClientBodyweights)
+	api.Get("/coach/clients/:user_id/training-load", coachTrainingLoadHandler.GetClientTrainingLoad)
 
 	// Program routes (coach manages, coachee reads)
 	api.Post("/coach/clients/:user_id/programs", programHandler.CreateProgram)
