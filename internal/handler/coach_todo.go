@@ -290,7 +290,7 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 	// The Mondays are instants on the caller's clock already, so the window the
 	// stored UTC rows are counted in is just the pair of them. Adding the days
 	// before converting is what keeps a week holding a daylight saving change
-	// seven real days long rather than an hour short or an hour over.
+	// seven calendar days long rather than an hour short or an hour over.
 	sessionsThisWeek, err := h.queries.CountCoachSessionsInWindow(c.Context(), db.CountCoachSessionsInWindowParams{
 		CoachID:     coachUUID,
 		WindowStart: pgtype.Timestamptz{Time: thisMonday.UTC(), Valid: true},

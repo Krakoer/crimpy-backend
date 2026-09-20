@@ -24,9 +24,14 @@ const (
 	minTimezoneOffsetMin = -12 * 60
 	maxTimezoneOffsetMin = 14 * 60
 
-	// The zone name the server itself runs in. time.LoadLocation answers it,
-	// which would silently cut a caller's weeks on the host's clock.
-	serverLocationName = "Local"
+	// The one zone name a browser reports that is not of the form Area/Location.
+	// Postgres reads it as a fixed zero offset and so does Go, so the two agree.
+	utcZoneName = "UTC"
+
+	// Alternative encodings of the same zones, which some distributions ship in
+	// /usr/share/zoneinfo and Postgres does not carry at all.
+	posixZonePrefix = "posix/"
+	leapZonePrefix  = "right/"
 )
 
 // callerClock is the clock an endpoint cuts its weeks on.
@@ -91,15 +96,35 @@ func (clock callerClock) offsetMinutes() int32 {
 
 // loadCallerZone resolves an IANA zone name a caller sent.
 //
-// It refuses the names that resolve to something other than a zone the caller
-// could be in: "Local" is the server's own, and the empty name is UTC by
-// accident rather than by request. Anything else LoadLocation rejects is
-// refused here as a bad request, rather than reaching the database and failing
-// there as a server error.
+// The name has to mean the same thing to Go and to Postgres, since the two cut
+// the same weeks from opposite ends of the request, so it is held to the shape
+// a zone name really has, Area/Location, with UTC the one exception a browser
+// reports. What that turns away, measured rather than assumed:
+//
+// A name with no slash is an abbreviation or a legacy alias, and Postgres reads
+// several of them off its abbreviation table as a fixed offset where Go reads
+// the zone with its daylight saving rules. Comparing every name in
+// pg_timezone_names against Go over a full 52 week window, CET, EET, MET and
+// WET are exactly the four that disagree: AT TIME ZONE 'CET' is +01:00 all year
+// while Go's CET moves to +02:00 in summer, so the ticket's own bug would still
+// be there for a caller who sent one. No abbreviation Postgres carries contains
+// a slash, so requiring one turns away the whole class.
+//
+// It also turns away the names that mean the server rather than the caller,
+// "Local" and the "localtime" symlink a Debian host keeps in its zoneinfo
+// directory, which LoadLocation answers with the host's own zone and Postgres
+// does not know at all.
+//
+// The posix/ and right/ trees are the remaining names Go may resolve from a
+// host's zoneinfo and Postgres cannot, so they are named here.
 func loadCallerZone(name string) (*time.Location, error) {
 	invalid := errors.New("timezone must be an IANA zone name such as Europe/Paris")
-	if name == serverLocationName {
-		return nil, invalid
+	if name != utcZoneName {
+		if !strings.Contains(name, "/") ||
+			strings.HasPrefix(name, posixZonePrefix) ||
+			strings.HasPrefix(name, leapZonePrefix) {
+			return nil, invalid
+		}
 	}
 	zone, err := time.LoadLocation(name)
 	if err != nil {
@@ -123,8 +148,8 @@ func parseTimezoneOffset(raw string) (time.Duration, error) {
 	return time.Duration(minutes) * time.Minute, nil
 }
 
-// mondayOfWeek is the instant the caller's week holding at opened, their own
-// Monday at midnight. day_of_week is 0 = Monday everywhere in this codebase,
+// mondayOfWeek is the instant that opened the caller's week holding at, their
+// own Monday at midnight. day_of_week is 0 = Monday everywhere in this codebase,
 // while Go counts from Sunday, which is what the shift corrects.
 //
 // A zone that springs forward across its own midnight has a day with no

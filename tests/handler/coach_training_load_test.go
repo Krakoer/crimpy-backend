@@ -604,6 +604,22 @@ func TestTrainingLoadCutsWeeksAcrossADaylightSavingChange(t *testing.T) {
 	}
 }
 
+// UTC is the one zone name a browser reports that is not of the form
+// Area/Location, so it has to pass the shape the others are held to.
+func TestTrainingLoadAcceptsUTCAsAZone(t *testing.T) {
+	app, pool, _, _, userID, coachToken := setupTrainingLoadApp(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?weeks=2&timezone=UTC", userID)
+	resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, requestURL, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 for timezone=UTC, got %d", resp.StatusCode)
+	}
+}
+
 // The zone is the caller's, not the server's, and not a name the database would
 // choke on later. A malformed offset is still refused alongside a good zone,
 // rather than being dropped unread because the zone would have won anyway.
@@ -616,6 +632,18 @@ func TestTrainingLoadRejectsAnUnusableTimezone(t *testing.T) {
 		"timezone=Local",
 		"timezone=" + url.QueryEscape("../../etc/passwd"),
 		"timezone=CEST",
+		// Postgres reads these four off its abbreviation table as a fixed
+		// offset while Go reads the zone with its daylight saving rules, so the
+		// two would cut different weeks for half the year.
+		"timezone=CET",
+		"timezone=EET",
+		"timezone=MET",
+		"timezone=WET",
+		// The host's own zone under another name, and trees Postgres does not
+		// carry, both of which a development machine resolves happily.
+		"timezone=localtime",
+		"timezone=" + url.QueryEscape("posix/Europe/Paris"),
+		"timezone=" + url.QueryEscape("right/Europe/Paris"),
 		"timezone=" + url.QueryEscape("Europe/Paris") + "&tz_offset_minutes=9999",
 	} {
 		requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?%s", userID, query)
