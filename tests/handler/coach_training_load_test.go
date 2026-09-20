@@ -367,3 +367,88 @@ func TestTrainingLoadDefaultsToTwelveWeeks(t *testing.T) {
 		t.Fatalf("Expected no chronic baseline with no history at all, got %v", body.Weeks[0]["chronic_load"])
 	}
 }
+
+// A week the athlete recorded sessions in but gave no duration to is not a week
+// they trained for free. duration is NOT NULL DEFAULT 0, so a client that omits
+// it writes a zero that means "not recorded", and multiplying the mean RPE by it
+// would hand the coach a load of zero for a week that was trained.
+func TestTrainingLoadLeavesAWeekWithNoDurationUnknown(t *testing.T) {
+	app, pool, _, _, userID, coachToken := setupTrainingLoadApp(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	monday := loadTestMonday(0)
+	insertLoadSession(t, pool, userID, monday.Add(18*time.Hour), 1, 0, rpeOf(8), false)
+
+	current := fetchTrainingLoad(t, app, coachToken, userID, 1)[0]
+	if got := numberAt(t, current, "session_count"); got != 1 {
+		t.Fatalf("Expected the session to be counted, got %v", got)
+	}
+	if got := numberAt(t, current, "mean_rpe"); got != 8 {
+		t.Fatalf("Expected the rating to stand on its own, got %v", got)
+	}
+	if current["acute_load"] != nil {
+		t.Fatalf("Expected an unknown acute load, got %v", current["acute_load"])
+	}
+	// And it must not enter the chronic mean as a measured rest week.
+	if current["chronic_load"] != nil {
+		t.Fatalf("Expected no baseline from a week with no knowable load, got %v", current["chronic_load"])
+	}
+}
+
+// The offset is signed, and every week boundary in the view is cut with it. A
+// western hemisphere coach is the case that would catch a shift applied the
+// wrong way round, which a positive offset alone cannot.
+func TestTrainingLoadCutsTheWeekOnANegativeOffset(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTrainingLoadHandler: handler.NewCoachTrainingLoadHandler(queries, pool),
+	})
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "loadwestcoach-test@example.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "loadwestclient-test@example.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	const offsetMinutes = -300
+	shiftedNow := time.Now().UTC().Add(offsetMinutes * time.Minute)
+	daysSinceMonday := (int(shiftedNow.Weekday()) + 6) % 7
+	day := shiftedNow.AddDate(0, 0, -daysSinceMonday)
+	monday := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+
+	// Sunday 23:30 on the caller's clock, which is already Monday in UTC. It
+	// belongs to the week that closes, not to the one that opens.
+	lastMomentOfTheWeek := monday.Add(-30 * time.Minute)
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, duration, rpe)
+		 VALUES ($1, 'Late Sunday', '', $2, 1, 'logged', 3600, 7)`,
+		userID, lastMomentOfTheWeek.Add(-offsetMinutes*time.Minute))
+	if err != nil {
+		t.Fatalf("Failed to insert session: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/coach/clients/%s/training-load?weeks=2&tz_offset_minutes=%d", userID, offsetMinutes)
+	resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, url, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	var body struct {
+		Weeks []map[string]interface{} `json:"weeks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("Failed to decode: %v", err)
+	}
+
+	if body.Weeks[1]["week_start"] != monday.Format(time.DateOnly) {
+		t.Fatalf("Expected the current week to start on %s, got %v", monday.Format(time.DateOnly), body.Weeks[1]["week_start"])
+	}
+	if got := numberAt(t, body.Weeks[0], "session_count"); got != 1 {
+		t.Fatalf("Expected the session in the week that closes, got %v", got)
+	}
+	if got := numberAt(t, body.Weeks[1], "session_count"); got != 0 {
+		t.Fatalf("Expected nothing in the current week, got %v", got)
+	}
+}

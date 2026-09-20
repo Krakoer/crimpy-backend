@@ -67,8 +67,15 @@ type WeeklyTrainingLoadResponse struct {
 	// ChronicLoad averages the acute load of this week and the weeks before it,
 	// ChronicWeeks of them in all, never more than three and never reaching
 	// before the athlete's first recorded session.
-	ChronicLoad  *float64 `json:"chronic_load"`
-	ChronicWeeks int32    `json:"chronic_weeks"`
+	ChronicLoad *float64 `json:"chronic_load"`
+	// ChronicWeeks is how many weeks the mean beside it actually rested on, so
+	// it is not always a count of how much history exists. A week inside the
+	// window whose own load is unknown is skipped rather than counted as zero,
+	// the current week included, so a 2 can mean "only two weeks of history" or
+	// "three weeks, one of them unrated". It is 0 exactly when ChronicLoad is
+	// null, which is a week with no baseline at all rather than a baseline of
+	// nothing.
+	ChronicWeeks int32 `json:"chronic_weeks"`
 	// AcuteChronicRatio is acute over chronic, null when there is no chronic
 	// baseline to divide by yet.
 	AcuteChronicRatio *float64 `json:"acute_chronic_ratio"`
@@ -136,6 +143,13 @@ func deriveWeek(row db.GetCoacheeWeeklyTrainingLoadRow) weeklyLoad {
 		// This is what keeps a rest week in the chronic mean.
 		zero := 0.0
 		week.acuteLoad = &zero
+	case week.totalMinutes == 0:
+		// Sessions were recorded but none of them carries a duration. duration
+		// is NOT NULL DEFAULT 0, so a client that omits it writes a zero that
+		// means "not recorded" rather than "no time spent". Multiplying by it
+		// would hand back a load of zero for a week that was trained, which is
+		// the same misreport an unrated session would make, in the same
+		// direction. Left unknown for the same reason.
 	case week.meanRpe != nil:
 		load := *week.meanRpe * float64(week.totalMinutes)
 		week.acuteLoad = &load
@@ -243,7 +257,7 @@ func parseTrainingLoadWeeks(raw string) (int, error) {
 
 // GetClientTrainingLoad godoc
 // @Summary Get a client's weekly training load
-// @Description The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, which is what tz_offset_minutes carries, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, and chronic_weeks says how many weeks it rested on. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.
+// @Description The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, which is what tz_offset_minutes carries, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating or no recorded duration, since the effort is then simply not known. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, skipping any week whose own load is unknown, and chronic_weeks says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The minutes of each bucket are rounded from their own second totals, so the climbing and strength figures can differ from the total by a minute on sub minute sessions. tz_offset_minutes is applied uniformly to every week in the window, so a window spanning a daylight saving change is an hour out on the far side of it, see Krakoer/crimpy#123. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -279,6 +293,14 @@ func (h *CoachTrainingLoadHandler) GetClientTrainingLoad(c fiber.Ctx) error {
 	// The clock is shifted rather than located, the way coach_todo.go does it,
 	// so every Monday below is the caller's own without the server needing to
 	// know their timezone name.
+	//
+	// The offset is the caller's at request time and is applied to every week
+	// in the window, not only the current one. A window spanning a daylight
+	// saving change is therefore an hour out on the far side of it, which moves
+	// a session recorded within that hour of a Monday midnight into the
+	// neighbouring week. Named rather than fixed here because fixing it means
+	// taking an IANA zone name instead of an offset, which is a change to the
+	// convention coach_todo.go also carries: Krakoer/crimpy#123.
 	lastMonday := mondayOfWeek(time.Now().UTC().Add(offset))
 	firstShownMonday := lastMonday.AddDate(0, 0, -daysInWeek*(weeksWanted-1))
 	firstReadMonday := firstShownMonday.AddDate(0, 0, -daysInWeek*trainingLoadLeadInWeeks)

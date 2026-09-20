@@ -1734,6 +1734,14 @@ definitions:
           before the athlete's first recorded session.
         type: number
       chronic_weeks:
+        description: |-
+          ChronicWeeks is how many weeks the mean beside it actually rested on, so
+          it is not always a count of how much history exists. A week inside the
+          window whose own load is unknown is skipped rather than counted as zero,
+          the current week included, so a 2 can mean "only two weeks of history" or
+          "three weeks, one of them unrated". It is 0 exactly when ChronicLoad is
+          null, which is a week with no baseline at all rather than a baseline of
+          nothing.
         type: integer
       climbing_minutes:
         type: integer
@@ -3403,12 +3411,19 @@ paths:
         ECHEC is left out too and reported separately as failed_sessions, because
         ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is
         mean_rpe times total_minutes, zero for a week with no session at all and null
-        for a week that holds sessions but no rating. chronic_load averages the acute
-        load of this week and up to the two before it, never reaching before the athlete''s
-        first recorded session, and chronic_weeks says how many weeks it rested on.
-        acute_chronic_ratio and load_change_percent are null wherever there is no
-        baseline to divide by. The interpretation bands the coach reads these against
-        are guidance held by the portal, not a judgement this endpoint makes.'
+        for a week that holds sessions but no rating or no recorded duration, since
+        the effort is then simply not known. chronic_load averages the acute load
+        of this week and up to the two before it, never reaching before the athlete''s
+        first recorded session, skipping any week whose own load is unknown, and chronic_weeks
+        says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio
+        and load_change_percent are null wherever there is no baseline to divide by.
+        The minutes of each bucket are rounded from their own second totals, so the
+        climbing and strength figures can differ from the total by a minute on sub
+        minute sessions. tz_offset_minutes is applied uniformly to every week in the
+        window, so a window spanning a daylight saving change is an hour out on the
+        far side of it, see Krakoer/crimpy#123. The interpretation bands the coach
+        reads these against are guidance held by the portal, not a judgement this
+        endpoint makes.'
       parameters:
       - description: Client user ID
         in: path
