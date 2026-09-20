@@ -43,7 +43,11 @@ const (
 	// answer is a bare JSON array that old clients parse, so the fact cannot
 	// ride in the body without breaking them, and a short answer with nothing
 	// on it reads exactly like an athlete who declared fewer weeks.
-	availabilityTruncatedHeader = "X-Availability-Weeks-Truncated"
+	//
+	// Exported because the CORS middleware has to expose exactly this header
+	// for a browser to be allowed to read it, and a second spelling of it over
+	// there would drift without anything failing.
+	AvailabilityTruncatedHeader = "X-Availability-Weeks-Truncated"
 )
 
 type AvailabilityHandler struct {
@@ -471,7 +475,7 @@ func (h *AvailabilityHandler) loadWeeks(c fiber.Ctx, userUUID pgtype.UUID, windo
 // proof that it read the athlete's whole history rather than the start of it.
 func respondWithWeeks(c fiber.Ctx, weeks []WeekAvailabilityResponse, truncated bool) error {
 	if truncated {
-		c.Set(availabilityTruncatedHeader, "true")
+		c.Set(AvailabilityTruncatedHeader, "true")
 	}
 	return c.Status(fiber.StatusOK).JSON(weeks)
 }

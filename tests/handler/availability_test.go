@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,12 @@ import (
 
 // A Monday, so every week_start in these tests satisfies the schema check.
 const testWeekStart = "2026-06-01"
+
+// app.Test defaults to failing after a second, which a listing of hundreds of
+// weeks can cross on a loaded dev database. The same explicit timeout as
+// fetchTrainingLoad in coach_training_load_test.go, so a slow read reads as
+// slow rather than as the ceiling having regressed.
+const availabilityTestTimeout = 10 * time.Second
 
 // activity builds one entry of a day's list. Only the label is required, so the
 // optional fields are left out when nil rather than sent as null.
@@ -652,7 +659,7 @@ func allWindowWeeks() []string {
 func listWeeksWithQuery(t *testing.T, app *fiber.App, token, query string) (*http.Response, []map[string]interface{}) {
 	t.Helper()
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/user/availability"+query, nil, token)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: availabilityTestTimeout})
 	if err != nil {
 		t.Fatalf("Failed to list availability: %v", err)
 	}
@@ -1110,7 +1117,7 @@ func TestAvailability_CoachListingHitsTheSameCeiling(t *testing.T) {
 	seedDeclaredWeeks(t, pool, userID, ceilingNewestWeek, 521)
 
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/clients/"+userID+"/availability", nil, coachToken)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: availabilityTestTimeout})
 	if err != nil {
 		t.Fatalf("Failed to read client availability: %v", err)
 	}
