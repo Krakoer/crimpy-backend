@@ -6327,6 +6327,7 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "left_bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken, read as RightBodyweightMeasuredAt is and\nabsent exactly when the weight beside it is.",
                     "type": "string"
                 },
                 "left_measured_at": {
