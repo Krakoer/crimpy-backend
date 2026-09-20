@@ -51,9 +51,18 @@ DELETE FROM assessment_definitions WHERE id = @id;
 -- coach's training is only readable under a program of the caller's, so a row
 -- that reaches the caller by prescription alone carries the id that reads it.
 -- Several programs may prescribe the same training, and any of them authorizes
--- reading it, so the most recent is taken: it is the one the athlete is running
--- now, and it is its week overrides that name the assessments the training
--- itself does not.
+-- reading it, so the one the athlete is running now is taken: it is that
+-- program's week overrides that name the assessments the training itself does
+-- not, and reading the training under a block the athlete has moved on from
+-- leaves a prescribed percentage with nothing to label it. Started blocks
+-- first, nearest start date next, which is the current block; a coach who has
+-- only planned ahead leaves the one starting soonest.
+--
+-- The set the WHERE admits and the set this names have to be the same, or a row
+-- is listed carrying no program and the app skips an assessment the server
+-- would accept. They are written apart because a filter that reads this join
+-- cannot be applied before it, which would run the join for every assessment
+-- definition in the database rather than for the caller's.
 --
 -- assessment_id narrows the answer to a single member of that set, which is how
 -- the record path asks whether one assessment may be written against. Omitting
@@ -72,14 +81,20 @@ LEFT JOIN LATERAL (
   JOIN coach_program_weeks w ON w.id = s.week_id
   JOIN coach_programs p ON p.id = w.program_id
   WHERE s.training_id = d.training_id AND p.user_id = @user_id
-  ORDER BY p.created_at DESC, p.id
+  ORDER BY (p.start_date <= current_date) DESC, abs(p.start_date - current_date), p.created_at DESC, p.id
   LIMIT 1
 ) prescribed ON TRUE
 WHERE (sqlc.narg('assessment_id')::uuid IS NULL OR d.id = sqlc.narg('assessment_id')::uuid)
   AND (
     d.user_id IS NULL
     OR d.user_id = @user_id
-    OR prescribed.program_id IS NOT NULL
+    OR d.training_id IN (
+      SELECT s.training_id
+      FROM coach_program_week_sessions s
+      JOIN coach_program_weeks w ON w.id = s.week_id
+      JOIN coach_programs p ON p.id = w.program_id
+      WHERE p.user_id = @user_id
+    )
   )
 ORDER BY d.user_id NULLS FIRST, d.label;
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -139,6 +140,20 @@ func TestAssessmentDefinitions_RecordableAddsThePrescribedOnes(t *testing.T) {
 	if _, named := recordable[testutil.BuiltinMaxForceID]["program_id"]; named {
 		t.Errorf("Expected no program on an assessment Crimpy ships")
 	}
+
+	// The pair is served so the athlete can read the training under it, which
+	// is the only reason the program id is on the row at all. The listing and
+	// GetMyProgramTraining authorize through predicates written apart, so this
+	// closes the loop rather than trusting they still match.
+	resp, err := s.App.Test(testutil.NewJSONRequestWithAuth(http.MethodGet,
+		"/api/user/programs/"+prescribed["program_id"].(string)+"/trainings/"+prescribed["training_id"].(string),
+		nil, s.UserToken))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected the program the listing named to read the training, got %d", resp.StatusCode)
+	}
 }
 
 // The listing is the recordable set and not a superset of it: an assessment a
@@ -252,23 +267,64 @@ func TestAssessmentDefinitions_RecordableReportsTheSameUnitLockAsTheCatalog(t *t
 	}
 }
 
-// The program named is the one the athlete is running now. Any program that
-// prescribes the training authorizes reading it, but the training is served
-// with the assessments that program's week overrides name, so an older program
-// would label the run against a prescription the athlete has moved on from.
-func TestAssessmentDefinitions_RecordableNamesTheMostRecentProgram(t *testing.T) {
+// The program named is the block the athlete is running now, which is the one
+// whose week overrides name the assessments the training itself does not. Any
+// program that prescribes the training authorizes reading it, so this is not an
+// access question: reading it under a block they have moved on from, or have
+// not started, leaves a prescribed percentage with nothing to label it.
+//
+// The dates are relative to today so the test does not rot, and the block that
+// should win is created before the one that should not, so an order on the row
+// creation time answers differently whichever way it is pointed.
+func TestAssessmentDefinitions_RecordableNamesTheProgramInProgress(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
-	s := setupRecordable(t, "recrecent")
+	s := setupRecordable(t, "recinprog")
 
-	later := createTestProgram(t, s.CoachToken, s.UserID, s.App)
-	if later == s.ProgramID {
-		t.Fatalf("Expected a second program")
+	today := time.Now().UTC()
+	current := createProgramStarting(t, s, mondayOnOrBefore(today.AddDate(0, 0, -5)))
+	planned := createProgramStarting(t, s, mondayOnOrBefore(today.AddDate(0, 0, 60)))
+	for _, programID := range []string{current, planned} {
+		prescribeSession(t, s.App, s.CoachToken, s.UserID, programID, s.PrescribedTrainingID, nil)
 	}
-	prescribeSession(t, s.App, s.CoachToken, s.UserID, later, s.PrescribedTrainingID, nil)
 
 	recordable := listAssessmentDefinitions(t, s.App, s.UserToken, "?recordable=true")
-	if recordable[s.PrescribedID]["program_id"] != later {
-		t.Errorf("Expected the most recent program that prescribes it, got %v want %v",
-			recordable[s.PrescribedID]["program_id"], later)
+	named := recordable[s.PrescribedID]["program_id"]
+	if named != current {
+		switch named {
+		case planned:
+			t.Errorf("Expected the block in progress, got the one starting in two months")
+		case s.ProgramID:
+			t.Errorf("Expected the block in progress, got the one that started months ago")
+		default:
+			t.Errorf("Expected the block in progress %v, got %v", current, named)
+		}
 	}
+}
+
+// createProgramStarting is createTestProgram with a start date of its own, so a
+// test can place a block before or after today.
+func createProgramStarting(t *testing.T, s recordableSetup, start time.Time) string {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":       "Block from " + start.Format(time.DateOnly),
+		"start_date": start.Format(time.DateOnly),
+	})
+	resp, err := s.App.Test(testutil.NewJSONRequestWithAuth(http.MethodPost,
+		"/api/coach/clients/"+s.UserID+"/programs", body, s.CoachToken))
+	if err != nil {
+		t.Fatalf("Failed to create program: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating a program, got %d", resp.StatusCode)
+	}
+	var created map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&created)
+	return created["id"].(string)
+}
+
+// mondayOnOrBefore snaps a date back to its Monday, which is the only day a
+// program may start on. Snapping backwards keeps a past date past; the future
+// date it is used on is far enough ahead to stay future.
+func mondayOnOrBefore(day time.Time) time.Time {
+	return day.AddDate(0, 0, -int((day.Weekday()+6)%7))
 }
