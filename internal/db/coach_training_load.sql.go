@@ -108,7 +108,11 @@ weekly AS (
   SELECT
     (date_trunc(
       'week',
-      (s.date AT TIME ZONE 'UTC') + make_interval(mins => $3::integer)
+      CASE
+        WHEN $3::text IS NOT NULL
+          THEN s.date AT TIME ZONE $3::text
+        ELSE (s.date AT TIME ZONE 'UTC') + make_interval(mins => $4::integer)
+      END
     ))::date AS week_start,
     COUNT(*)::integer AS session_count,
     COALESCE(SUM(s.duration), 0)::bigint AS total_seconds,
@@ -125,9 +129,9 @@ weekly AS (
     COALESCE(SUM(s.rpe), 0)::bigint AS rpe_sum,
     COUNT(*) FILTER (WHERE s.rpe_failed)::integer AS failed_sessions
   FROM sessions s
-  WHERE s.user_id = $4
-    AND s.date >= $5
-    AND s.date < $6
+  WHERE s.user_id = $5
+    AND s.date >= $6
+    AND s.date < $7
   GROUP BY 1
 )
 SELECT
@@ -147,6 +151,7 @@ ORDER BY g.week_start
 type GetCoacheeWeeklyTrainingLoadParams struct {
 	FirstWeekStart  pgtype.Date
 	LastWeekStart   pgtype.Date
+	TzName          pgtype.Text
 	TzOffsetMinutes int32
 	UserID          pgtype.UUID
 	WindowStart     pgtype.Timestamptz
@@ -169,11 +174,13 @@ type GetCoacheeWeeklyTrainingLoadRow struct {
 // nothing are returned as zeros rather than skipped: dropping them shortens the
 // rolling chronic mean, which then reads as if the rest week never happened.
 //
-// Weeks are cut on the coach's own Monday. Session instants are stored in UTC,
-// so they are shifted by the caller's offset before being truncated, and the
-// grid is built in that same shifted space. The shift is spelled out rather
-// than left to AT TIME ZONE because date_trunc on a bare timestamp answers the
-// same whatever the server's TimeZone setting happens to be.
+// Weeks are cut on the coach's own Monday. Given their IANA zone name, the
+// session instant is read in that zone, so every boundary lands where the
+// athlete lived it even where a daylight saving change falls inside the window.
+// Without one, the caller's offset is added instead, which is exact only for a
+// window that holds no such change: it is the fallback for a client that does
+// not send a zone yet. Either way date_trunc runs on a bare timestamp, so it
+// answers the same whatever the server's TimeZone setting happens to be.
 //
 // Only the raw sums live here. The mean RPE, the acute and chronic loads and
 // the ratios are derived by the handler, where the rules about an unrated
@@ -185,6 +192,7 @@ func (q *Queries) GetCoacheeWeeklyTrainingLoad(ctx context.Context, arg GetCoach
 	rows, err := q.db.Query(ctx, getCoacheeWeeklyTrainingLoad,
 		arg.FirstWeekStart,
 		arg.LastWeekStart,
+		arg.TzName,
 		arg.TzOffsetMinutes,
 		arg.UserID,
 		arg.WindowStart,

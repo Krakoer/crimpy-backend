@@ -3,7 +3,6 @@ package handler
 import (
 	"crimpy/backend/internal/db"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -15,11 +14,9 @@ import (
 )
 
 const (
-	defaultFeedLimit     = 20
-	maxFeedLimit         = 100
-	maxPendingFeedback   = 50
-	minTimezoneOffsetMin = -12 * 60
-	maxTimezoneOffsetMin = 14 * 60
+	defaultFeedLimit   = 20
+	maxFeedLimit       = 100
+	maxPendingFeedback = 50
 
 	defaultEmptyWeekDayOfWeek = 4
 	defaultEmptyWeekHour      = 21
@@ -147,30 +144,6 @@ func validateTodoSettings(req CoachTodoSettingsRequest) error {
 	return nil
 }
 
-// parseTimezoneOffset reads the caller's offset east of UTC in minutes, which
-// is what a browser sends as the negation of getTimezoneOffset(). The moment a
-// coach picked is a wall clock time in their own week, so the server cannot
-// judge it from its own clock alone.
-func parseTimezoneOffset(raw string) (time.Duration, error) {
-	if raw == "" {
-		return 0, nil
-	}
-	minutes, err := strconv.Atoi(raw)
-	if err != nil || minutes < minTimezoneOffsetMin || minutes > maxTimezoneOffsetMin {
-		return 0, fmt.Errorf("tz_offset_minutes must be a whole number of minutes between %d and %d", minTimezoneOffsetMin, maxTimezoneOffsetMin)
-	}
-	return time.Duration(minutes) * time.Minute, nil
-}
-
-// mondayOfWeek truncates an instant to the Monday of the week holding it, at
-// midnight. day_of_week is 0 = Monday everywhere in this codebase, while Go
-// counts from Sunday, which is what the shift corrects.
-func mondayOfWeek(t time.Time) time.Time {
-	daysSinceMonday := (int(t.Weekday()) + 6) % 7
-	day := t.AddDate(0, 0, -daysSinceMonday)
-	return time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, t.Location())
-}
-
 // GetCoachFeed godoc
 // @Summary Get my coaching feed
 // @Description Recent activity across every coachee enrolled with the authenticated coach, newest first. Each event carries a kind: session_completed for a session an athlete did, availability_declared for a calendar week they declared, coachee_enrolled for a coachee who joined. Pass before to page backwards, using the occurred_at of the oldest event already held.
@@ -260,13 +233,14 @@ func feedRowToResponse(row db.GetCoachFeedRow) FeedEventResponse {
 
 // GetCoachTodo godoc
 // @Summary Get my coaching TODO list
-// @Description What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.
+// @Description What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its own clock. Send timezone, an IANA zone name, and the week is cut on the caller's real calendar even where a daylight saving change falls inside it. tz_offset_minutes is the fallback for a client that does not send a zone yet.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
-// @Param tz_offset_minutes query int false "Caller's offset east of UTC in minutes, defaults to 0"
+// @Param timezone query string false "Caller's IANA zone name, for example Europe/Paris. Preferred over tz_offset_minutes"
+// @Param tz_offset_minutes query int false "Caller's offset east of UTC in minutes, defaults to 0. Used when timezone is absent"
 // @Success 200 {object} CoachTodoResponse "The TODO list"
-// @Failure 400 {object} map[string]string "Invalid timezone offset"
+// @Failure 400 {object} map[string]string "Invalid timezone"
 // @Failure 403 {object} map[string]string "Not a validated coach"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /api/coach/todo [get]
@@ -276,7 +250,7 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		return nil
 	}
 
-	offset, err := parseTimezoneOffset(c.Query("tz_offset_minutes", ""))
+	clock, err := parseCallerClock(c)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -295,13 +269,16 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
 	}
 
-	// The clock is shifted rather than located, so every field below reads as
-	// the coach's own wall clock without the server needing their timezone name.
-	coachNow := time.Now().UTC().Add(offset)
-	thisMonday := mondayOfWeek(coachNow)
-	checkMoment := thisMonday.
-		AddDate(0, 0, int(settings.EmptyWeekDayOfWeek)).
-		Add(time.Duration(settings.EmptyWeekHour)*time.Hour + time.Duration(settings.EmptyWeekMinute)*time.Minute)
+	coachNow := time.Now().In(clock.zone)
+	thisMonday := clock.mondayOfWeek(coachNow)
+	// The moment the coach configured is a wall clock time in their week, so it
+	// is built as one rather than as a duration counted from the Monday. In the
+	// week a daylight saving change falls, counting hours lands an hour off the
+	// time they actually set: from the Monday of the spring forward week,
+	// 21:00 on the Sunday counted as 6 days and 21 hours is 22:00 there.
+	checkMoment := time.Date(
+		thisMonday.Year(), thisMonday.Month(), thisMonday.Day()+int(settings.EmptyWeekDayOfWeek),
+		int(settings.EmptyWeekHour), int(settings.EmptyWeekMinute), 0, 0, clock.zone)
 	nextMonday := thisMonday.AddDate(0, 0, daysInWeek)
 
 	pendingTotal, err := h.queries.CountCoachPendingSessionFeedback(c.Context(), coachUUID)
@@ -310,13 +287,14 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
 	}
 
-	// Back out of the shifted clock to name the two real instants the week runs
-	// between, since the rows being counted are stored in UTC.
-	weekStart := thisMonday.Add(-offset)
+	// The Mondays are instants on the caller's clock already, so the window the
+	// stored UTC rows are counted in is just the pair of them. Adding the days
+	// before converting is what keeps a week holding a daylight saving change
+	// seven calendar days long rather than an hour short or an hour over.
 	sessionsThisWeek, err := h.queries.CountCoachSessionsInWindow(c.Context(), db.CountCoachSessionsInWindowParams{
 		CoachID:     coachUUID,
-		WindowStart: pgtype.Timestamptz{Time: weekStart, Valid: true},
-		WindowEnd:   pgtype.Timestamptz{Time: weekStart.AddDate(0, 0, daysInWeek), Valid: true},
+		WindowStart: pgtype.Timestamptz{Time: thisMonday.UTC(), Valid: true},
+		WindowEnd:   pgtype.Timestamptz{Time: nextMonday.UTC(), Valid: true},
 	})
 	if err != nil {
 		slog.Error("failed to count sessions this week", "coach_id", coachUUID.String(), "error", err)
@@ -376,12 +354,12 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 
 // emptyWeeksOf lists the coach's programs that cover the calendar week starting
 // on monday and prescribe nothing in it, tagged with the scope the caller groups
-// them by. monday is read on the coach's own shifted clock, like every other week
-// boundary here.
+// them by. monday is the instant the coach's own week opened, like every other
+// week boundary here, and reaches the query as the bare date it falls on.
 func (h *CoachTodoHandler) emptyWeeksOf(c fiber.Ctx, coachUUID pgtype.UUID, monday time.Time, scope string) ([]EmptyProgramWeekResponse, error) {
 	rows, err := h.queries.GetCoachEmptyProgramWeeks(c.Context(), db.GetCoachEmptyProgramWeeksParams{
 		CoachID:   coachUUID,
-		WeekStart: pgtype.Date{Time: monday, Valid: true},
+		WeekStart: pgtype.Date{Time: calendarDate(monday), Valid: true},
 	})
 	if err != nil {
 		return nil, err

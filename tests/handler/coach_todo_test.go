@@ -846,6 +846,74 @@ func TestCoachTodo_RejectsAnImpossibleTimezoneOffset(t *testing.T) {
 	}
 }
 
+func TestCoachTodo_RejectsAnUnusableTimezone(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "todotznamecoach@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	for _, timezone := range []string{"Europe/Nowhere", "Local", "CEST"} {
+		req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/todo?timezone="+url.QueryEscape(timezone), nil, coachToken)
+		resp, _ := app.Test(req)
+		if resp.StatusCode != fiber.StatusBadRequest {
+			t.Errorf("Expected 400 for timezone %q, got %d", timezone, resp.StatusCode)
+		}
+	}
+}
+
+// The zone is what the coach's week is cut on when they send one, and it wins
+// over the offset beside it. Sent an offset that belongs to nobody's clock
+// right now, the week must still be the one Paris is really in.
+func TestCoachTodo_PrefersTheZoneOverTheOffset(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "todotzprefcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "todotzprefathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	paris, err := time.LoadLocation("Europe/Paris")
+	if err != nil {
+		t.Fatalf("Failed to load Europe/Paris: %v", err)
+	}
+	local := time.Now().In(paris)
+	daysSinceMonday := (int(local.Weekday()) + 6) % 7
+	day := local.AddDate(0, 0, -daysSinceMonday)
+	thisMonday := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, paris)
+
+	// Half an hour into the coach's week, which a caller twelve hours west of
+	// them would not count as this week at all.
+	insertSession(t, pool, userID, "Opening the week", "", thisMonday.Add(30*time.Minute), nil)
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/todo?tz_offset_minutes=-720&timezone=Europe%2FParis", nil, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	var todo map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&todo); err != nil {
+		t.Fatalf("Failed to decode: %v", err)
+	}
+	if got := todo["sessions_this_week"].(float64); got != 1 {
+		t.Fatalf("Expected the session inside the coach's own week, got %v", got)
+	}
+	check := todo["empty_week_check"].(map[string]interface{})
+	if got := check["week_start"]; got != thisMonday.AddDate(0, 0, 7).Format(time.DateOnly) {
+		t.Fatalf("Expected the coming Monday in Paris, got %v", got)
+	}
+}
+
 func TestCoachFeed_PagesThroughEventsSharingASecond(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
