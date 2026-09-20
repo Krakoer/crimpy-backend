@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -43,6 +44,13 @@ func insertLoadSessionAt(t *testing.T, pool *pgxpool.Pool, userID string, localA
 func insertLoadSession(t *testing.T, pool *pgxpool.Pool, userID string, localAt time.Time, activity, durationSeconds int, rpe *int, failed bool) {
 	t.Helper()
 	insertLoadSessionAt(t, pool, userID, localAt, loadTestOffsetMinutes, activity, durationSeconds, rpe, failed)
+}
+
+// insertLoadSessionInstant writes one session at a real instant, rather than at
+// a wall clock time on a shifted clock, which is what a test about zones needs.
+func insertLoadSessionInstant(t *testing.T, pool *pgxpool.Pool, userID string, at time.Time, activity, durationSeconds int, rpe *int) {
+	t.Helper()
+	insertLoadSessionAt(t, pool, userID, at, 0, activity, durationSeconds, rpe, false)
 }
 
 func rpeOf(value int) *int { return &value }
@@ -460,5 +468,156 @@ func TestTrainingLoadCutsTheWeekOnANegativeOffset(t *testing.T) {
 	}
 	if got := numberAt(t, body.Weeks[1], "session_count"); got != 0 {
 		t.Fatalf("Expected nothing in the current week, got %v", got)
+	}
+}
+
+// mondayInZone is the Monday of the week holding at, read in zone, at local
+// midnight.
+func mondayInZone(at time.Time, zone *time.Location) time.Time {
+	local := at.In(zone)
+	daysSinceMonday := (int(local.Weekday()) + 6) % 7
+	day := local.AddDate(0, 0, -daysSinceMonday)
+	return time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, zone)
+}
+
+// weeksBackToTheLastSwitch counts the Mondays between the current one and the
+// first one sitting on the other side of a daylight saving change. Derived from
+// the zone rather than written down, so the test keeps pinning a real
+// transition as the calendar moves past the one it was written against.
+func weeksBackToTheLastSwitch(t *testing.T, zone *time.Location) int {
+	t.Helper()
+	thisMonday := mondayInZone(time.Now(), zone)
+	_, nowOffset := thisMonday.Zone()
+	for back := 1; back <= maxTrainingLoadTestWeeks; back++ {
+		if _, offset := thisMonday.AddDate(0, 0, -7*back).Zone(); offset != nowOffset {
+			return back
+		}
+	}
+	t.Fatalf("Found no daylight saving change in the last year of %s", zone)
+	return 0
+}
+
+// The endpoint caps the window it will read, so a test reaching back to a
+// transition has to stay inside it. The widest gap between two changes is the
+// summer one, about thirty weeks, and the window here is three weeks wider.
+const maxTrainingLoadTestWeeks = 52
+
+// A window reaching back across a daylight saving change cannot be cut with a
+// single offset: whichever one the caller sends is right on one side of the
+// change and an hour out on the other, which moves a session recorded near a
+// Monday midnight into the neighbouring week. So the boundary is pinned from
+// both sides of both offsets, which no single offset can satisfy, and the
+// offset the caller would really send is passed alongside the zone to make sure
+// the zone is the one that wins.
+//
+// Run east and west of UTC, since a local midnight falls on the previous UTC
+// day in one and the same UTC day in the other.
+func TestTrainingLoadCutsWeeksAcrossADaylightSavingChange(t *testing.T) {
+	for _, zoneName := range []string{"Europe/Paris", "America/New_York"} {
+		t.Run(zoneName, func(t *testing.T) {
+			zone, err := time.LoadLocation(zoneName)
+			if err != nil {
+				t.Fatalf("Failed to load %s: %v", zoneName, err)
+			}
+
+			t.Setenv("JWT_SECRET", "test-secret-key")
+			pool, queries := testutil.SetupTestDB(t)
+			defer testutil.CleanupTestDB(t, pool)
+
+			app := testutil.SetupFiberApp(testutil.HandlerConfig{
+				CoachTrainingLoadHandler: handler.NewCoachTrainingLoadHandler(queries, pool),
+			})
+			coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "loaddstcoach-test@example.com")
+			userID, _ := testutil.CreateTestUser(t, queries, "loaddstclient-test@example.com")
+			enrollUserDirect(t, pool, coachID, userID)
+
+			thisMonday := mondayInZone(time.Now(), zone)
+			switchBack := weeksBackToTheLastSwitch(t, zone)
+
+			// afterSwitch is the first Monday on this side of the change,
+			// beforeSwitch one safely on the far side of it. The two boundaries
+			// are two weeks apart, so the four sessions land in four weeks.
+			afterSwitch := thisMonday.AddDate(0, 0, -7*(switchBack-1))
+			beforeSwitch := thisMonday.AddDate(0, 0, -7*(switchBack+1))
+			boundaries := []time.Time{afterSwitch, beforeSwitch}
+
+			// Each boundary is pinned from both sides: the last half hour of
+			// the week that closes and the first half hour of the week that
+			// opens. Both zones switch at 02:00 or 03:00 local, so neither wall
+			// clock time is one the change skips or repeats.
+			for _, monday := range boundaries {
+				insertLoadSessionInstant(t, pool, userID, monday.Add(-30*time.Minute), 1, 3600, rpeOf(7))
+				insertLoadSessionInstant(t, pool, userID, monday.Add(30*time.Minute), 1, 3600, rpeOf(7))
+			}
+
+			weeksWanted := switchBack + 3
+			if weeksWanted > maxTrainingLoadTestWeeks {
+				t.Fatalf("The last change in %s is %d weeks back, too far for the window", zone, switchBack)
+			}
+			_, nowOffset := thisMonday.Zone()
+			url := fmt.Sprintf("/api/coach/clients/%s/training-load?weeks=%d&tz_offset_minutes=%d&timezone=%s",
+				userID, weeksWanted, nowOffset/60, zoneName)
+			resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, url, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
+			if err != nil {
+				t.Fatalf("Request failed: %v", err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("Expected 200, got %d", resp.StatusCode)
+			}
+			var body struct {
+				Weeks []map[string]interface{} `json:"weeks"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Fatalf("Failed to decode: %v", err)
+			}
+
+			byWeek := make(map[string]map[string]interface{}, len(body.Weeks))
+			for _, week := range body.Weeks {
+				byWeek[week["week_start"].(string)] = week
+			}
+
+			for _, monday := range boundaries {
+				for _, want := range []struct{ weekStart, label string }{
+					{monday.AddDate(0, 0, -7).Format(time.DateOnly), "the last half hour of the week that closes"},
+					{monday.Format(time.DateOnly), "the first half hour of the week that opens"},
+				} {
+					week, found := byWeek[want.weekStart]
+					if !found {
+						t.Fatalf("Week %s is missing from the series", want.weekStart)
+					}
+					if got := numberAt(t, week, "session_count"); got != 1 {
+						t.Fatalf("Expected %s of %s to land in week %s, found %v sessions there",
+							want.label, monday.Format(time.DateOnly), want.weekStart, got)
+					}
+				}
+			}
+
+			// The athlete's history opens in the week the earliest of those
+			// sessions fell in, which the handler works out in Go rather than
+			// in the query. Placed a week either side it would read as a rest
+			// week to average in, or as silence before the history started.
+			firstWeek := beforeSwitch.AddDate(0, 0, -7).Format(time.DateOnly)
+			if got := numberAt(t, byWeek[firstWeek], "chronic_weeks"); got != 1 {
+				t.Fatalf("Expected week %s to be the first of the history and rest on itself alone, got %v weeks", firstWeek, got)
+			}
+		})
+	}
+}
+
+// The zone is the caller's, not the server's, and not a name the database would
+// choke on later.
+func TestTrainingLoadRejectsAnUnusableTimezone(t *testing.T) {
+	app, pool, _, _, userID, coachToken := setupTrainingLoadApp(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	for _, timezone := range []string{"Europe/Nowhere", "Local", "../../etc/passwd", "CEST"} {
+		requestURL := fmt.Sprintf("/api/coach/clients/%s/training-load?timezone=%s", userID, url.QueryEscape(timezone))
+		resp, err := app.Test(testutil.NewRequestWithAuth(http.MethodGet, requestURL, nil, coachToken), fiber.TestConfig{Timeout: 10 * time.Second})
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("Expected 400 for timezone %q, got %d", timezone, resp.StatusCode)
+		}
 	}
 }
