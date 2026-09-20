@@ -352,7 +352,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "The assessments Crimpy ships plus the caller's own, builtins first.",
+                "description": "The assessments Crimpy ships plus the caller's own, builtins first. With recordable=true the set widens to the ones a result may be recorded against, which adds a coach's assessment whose training a program prescribed to the caller; each of those carries the program_id that reads the training, since a coach's training is only readable under a program.",
                 "produces": [
                     "application/json"
                 ],
@@ -360,6 +360,14 @@ const docTemplate = `{
                     "Assessments"
                 ],
                 "summary": "List the assessments the caller may reference",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Serve the assessments a result may be recorded against rather than the catalog the caller may reference",
+                        "name": "recordable",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Assessments",
@@ -367,6 +375,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.AssessmentDefinitionResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid recordable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -6081,6 +6098,10 @@ const docTemplate = `{
                 },
                 "per_hand": {
                     "type": "boolean"
+                },
+                "program_id": {
+                    "description": "The program that reads the training backing this assessment, set only in\nthe recordable listing and only on a row the caller reaches through a\nprescription. A coach's training is not readable on its own, so without\nthis id the assessment names a training the caller cannot run.",
+                    "type": "string"
                 },
                 "prompt": {
                     "description": "Prompt and TrainingID are set on a coach written assessment and absent on\nthe ones Crimpy ships, which the app runs from a sensor protocol instead of\na training ending on a question.",

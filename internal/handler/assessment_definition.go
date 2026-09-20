@@ -4,6 +4,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -77,6 +78,11 @@ type AssessmentDefinitionResponse struct {
 	// stored, so the formula can be corrected without rewriting history.
 	BodyweightRelative bool `json:"bodyweight_relative"`
 	IsBuiltin          bool `json:"is_builtin"`
+	// The program that reads the training backing this assessment, set only in
+	// the recordable listing and only on a row the caller reaches through a
+	// prescription. A coach's training is not readable on its own, so without
+	// this id the assessment names a training the caller cannot run.
+	ProgramID *string `json:"program_id,omitempty"`
 	// Set once the unit and the hands can no longer move: results were measured
 	// against them, or a training reads a number against them.
 	UnitLocked bool   `json:"unit_locked"`
@@ -115,11 +121,13 @@ func (h *AssessmentDefinitionHandler) ownedAssessmentDefinition() ownedResource[
 
 // GetAssessmentDefinitions godoc
 // @Summary List the assessments the caller may reference
-// @Description The assessments Crimpy ships plus the caller's own, builtins first.
+// @Description The assessments Crimpy ships plus the caller's own, builtins first. With recordable=true the set widens to the ones a result may be recorded against, which adds a coach's assessment whose training a program prescribed to the caller; each of those carries the program_id that reads the training, since a coach's training is only readable under a program.
 // @Tags Assessments
 // @Produce json
 // @Security BearerAuth
+// @Param recordable query bool false "Serve the assessments a result may be recorded against rather than the catalog the caller may reference"
 // @Success 200 {array} AssessmentDefinitionResponse "Assessments"
+// @Failure 400 {object} map[string]string "Invalid recordable"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Router /api/assessment-definitions [get]
 func (h *AssessmentDefinitionHandler) GetAssessmentDefinitions(c fiber.Ctx) error {
@@ -128,29 +136,88 @@ func (h *AssessmentDefinitionHandler) GetAssessmentDefinitions(c fiber.Ctx) erro
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
-	rows, err := h.queries.GetAssessmentDefinitions(c.Context(), userUUID)
-	if err != nil {
-		slog.Error("failed to retrieve assessment definitions", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
+	recordable := false
+	if raw := c.Query("recordable"); raw != "" {
+		wanted, err := strconv.ParseBool(raw)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid recordable"})
+		}
+		recordable = wanted
 	}
 
-	ids := make([]pgtype.UUID, 0, len(rows))
-	for _, row := range rows {
-		ids = append(ids, row.ID)
+	var responses []AssessmentDefinitionResponse
+	var err error
+	if recordable {
+		responses, err = h.recordableDefinitions(c, userUUID)
+	} else {
+		responses, err = h.referenceableDefinitions(c, userUUID)
 	}
-	locked, err := lockedAssessmentUnits(c.Context(), h.queries, ids)
 	if err != nil {
-		slog.Error("failed to check assessment locks", "error", err)
+		slog.Error("failed to retrieve assessment definitions", "recordable", recordable, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve assessments"})
+	}
+	return c.Status(fiber.StatusOK).JSON(responses)
+}
+
+// referenceableDefinitions is the catalog: what the caller may name in a
+// training of their own, so the builtins and their own writing.
+func (h *AssessmentDefinitionHandler) referenceableDefinitions(c fiber.Ctx, userUUID pgtype.UUID) ([]AssessmentDefinitionResponse, error) {
+	rows, err := h.queries.GetAssessmentDefinitions(c.Context(), userUUID)
+	if err != nil {
+		return nil, err
 	}
 
 	responses := make([]AssessmentDefinitionResponse, 0, len(rows))
 	for _, row := range rows {
-		response := assessmentDefinitionToResponse(row)
-		response.UnitLocked = locked[row.ID.String()]
+		responses = append(responses, assessmentDefinitionToResponse(row))
+	}
+	return h.withUnitLocks(c, responses)
+}
+
+// recordableDefinitions is what a result may be recorded against, which is the
+// catalog plus a coach's assessment the caller was prescribed. Served by the
+// same query the record path checks a single assessment with, so what is listed
+// here and what is accepted there cannot come apart.
+func (h *AssessmentDefinitionHandler) recordableDefinitions(c fiber.Ctx, userUUID pgtype.UUID) ([]AssessmentDefinitionResponse, error) {
+	rows, err := h.queries.GetRecordableAssessmentDefinitions(c.Context(), db.GetRecordableAssessmentDefinitionsParams{
+		UserID: userUUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]AssessmentDefinitionResponse, 0, len(rows))
+	for _, row := range rows {
+		response := assessmentDefinitionToResponse(row.AssessmentDefinition)
+		if row.ProgramID.Valid {
+			programID := row.ProgramID.String()
+			response.ProgramID = &programID
+		}
 		responses = append(responses, response)
 	}
-	return c.Status(fiber.StatusOK).JSON(responses)
+	return h.withUnitLocks(c, responses)
+}
+
+// withUnitLocks fills in UnitLocked, which is a per definition question the
+// listing queries do not answer. Kept on both listings so one row never reads
+// differently depending on which of them served it.
+func (h *AssessmentDefinitionHandler) withUnitLocks(c fiber.Ctx, responses []AssessmentDefinitionResponse) ([]AssessmentDefinitionResponse, error) {
+	ids := make([]pgtype.UUID, 0, len(responses))
+	for _, response := range responses {
+		var id pgtype.UUID
+		if err := id.Scan(response.ID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	locked, err := lockedAssessmentUnits(c.Context(), h.queries, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range responses {
+		responses[i].UnitLocked = locked[responses[i].ID]
+	}
+	return responses, nil
 }
 
 // CreateAssessmentDefinition godoc

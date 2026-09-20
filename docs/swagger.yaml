@@ -19,6 +19,13 @@ definitions:
         type: string
       per_hand:
         type: boolean
+      program_id:
+        description: |-
+          The program that reads the training backing this assessment, set only in
+          the recordable listing and only on a row the caller reaches through a
+          prescription. A coach's training is not readable on its own, so without
+          this id the assessment names a training the caller cannot run.
+        type: string
       prompt:
         description: |-
           Prompt and TrainingID are set on a coach written assessment and absent on
@@ -2008,6 +2015,16 @@ paths:
   /api/assessment-definitions:
     get:
       description: The assessments Crimpy ships plus the caller's own, builtins first.
+        With recordable=true the set widens to the ones a result may be recorded against,
+        which adds a coach's assessment whose training a program prescribed to the
+        caller; each of those carries the program_id that reads the training, since
+        a coach's training is only readable under a program.
+      parameters:
+      - description: Serve the assessments a result may be recorded against rather
+          than the catalog the caller may reference
+        in: query
+        name: recordable
+        type: boolean
       produces:
       - application/json
       responses:
@@ -2017,6 +2034,12 @@ paths:
             items:
               $ref: '#/definitions/handler.AssessmentDefinitionResponse'
             type: array
+        "400":
+          description: Invalid recordable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
