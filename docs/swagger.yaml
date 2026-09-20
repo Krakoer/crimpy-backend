@@ -2788,12 +2788,15 @@ paths:
       - Coaching
   /api/coach/clients/{user_id}/availability:
     get:
-      description: Retrieve the calendar weeks a user enrolled with the authenticated
+      description: 'Retrieve the calendar weeks a user enrolled with the authenticated
         coach has declared, each carrying the seven days and the activities planned
         on them. from and to bound the answer to a range of calendar weeks, both Mondays
         and both inclusive. Either may be left out for an unbounded end, and leaving
         both out returns every week ever declared. A program page should ask for the
-        weeks the program covers rather than the athlete's whole history.
+        weeks the program covers rather than the athlete''s whole history. At most
+        520 weeks come back whatever the window; when older weeks were dropped the
+        response carries X-Availability-Weeks-Truncated: true, and the weeks kept
+        are the most recent ones.'
       parameters:
       - description: Client user ID
         in: path
@@ -2813,6 +2816,11 @@ paths:
       responses:
         "200":
           description: Declared weeks
+          headers:
+            X-Availability-Weeks-Truncated:
+              description: true when older weeks were dropped at the 520 week ceiling,
+                absent otherwise
+              type: string
           schema:
             items:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'
@@ -5274,8 +5282,10 @@ paths:
         Either may be left out for an unbounded end, and leaving both out returns
         every week ever declared. A week carrying up to 140 activities makes the unbounded
         answer large, so a screen showing one week at a time should ask for that week.
-        The set of declared weeks is not a window question: read /api/user/availability/declared-weeks
-        for that.'
+        At most 520 weeks come back whatever the window; when older weeks were dropped
+        the response carries X-Availability-Weeks-Truncated: true, and the weeks kept
+        are the most recent ones. The set of declared weeks is not a window question:
+        read /api/user/availability/declared-weeks for that.'
       parameters:
       - description: First calendar week to return, Monday, YYYY-MM-DD
         in: query
@@ -5290,6 +5300,11 @@ paths:
       responses:
         "200":
           description: Declared weeks
+          headers:
+            X-Availability-Weeks-Truncated:
+              description: true when older weeks were dropped at the 520 week ceiling,
+                absent otherwise
+              type: string
           schema:
             items:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'

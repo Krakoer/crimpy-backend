@@ -128,9 +128,14 @@ func main() {
 
 	// CORS middleware - allow frontend to connect
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "https://crimpy.app", "https://*.crimpy.app"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowOrigins: []string{"http://localhost:5173", "https://crimpy.app", "https://*.crimpy.app"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		// A header a handler sets is invisible to a browser unless CORS says
+		// it may be read. Without this the web coach would get a truncated
+		// availability listing with no way to tell it was truncated, which is
+		// the one answer that endpoint must not give.
+		ExposeHeaders:    []string{handler.AvailabilityTruncatedHeader},
 		AllowCredentials: true,
 	}))
 
