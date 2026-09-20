@@ -278,6 +278,7 @@ type TrainingItem struct {
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
 	Goal             pgtype.Text
+	Protocol         pgtype.Text
 	Loads            []byte
 	LeftLoads        []byte
 	HandPositions    []byte
