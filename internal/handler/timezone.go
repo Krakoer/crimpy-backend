@@ -169,11 +169,13 @@ func parseTimezoneOffset(raw string) (time.Duration, error) {
 // while Go counts from Sunday, which is what the shift corrects.
 //
 // A zone that springs forward across its own midnight has a day with no
-// midnight to name, and time.Date answers such a wall clock with 23:00 the day
-// before, which would be the wrong day. Scanning every zone Go carries for the
-// years 1990 to 2035 finds twelve Mondays with no midnight, all of them South
-// American or Pacific and all between 1989 and 1998, so no window this API will
-// read, which reaches at most 52 weeks back, can land on one.
+// midnight to name. time.Date normalises such a wall clock either way: forward
+// to 01:00, which is still the right day, or back to 23:00 the day before,
+// which is not. Scanning Go's whole embedded zone set over 1990 to 2035 for
+// Mondays with no midnight finds 19 of the harmless kind and 14 of the harmful
+// one, the latter in twelve distinct zones once the aliases are folded in, the
+// earliest 1989-12-31 and the latest 1998-04-27. So none of them falls inside a
+// window this API will read, which reaches at most 52 weeks back.
 func (clock callerClock) mondayOfWeek(at time.Time) time.Time {
 	local := at.In(clock.zone)
 	daysSinceMonday := (int(local.Weekday()) + 6) % 7

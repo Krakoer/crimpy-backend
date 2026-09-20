@@ -298,7 +298,7 @@ func (h *CoachTrainingLoadHandler) GetClientTrainingLoad(c fiber.Ctx) error {
 
 	// Every Monday below is an instant on the caller's own clock, and the days
 	// are added before it is converted back, so a week holding a daylight
-	// saving change is still seven real days rather than an hour short. The
+	// saving change is still seven calendar days rather than an hour short. The
 	// same clock goes to the query, which has to cut the same weeks to group
 	// the sessions into them.
 	lastMonday := clock.mondayOfWeek(time.Now())
