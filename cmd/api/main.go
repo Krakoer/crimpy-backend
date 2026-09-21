@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -110,6 +111,13 @@ func main() {
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
 	app.Use(recover.New())
+	// Response compression. GET /api/trainings?include=items answers a whole
+	// coach library in one body, and JSON of that shape shrinks by about a
+	// factor of ten. fasthttp picks the encoding from Accept-Encoding, so the
+	// browser portal gets brotli and Dio gets gzip, and it leaves bodies under
+	// 200 bytes alone. Fiber exposes no size threshold: Level and Next are the
+	// only settings, and Next runs before the handler, with no body to measure.
+	app.Use(compress.New())
 	app.Use(middleware.RequestContext())
 	// Response bodies are deliberately not logged: handlers already log the
 	// cause of a failure, and bodies can carry user data.

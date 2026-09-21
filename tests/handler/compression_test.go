@@ -1,0 +1,225 @@
+package handler_test
+
+import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"io"
+	"net/http"
+	"testing"
+
+	"crimpy/backend/tests/testutil"
+
+	"github.com/andybalholm/brotli"
+	"github.com/gofiber/fiber/v3"
+)
+
+// readTrainings reads the library under one Accept-Encoding and hands back the
+// raw bytes exactly as they went over the wire, since what this file is about
+// is the byte count and not the decoded rows. app.Test decodes nothing, so the
+// body here is what a client would have to decode itself.
+func readTrainings(t *testing.T, app *fiber.App, token, query, acceptEncoding string) (*http.Response, []byte) {
+	t.Helper()
+	req := testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/trainings"+query, nil, token)
+	if acceptEncoding != "" {
+		req.Header.Set("Accept-Encoding", acceptEncoding)
+	}
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read the response body: %v", err)
+	}
+	return resp, body
+}
+
+// seedCompressibleLibrary writes trainings big enough that the whole library
+// answers well over the size below which fasthttp leaves a body alone, so the
+// assertions below are about the middleware and not about a body too small to
+// be worth compressing.
+func seedCompressibleLibrary(t *testing.T, app *fiber.App, token string, count int) {
+	t.Helper()
+	for i := 0; i < count; i++ {
+		status, body := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+			"title":         "Maximal hangs and repeaters",
+			"description":   "Coach built session mixing maximal hangs, repeaters and a pulling circuit",
+			"training_type": "workout",
+			"goal":          "Hold finger strength while adding a first block of power endurance",
+			"comment":       "Run this twice in the week with at least two full days between",
+			"items": []map[string]interface{}{
+				{
+					"type":        "group",
+					"group_title": "Warm up",
+					"goal":        "Raise tissue temperature and open the fingers before loading them",
+					"items": []map[string]interface{}{
+						{"type": "free", "free_text": "Five minutes easy traversing on jugs", "duration": 300, "rest_seconds": 60, "protocol": "Move continuously, no cutting loose"},
+						{"type": "free", "free_text": "Shoulder band work", "reps": 15, "rest_seconds": 45, "protocol": "Two sets each side, slow eccentric"},
+					},
+				},
+				{
+					"type": "repeater", "cycles": 6, "reps": 6, "duration": 7, "rest_seconds": 3,
+					"cycle_rest_seconds": 150, "hand": "both", "granularity": "uniform",
+					"edge_sizes_mm": []int{20}, "loads": []map[string]interface{}{{"kg": 0}},
+					"goal":     "Local capillary and aerobic capacity in the forearms",
+					"protocol": "Seven on three off, six repetitions, bodyweight",
+				},
+			},
+		})
+		if status != fiber.StatusCreated {
+			t.Fatalf("Expected 201 creating training %d, got %d: %v", i, status, body)
+		}
+	}
+}
+
+func varyMentionsAcceptEncoding(resp *http.Response) bool {
+	for _, value := range resp.Header.Values(fiber.HeaderVary) {
+		if bytes.Contains(bytes.ToLower([]byte(value)), []byte("accept-encoding")) {
+			return true
+		}
+	}
+	return false
+}
+
+// A library read is the response Krakoer/crimpy#131 is about. It has to arrive
+// compressed when the client says it can decode, and the bytes have to be the
+// same JSON once decoded, otherwise the saving is a corrupted library.
+func TestCompression_LibraryReadIsGzippedWhenTheClientOffersIt(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "gziplibrary@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	seedCompressibleLibrary(t, app, token, 5)
+
+	plainResp, plain := readTrainings(t, app, token, "?include=items", "")
+	if plainResp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 reading the library, got %d", plainResp.StatusCode)
+	}
+	if encoding := plainResp.Header.Get(fiber.HeaderContentEncoding); encoding != "" {
+		t.Fatalf("Expected no Content-Encoding without Accept-Encoding, got %q", encoding)
+	}
+	if !json.Valid(plain) {
+		t.Fatalf("Expected the uncompressed body to be JSON, got %q", truncate(plain))
+	}
+
+	gzipResp, compressed := readTrainings(t, app, token, "?include=items", "gzip")
+	if gzipResp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 reading the library gzipped, got %d", gzipResp.StatusCode)
+	}
+	if encoding := gzipResp.Header.Get(fiber.HeaderContentEncoding); encoding != "gzip" {
+		t.Fatalf("Expected Content-Encoding gzip, got %q", encoding)
+	}
+	if len(compressed) >= len(plain) {
+		t.Errorf("Expected the gzipped library to be smaller than %d bytes, got %d", len(plain), len(compressed))
+	}
+	if !varyMentionsAcceptEncoding(gzipResp) {
+		t.Errorf("Expected Vary to name Accept-Encoding, got %q", gzipResp.Header.Values(fiber.HeaderVary))
+	}
+
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatalf("Expected a gzip stream, got %v", err)
+	}
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to decompress the library: %v", err)
+	}
+	if !bytes.Equal(decoded, plain) {
+		t.Errorf("Expected the gzipped library to decode to the plain one, got %q", truncate(decoded))
+	}
+}
+
+// The coach portal is a browser and offers brotli, which the middleware prefers
+// over gzip. Both encodings have to answer the same library.
+func TestCompression_LibraryReadIsBrotliForABrowser(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "brotlilibrary@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	seedCompressibleLibrary(t, app, token, 5)
+
+	_, plain := readTrainings(t, app, token, "?include=items", "")
+	resp, compressed := readTrainings(t, app, token, "?include=items", "gzip, deflate, br, zstd")
+
+	if encoding := resp.Header.Get(fiber.HeaderContentEncoding); encoding != "br" {
+		t.Fatalf("Expected Content-Encoding br when the client offers it, got %q", encoding)
+	}
+	if len(compressed) >= len(plain) {
+		t.Errorf("Expected the brotli library to be smaller than %d bytes, got %d", len(plain), len(compressed))
+	}
+
+	decoded, err := io.ReadAll(brotli.NewReader(bytes.NewReader(compressed)))
+	if err != nil {
+		t.Fatalf("Failed to decompress the library: %v", err)
+	}
+	if !bytes.Equal(decoded, plain) {
+		t.Errorf("Expected the brotli library to decode to the plain one, got %q", truncate(decoded))
+	}
+}
+
+// A client that offers nothing gets the body it has always got. The app on an
+// old build and anything reading the API with curl are that client.
+func TestCompression_LibraryReadIsPlainWithoutAcceptEncoding(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "plainlibrary@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	seedCompressibleLibrary(t, app, token, 5)
+
+	resp, body := readTrainings(t, app, token, "?include=items", "")
+	if encoding := resp.Header.Get(fiber.HeaderContentEncoding); encoding != "" {
+		t.Fatalf("Expected no Content-Encoding, got %q", encoding)
+	}
+	var rows []map[string]interface{}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("Expected a plain JSON library, got %v: %q", err, truncate(body))
+	}
+	if len(rows) != 5 {
+		t.Fatalf("Expected five trainings, got %d", len(rows))
+	}
+	if _, ok := rows[0]["items"]; !ok {
+		t.Errorf("Expected the rows to carry their items, got %v", rows[0])
+	}
+}
+
+// Fiber's compress middleware has no size threshold to configure: Level and
+// Next are its only settings, and Next runs before the handler, with no body to
+// measure. The only threshold in the stack is fasthttp's own, which leaves a
+// body under 200 bytes alone. This pins that floor, so the day an upgrade moves
+// it the API's answer to small responses changes here rather than in
+// production.
+func TestCompression_SmallResponseIsLeftAlone(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "smallbody@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	resp, body := readTrainings(t, app, token, "", "gzip, deflate, br, zstd")
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 reading an empty library, got %d", resp.StatusCode)
+	}
+	if len(body) >= 200 {
+		t.Fatalf("Expected an empty library to answer under 200 bytes, got %d", len(body))
+	}
+	if encoding := resp.Header.Get(fiber.HeaderContentEncoding); encoding != "" {
+		t.Errorf("Expected a body under 200 bytes to be left uncompressed, got Content-Encoding %q", encoding)
+	}
+	if !json.Valid(body) {
+		t.Errorf("Expected plain JSON, got %q", truncate(body))
+	}
+}
+
+func truncate(body []byte) []byte {
+	if len(body) > 200 {
+		return body[:200]
+	}
+	return body
+}

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -219,7 +220,9 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	app := fiber.New()
 
 	// Mirror the production middleware stack so handlers get the same
-	// request-scoped context they get when served by cmd/api.
+	// request-scoped context and the same response encoding they get when
+	// served by cmd/api.
+	app.Use(compress.New())
 	app.Use(middleware.RequestContext())
 
 	// Public routes
