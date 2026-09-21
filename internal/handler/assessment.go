@@ -39,7 +39,7 @@ func (h *AssessmentHandler) ownedAssessment() ownedResource[db.Assessment] {
 
 // CreateAssessment godoc
 // @Summary Create an assessment linked to an existing session
-// @Description Create a new assessment result for the authenticated user, linked to an existing session they own
+// @Description Create a new assessment result for the authenticated user, linked to an existing session they own. The response carries the weigh-in the result is divided by, the last one taken at or before the session, absent when the athlete has none on file, which is the state right after a first recording.
 // @Tags Assessment
 // @Accept json
 // @Produce json
@@ -130,13 +130,29 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 	}
 
+	// The denominator is looked up rather than left empty, so the shape means the
+	// same thing here as on every read of the same result: an absent weight says
+	// the athlete had none on file at the session, not that this endpoint does not
+	// answer the question. An athlete who has never weighed in gets no weight and
+	// no error, which is the state right after a first recording.
+	denominator, err := h.queries.GetResultBodyweight(c.Context(), db.GetResultBodyweightParams{
+		UserID:     userUUID,
+		MeasuredAt: session.Date,
+	})
+	if err != nil {
+		slog.Error("failed to retrieve the bodyweight the result divides by", "user_id", userID, "session_id", req.SessionID, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(assessmentToResponse(assessmentResult{
-		Assessment:         assessment,
-		Label:              definition.Label,
-		Unit:               definition.Unit,
-		PerHand:            definition.PerHand,
-		BodyweightRelative: definition.BodyweightRelative,
-		TrainingID:         definition.TrainingID,
+		Assessment:           assessment,
+		Label:                definition.Label,
+		Unit:                 definition.Unit,
+		PerHand:              definition.PerHand,
+		BodyweightRelative:   definition.BodyweightRelative,
+		TrainingID:           definition.TrainingID,
+		BodyweightKg:         denominator.BodyweightKg,
+		BodyweightMeasuredAt: denominator.BodyweightMeasuredAt,
 	}))
 }
 
