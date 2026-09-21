@@ -502,9 +502,25 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
-	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
+	// A read that fails leaves its part of the session empty rather than failing
+	// the whole detail, which is deliberate: a coach still gets the session. It is
+	// logged so that an outage does not read to them as an athlete who recorded
+	// nothing, which is what an empty assessments array says. GetSessionAssessments
+	// gained a new way to fail with bodyweight_for_result: on a database the
+	// migration has not reached yet, which is the window of a deploy whose API
+	// image rolls before its migrate container finishes.
+	repDatas, err := h.queries.GetSessionRepDatas(c.Context(), session.ID)
+	if err != nil {
+		slog.Error("failed to retrieve the session rep datas", "session_id", session.ID.String(), "error", err)
+	}
+	assessments, err := h.queries.GetSessionAssessments(c.Context(), session.ID)
+	if err != nil {
+		slog.Error("failed to retrieve the session assessments", "session_id", session.ID.String(), "error", err)
+	}
+	itemResults, err := h.queries.GetSessionItemResults(c.Context(), session.ID)
+	if err != nil {
+		slog.Error("failed to retrieve the session item results", "session_id", session.ID.String(), "error", err)
+	}
 
 	if repDatas == nil {
 		repDatas = []db.RepData{}

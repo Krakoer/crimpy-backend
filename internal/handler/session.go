@@ -851,8 +851,8 @@ type assessmentResult struct {
 	TrainingID         pgtype.UUID
 	// The weigh-in the result divides by, as the queries send it: zero standing
 	// for "no weigh-in qualifies", since a real measurement is strictly above
-	// zero. Left at its zero value by a caller that has none to offer, which is
-	// the recording path, where the response is built from the row just written.
+	// zero. Every caller looks it up, the recording path included, so the field
+	// means the same thing on every endpoint that answers with a result.
 	BodyweightKg         float32
 	BodyweightMeasuredAt pgtype.Timestamptz
 }
@@ -1865,9 +1865,25 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return nil
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
-	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
+	// A read that fails leaves its part of the session empty rather than failing
+	// the whole detail, which is deliberate: a coach still gets the session. It is
+	// logged so that an outage does not read to them as an athlete who recorded
+	// nothing, which is what an empty assessments array says. GetSessionAssessments
+	// gained a new way to fail with bodyweight_for_result: on a database the
+	// migration has not reached yet, which is the window of a deploy whose API
+	// image rolls before its migrate container finishes.
+	repDatas, err := h.queries.GetSessionRepDatas(c.Context(), session.ID)
+	if err != nil {
+		slog.Error("failed to retrieve the session rep datas", "session_id", session.ID.String(), "error", err)
+	}
+	assessments, err := h.queries.GetSessionAssessments(c.Context(), session.ID)
+	if err != nil {
+		slog.Error("failed to retrieve the session assessments", "session_id", session.ID.String(), "error", err)
+	}
+	itemResults, err := h.queries.GetSessionItemResults(c.Context(), session.ID)
+	if err != nil {
+		slog.Error("failed to retrieve the session item results", "session_id", session.ID.String(), "error", err)
+	}
 
 	return c.JSON(SessionDetailResponse{
 		Session:     sessionToResponse(session),

@@ -108,19 +108,12 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		return nil
 	}
 
-	assessment, err := h.queries.CreateAssessment(c.Context(), db.CreateAssessmentParams{
-		UserID:       userUUID,
-		AssessmentID: assessmentUUID,
-		RightValue:   rightValue,
-		LeftValue:    leftValue,
-		SessionID:    session.ID,
-		GripPosition: gripPosition,
-	})
-	if err != nil {
-		slog.Error("failed to create assessment", "user_id", userID, "session_id", req.SessionID, "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
-	}
-
+	// Everything the response needs beyond the row itself is read before the row
+	// is written, so a read that fails costs nothing. Answering 500 after the
+	// insert has committed tells the app a recording failed that did not, and the
+	// retry that follows leaves the athlete with the same result twice in one
+	// session.
+	//
 	// The definition is loaded rather than echoed from the request, so the
 	// response carries the same shape as every other assessment read path
 	// instead of the raw row, whose Go field names would leak as PascalCase.
@@ -135,12 +128,29 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 	// the athlete had none on file at the session, not that this endpoint does not
 	// answer the question. An athlete who has never weighed in gets no weight and
 	// no error, which is the state right after a first recording.
+	//
+	// It is decided by the session, not by when this request lands, so reading it
+	// before the insert answers with the same weigh-in a later read of the result
+	// will name.
 	denominator, err := h.queries.GetResultBodyweight(c.Context(), db.GetResultBodyweightParams{
 		UserID:     userUUID,
 		MeasuredAt: session.Date,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve the bodyweight the result divides by", "user_id", userID, "session_id", req.SessionID, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
+	}
+
+	assessment, err := h.queries.CreateAssessment(c.Context(), db.CreateAssessmentParams{
+		UserID:       userUUID,
+		AssessmentID: assessmentUUID,
+		RightValue:   rightValue,
+		LeftValue:    leftValue,
+		SessionID:    session.ID,
+		GripPosition: gripPosition,
+	})
+	if err != nil {
+		slog.Error("failed to create assessment", "user_id", userID, "session_id", req.SessionID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 	}
 
