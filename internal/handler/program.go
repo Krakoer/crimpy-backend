@@ -462,7 +462,7 @@ func (h *ProgramHandler) GetMyProgramTraining(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training"})
 	}
 
-	rows, err := h.queries.GetTrainingItems(c.Context(), trainingUUID)
+	rows, err := h.queries.GetTrainingItems(c.Context(), []pgtype.UUID{trainingUUID})
 	if err != nil {
 		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})

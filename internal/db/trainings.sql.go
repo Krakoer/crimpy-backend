@@ -274,8 +274,8 @@ JOIN trainings ON trainings.id = training_items.training_id
 LEFT JOIN exercises
   ON exercises.id = training_items.exercise_id
  AND exercises.coach_id = trainings.user_id
-WHERE training_items.training_id = $1
-ORDER BY training_items.position
+WHERE training_items.training_id = ANY($1::uuid[])
+ORDER BY training_items.training_id, training_items.position
 `
 
 type GetTrainingItemsRow struct {
@@ -323,8 +323,11 @@ type GetTrainingItemsRow struct {
 // a row stored before they were, which would otherwise hand any reader the
 // name, notes and video of an exercise belonging to somebody else. An unowned
 // reference resolves to no exercise, exactly like an item that names none.
-func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]GetTrainingItemsRow, error) {
-	rows, err := q.db.Query(ctx, getTrainingItems, trainingID)
+//
+// Several trainings at a time, so a library read costs one query rather than
+// one per training. A caller after a single training passes an array of one.
+func (q *Queries) GetTrainingItems(ctx context.Context, trainingIds []pgtype.UUID) ([]GetTrainingItemsRow, error) {
+	rows, err := q.db.Query(ctx, getTrainingItems, trainingIds)
 	if err != nil {
 		return nil, err
 	}

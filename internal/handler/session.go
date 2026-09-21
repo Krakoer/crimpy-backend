@@ -1131,7 +1131,7 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 		return PrescriptionSnapshot{}, err
 	}
 
-	rows, err := qtx.GetTrainingItems(ctx, trainingID)
+	rows, err := qtx.GetTrainingItems(ctx, []pgtype.UUID{trainingID})
 	if err != nil {
 		return PrescriptionSnapshot{}, err
 	}
