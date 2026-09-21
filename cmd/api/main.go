@@ -112,11 +112,16 @@ func main() {
 	}))
 	app.Use(recover.New())
 	// Response compression. GET /api/trainings?include=items answers a whole
-	// coach library in one body, and JSON of that shape shrinks by about a
-	// factor of ten. fasthttp picks the encoding from Accept-Encoding, so the
-	// browser portal gets brotli and Dio gets gzip, and it leaves bodies under
-	// 200 bytes alone. Fiber exposes no size threshold: Level and Next are the
-	// only settings, and Next runs before the handler, with no body to measure.
+	// coach library in one body, and JSON of that shape shrinks by better than
+	// a factor of ten. The encoding is negotiated from Accept-Encoding, so the
+	// browser portal gets brotli and the app gets gzip.
+	//
+	// Krakoer/crimpy#131 wanted a size threshold rather than compressing
+	// everything. compress.Config cannot express one: Next is its only hook and
+	// runs before the handler, with nothing to measure. Writing a middleware of
+	// our own to get it was not worth it, since no response measured came out
+	// bigger compressed. What is left is the floor fasthttp applies for itself,
+	// pinned by TestCompression_FloorSitsAtTwoHundredBytes.
 	app.Use(compress.New())
 	app.Use(middleware.RequestContext())
 	// Response bodies are deliberately not logged: handlers already log the

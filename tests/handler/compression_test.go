@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"crimpy/backend/tests/testutil"
 
 	"github.com/andybalholm/brotli"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/compress"
 )
 
 // readTrainings reads the library under one Accept-Encoding and hands back the
@@ -28,6 +30,7 @@ func readTrainings(t *testing.T, app *fiber.App, token, query, acceptEncoding st
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
+	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("Failed to read the response body: %v", err)
@@ -74,12 +77,7 @@ func seedCompressibleLibrary(t *testing.T, app *fiber.App, token string, count i
 }
 
 func varyMentionsAcceptEncoding(resp *http.Response) bool {
-	for _, value := range resp.Header.Values(fiber.HeaderVary) {
-		if bytes.Contains(bytes.ToLower([]byte(value)), []byte("accept-encoding")) {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(strings.ToLower(resp.Header.Get(fiber.HeaderVary)), "accept-encoding")
 }
 
 // A library read is the response Krakoer/crimpy#131 is about. It has to arrive
@@ -102,7 +100,7 @@ func TestCompression_LibraryReadIsGzippedWhenTheClientOffersIt(t *testing.T) {
 		t.Fatalf("Expected no Content-Encoding without Accept-Encoding, got %q", encoding)
 	}
 	if !json.Valid(plain) {
-		t.Fatalf("Expected the uncompressed body to be JSON, got %q", truncate(plain))
+		t.Fatalf("Expected the uncompressed body to be JSON, got %q", truncateBody(plain))
 	}
 
 	gzipResp, compressed := readTrainings(t, app, token, "?include=items", "gzip")
@@ -116,7 +114,14 @@ func TestCompression_LibraryReadIsGzippedWhenTheClientOffersIt(t *testing.T) {
 		t.Errorf("Expected the gzipped library to be smaller than %d bytes, got %d", len(plain), len(compressed))
 	}
 	if !varyMentionsAcceptEncoding(gzipResp) {
-		t.Errorf("Expected Vary to name Accept-Encoding, got %q", gzipResp.Header.Values(fiber.HeaderVary))
+		t.Errorf("Expected Vary to name Accept-Encoding, got %q", gzipResp.Header.Get(fiber.HeaderVary))
+	}
+	// The ticket asked whether anything relies on Content-Length being the
+	// uncompressed size. Nothing does, and the header itself is the compressed
+	// length, so a client that did rely on it would be reading a correct number
+	// for the bytes it actually receives rather than a stale one.
+	if gzipResp.ContentLength != int64(len(compressed)) {
+		t.Errorf("Expected Content-Length %d to be the compressed length, got %d", len(compressed), gzipResp.ContentLength)
 	}
 
 	reader, err := gzip.NewReader(bytes.NewReader(compressed))
@@ -128,7 +133,7 @@ func TestCompression_LibraryReadIsGzippedWhenTheClientOffersIt(t *testing.T) {
 		t.Fatalf("Failed to decompress the library: %v", err)
 	}
 	if !bytes.Equal(decoded, plain) {
-		t.Errorf("Expected the gzipped library to decode to the plain one, got %q", truncate(decoded))
+		t.Errorf("Expected the gzipped library to decode to the plain one, got %q", truncateBody(decoded))
 	}
 }
 
@@ -158,7 +163,7 @@ func TestCompression_LibraryReadIsBrotliForABrowser(t *testing.T) {
 		t.Fatalf("Failed to decompress the library: %v", err)
 	}
 	if !bytes.Equal(decoded, plain) {
-		t.Errorf("Expected the brotli library to decode to the plain one, got %q", truncate(decoded))
+		t.Errorf("Expected the brotli library to decode to the plain one, got %q", truncateBody(decoded))
 	}
 }
 
@@ -179,7 +184,7 @@ func TestCompression_LibraryReadIsPlainWithoutAcceptEncoding(t *testing.T) {
 	}
 	var rows []map[string]interface{}
 	if err := json.Unmarshal(body, &rows); err != nil {
-		t.Fatalf("Expected a plain JSON library, got %v: %q", err, truncate(body))
+		t.Fatalf("Expected a plain JSON library, got %v: %q", err, truncateBody(body))
 	}
 	if len(rows) != 5 {
 		t.Fatalf("Expected five trainings, got %d", len(rows))
@@ -189,13 +194,62 @@ func TestCompression_LibraryReadIsPlainWithoutAcceptEncoding(t *testing.T) {
 	}
 }
 
-// Fiber's compress middleware has no size threshold to configure: Level and
-// Next are its only settings, and Next runs before the handler, with no body to
-// measure. The only threshold in the stack is fasthttp's own, which leaves a
-// body under 200 bytes alone. This pins that floor, so the day an upgrade moves
-// it the API's answer to small responses changes here rather than in
-// production.
-func TestCompression_SmallResponseIsLeftAlone(t *testing.T) {
+// compressionFloor is fasthttp's minCompressLen: below it a body is left
+// uncompressed, because the compressed form is likely to come out bigger.
+// Fiber's compress middleware has no size setting of its own to override it,
+// so this is the whole of the API's threshold behaviour.
+const compressionFloor = 200
+
+// compressionFloorApp carries the compression middleware and nothing else, so a
+// response of an exact size can be asked for. The tests above run against the
+// app testutil builds, which is the production stack; this one exists because
+// no Crimpy endpoint answers a body in the narrow band the floor sits in, and a
+// floor that is a third party's constant is exactly the thing an upgrade moves
+// without telling anyone.
+func compressionFloorApp() *fiber.App {
+	app := fiber.New()
+	app.Use(compress.New())
+	filler := func(size int) fiber.Handler {
+		return func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+			return c.Send(bytes.Repeat([]byte("a"), size))
+		}
+	}
+	app.Get("/under-the-floor", filler(compressionFloor-1))
+	app.Get("/at-the-floor", filler(compressionFloor))
+	return app
+}
+
+// Both sides of the floor, so it is pinned rather than approached from one
+// direction: a body one byte short stays plain however compressible it is, and
+// a body exactly at it is compressed. A fasthttp upgrade that moves the
+// constant either way fails here instead of changing what production sends.
+func TestCompression_FloorSitsAtTwoHundredBytes(t *testing.T) {
+	app := compressionFloorApp()
+
+	for _, testCase := range []struct {
+		path     string
+		encoding string
+	}{
+		{"/under-the-floor", ""},
+		{"/at-the-floor", "gzip"},
+	} {
+		req := testutil.NewRequest(http.MethodGet, testCase.path, nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("Request to %s failed: %v", testCase.path, err)
+		}
+		resp.Body.Close()
+		if got := resp.Header.Get(fiber.HeaderContentEncoding); got != testCase.encoding {
+			t.Errorf("Expected %s to answer Content-Encoding %q, got %q", testCase.path, testCase.encoding, got)
+		}
+	}
+}
+
+// And the smallest body the API really sends, an empty library, stays plain
+// JSON for a client that offered every encoding there is.
+func TestCompression_EmptyLibraryAnswersPlainJSON(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -206,18 +260,15 @@ func TestCompression_SmallResponseIsLeftAlone(t *testing.T) {
 	if resp.StatusCode != fiber.StatusOK {
 		t.Fatalf("Expected 200 reading an empty library, got %d", resp.StatusCode)
 	}
-	if len(body) >= 200 {
-		t.Fatalf("Expected an empty library to answer under 200 bytes, got %d", len(body))
-	}
 	if encoding := resp.Header.Get(fiber.HeaderContentEncoding); encoding != "" {
-		t.Errorf("Expected a body under 200 bytes to be left uncompressed, got Content-Encoding %q", encoding)
+		t.Errorf("Expected no Content-Encoding on a two byte body, got %q", encoding)
 	}
-	if !json.Valid(body) {
-		t.Errorf("Expected plain JSON, got %q", truncate(body))
+	if string(body) != "[]" {
+		t.Errorf("Expected an empty library to answer [], got %q", truncateBody(body))
 	}
 }
 
-func truncate(body []byte) []byte {
+func truncateBody(body []byte) []byte {
 	if len(body) > 200 {
 		return body[:200]
 	}
