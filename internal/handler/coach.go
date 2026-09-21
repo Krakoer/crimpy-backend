@@ -504,12 +504,9 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 
 	collections := sessionDetailReads(c, h.queries, session.ID)
 
-	return c.Status(fiber.StatusOK).JSON(SessionDetailResponse{
-		Session:     sessionToResponse(session),
-		RepDatas:    collections.RepDatas,
-		Assessments: collections.Assessments,
-		ItemResults: collections.ItemResults,
-	})
+	return c.Status(fiber.StatusOK).JSON(
+		collections.response(sessionToResponse(session)),
+	)
 }
 
 // SetClientSessionReply godoc

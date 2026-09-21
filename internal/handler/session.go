@@ -851,6 +851,19 @@ type sessionDetailCollections struct {
 	ItemResults []SessionItemResultResponse
 }
 
+// response builds the envelope both endpoints answer with, so neither can leave
+// a collection out by forgetting to copy it across. Under this contract an
+// omitted key says the read failed, so a field one handler filled and the other
+// did not would not read as a gap: it would read as an outage.
+func (collections sessionDetailCollections) response(session SessionResponse) SessionDetailResponse {
+	return SessionDetailResponse{
+		Session:     session,
+		RepDatas:    collections.RepDatas,
+		Assessments: collections.Assessments,
+		ItemResults: collections.ItemResults,
+	}
+}
+
 // SessionDetailResponse is the envelope both session-read endpoints return: the
 // session with the reps and assessments recorded against it. Typed so the
 // clients reading training_item_id off a rep have a generated contract for it.
@@ -1941,12 +1954,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 
 	collections := sessionDetailReads(c, h.queries, session.ID)
 
-	return c.JSON(SessionDetailResponse{
-		Session:     sessionToResponse(session),
-		RepDatas:    collections.RepDatas,
-		Assessments: collections.Assessments,
-		ItemResults: collections.ItemResults,
-	})
+	return c.JSON(collections.response(sessionToResponse(session)))
 }
 
 // UpdateSession godoc
