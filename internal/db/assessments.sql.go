@@ -142,6 +142,7 @@ JOIN sessions s ON s.id = a.session_id
 JOIN assessment_definitions d ON d.id = a.assessment_id
 LEFT JOIN LATERAL bodyweight_for_result(s.user_id, s.date, 'infinity'::timestamptz) w ON true
 WHERE a.session_id = $1
+ORDER BY d.label, a.grip_position NULLS FIRST, a.id
 `
 
 type GetSessionAssessmentsRow struct {
@@ -186,6 +187,11 @@ type GetSessionAssessmentsRow struct {
 //
 // Both columns carry an explicit cast because sqlc reads the schema statically and
 // cannot see through a set returning function to the columns it returns.
+// Ordered so a session holding several results draws them the same way twice.
+// Without it the order is whatever the plan yields, and the join and the lateral
+// above are exactly the kind of change that moves a plan. By label because that
+// is what a reader scans the rows by, then by grip, then by the row id so two
+// results on one grip still resolve the same way on every request.
 func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionAssessmentsRow, error) {
 	rows, err := q.db.Query(ctx, getSessionAssessments, sessionID)
 	if err != nil {

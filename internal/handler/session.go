@@ -787,6 +787,40 @@ func sessionItemResultsToResponses(rows []db.SessionItemResult) []SessionItemRes
 	return items
 }
 
+// sessionDetailReads loads the three collections a session detail is drawn from,
+// for the athlete's endpoint and the coach's alike, so the two cannot answer with
+// different parts of a session or disagree about what a failed read means.
+//
+// A read that fails leaves its own part empty rather than failing the whole
+// detail, which is deliberate: the caller still gets the session. It is logged
+// rather than swallowed, so that an outage does not read as an athlete who
+// recorded nothing, which is what an empty assessments array says.
+// GetSessionAssessments gained a new way to fail with bodyweight_for_result: on a
+// database the migration has not reached yet, which is the window of a deploy
+// whose API image rolls before its migrate container finishes.
+//
+// Each comes back as an empty slice rather than nil on failure, which is what the
+// response mappers already turn any of them into.
+func sessionDetailReads(
+	c fiber.Ctx,
+	queries *db.Queries,
+	sessionID pgtype.UUID,
+) ([]db.RepData, []db.GetSessionAssessmentsRow, []db.SessionItemResult) {
+	repDatas, err := queries.GetSessionRepDatas(c.Context(), sessionID)
+	if err != nil {
+		slog.Error("failed to retrieve the session rep datas", "session_id", sessionID.String(), "error", err)
+	}
+	assessments, err := queries.GetSessionAssessments(c.Context(), sessionID)
+	if err != nil {
+		slog.Error("failed to retrieve the session assessments", "session_id", sessionID.String(), "error", err)
+	}
+	itemResults, err := queries.GetSessionItemResults(c.Context(), sessionID)
+	if err != nil {
+		slog.Error("failed to retrieve the session item results", "session_id", sessionID.String(), "error", err)
+	}
+	return repDatas, assessments, itemResults
+}
+
 // SessionDetailResponse is the envelope both session-read endpoints return: the
 // session with the reps and assessments recorded against it. Typed so the
 // clients reading training_item_id off a rep have a generated contract for it.
@@ -1865,25 +1899,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return nil
 	}
 
-	// A read that fails leaves its part of the session empty rather than failing
-	// the whole detail, which is deliberate: a coach still gets the session. It is
-	// logged so that an outage does not read to them as an athlete who recorded
-	// nothing, which is what an empty assessments array says. GetSessionAssessments
-	// gained a new way to fail with bodyweight_for_result: on a database the
-	// migration has not reached yet, which is the window of a deploy whose API
-	// image rolls before its migrate container finishes.
-	repDatas, err := h.queries.GetSessionRepDatas(c.Context(), session.ID)
-	if err != nil {
-		slog.Error("failed to retrieve the session rep datas", "session_id", session.ID.String(), "error", err)
-	}
-	assessments, err := h.queries.GetSessionAssessments(c.Context(), session.ID)
-	if err != nil {
-		slog.Error("failed to retrieve the session assessments", "session_id", session.ID.String(), "error", err)
-	}
-	itemResults, err := h.queries.GetSessionItemResults(c.Context(), session.ID)
-	if err != nil {
-		slog.Error("failed to retrieve the session item results", "session_id", session.ID.String(), "error", err)
-	}
+	repDatas, assessments, itemResults := sessionDetailReads(c, h.queries, session.ID)
 
 	return c.JSON(SessionDetailResponse{
 		Session:     sessionToResponse(session),

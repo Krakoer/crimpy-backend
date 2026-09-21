@@ -44,7 +44,13 @@ FROM assessments a
 JOIN sessions s ON s.id = a.session_id
 JOIN assessment_definitions d ON d.id = a.assessment_id
 LEFT JOIN LATERAL bodyweight_for_result(s.user_id, s.date, 'infinity'::timestamptz) w ON true
-WHERE a.session_id = $1;
+WHERE a.session_id = $1
+-- Ordered so a session holding several results draws them the same way twice.
+-- Without it the order is whatever the plan yields, and the join and the lateral
+-- above are exactly the kind of change that moves a plan. By label because that
+-- is what a reader scans the rows by, then by grip, then by the row id so two
+-- results on one grip still resolve the same way on every request.
+ORDER BY d.label, a.grip_position NULLS FIRST, a.id;
 
 -- name: GetUserAssessments :many
 -- Every result the athlete has recorded, each with the assessment that defines
