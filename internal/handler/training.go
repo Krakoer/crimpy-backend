@@ -1302,9 +1302,7 @@ func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingList
 		return err
 	}
 
-	if err := deepenAssessmentSnapshots(ctx, q, list); err != nil {
-		return err
-	}
+	nameAssessmentTrainings(list)
 
 	for i := range list {
 		list[i].Items = &trees[i]
@@ -1313,43 +1311,31 @@ func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingList
 	return nil
 }
 
-// deepenAssessmentSnapshots fills the fields the cheap list leaves off its
-// assessment snapshot, so a row answered with its items is what the detail
-// endpoint answers rather than nearly it.
+// nameAssessmentTrainings names the training each assessment row is run from,
+// which the cheap list leaves off its snapshot.
 //
-// The cheap list has always reported the shallow snapshot, and it keeps doing
-// so, because a caller reading it today must not see its shape move. But a
-// client that asked for the items is reading the list instead of the detail
-// endpoint, and the difference is load bearing: an assessment is read as one
-// Crimpy ships when its training_id is absent, so the shallow snapshot would
-// report an athlete's own assessment as a builtin.
-func deepenAssessmentSnapshots(ctx context.Context, q *db.Queries, list []TrainingListItem) error {
-	definitionIDs := make([]pgtype.UUID, 0, len(list))
-	for i := range list {
-		if list[i].Assessment == nil {
-			continue
-		}
-		var id pgtype.UUID
-		if err := id.Scan(list[i].Assessment.ID); err != nil {
-			return err
-		}
-		definitionIDs = append(definitionIDs, id)
-	}
-
-	locked, err := lockedAssessmentUnits(ctx, q, definitionIDs)
-	if err != nil {
-		return err
-	}
-
+// It is load bearing rather than cosmetic: a client reads an assessment as one
+// Crimpy ships when it names no training, so a row answered without it would
+// report an athlete's own assessment as a builtin. The cheap list keeps the
+// shallow snapshot, because a caller reading it today must not see its shape
+// move. It costs nothing to fill: the join that put the assessment on the row
+// matched on this very id.
+//
+// unit_locked is the one field of the snapshot the list still leaves at its
+// zero value, and deliberately so. The query behind it matches an assessment id
+// inside opaque JSON with LIKE, which no index serves, so it reads
+// training_items through. Paying that on every library read is exactly the cost
+// this endpoint exists to remove, and nothing reads the flag off a list: it is
+// an editor concern, answered by the detail endpoint to the one screen that
+// asks.
+func nameAssessmentTrainings(list []TrainingListItem) {
 	for i := range list {
 		if list[i].Assessment == nil {
 			continue
 		}
 		trainingID := list[i].ID
 		list[i].Assessment.TrainingID = &trainingID
-		list[i].Assessment.UnitLocked = locked[list[i].Assessment.ID]
 	}
-	return nil
 }
 
 // assessmentSnapshotsByID freezes every definition the sources reference, keyed

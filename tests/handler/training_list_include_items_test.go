@@ -3,6 +3,7 @@ package handler_test
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"sort"
 	"testing"
 
@@ -155,33 +156,12 @@ func TestTrainings_ListWithIncludeItemsDeepensTheAssessmentSnapshot(t *testing.T
 	if definition["training_id"] != trainingID {
 		t.Errorf("Expected the training the assessment is run from, got %v", definition["training_id"])
 	}
-	if definition["unit_locked"] != false {
-		t.Errorf("Expected a fresh assessment to be free to re-unit, got %v", definition["unit_locked"])
-	}
-
-	// A training reading a number against it locks the unit, and the row has to
-	// say so exactly as the detail endpoint does.
-	if status, body := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
-		"title": "Volume day",
-		"items": []map[string]interface{}{
-			{
-				"type": "exercise",
-				"reps": 8,
-				"variable_targets": map[string]interface{}{
-					"reps": map[string]interface{}{
-						"assessment_id": assessmentID, "percent": 60, "fallback": 8,
-					},
-				},
-			},
-		},
-	}); status != fiber.StatusCreated {
-		t.Fatalf("Expected 201 creating the training that reads it, got %d: %v", status, body)
-	}
-
-	_, list = listTrainings(t, app, token, "?include=items")
-	definition = rowNamed(t, list, "Max pull ups")["assessment"].(map[string]interface{})
-	if definition["unit_locked"] != true {
-		t.Errorf("Expected the unit to be locked once a training reads it, got %v", definition["unit_locked"])
+	// The deep snapshot carries every field the detail endpoint answers except
+	// unit_locked, which the list leaves at false on purpose: the query behind
+	// it reads training_items through, and nothing reads the flag off a list.
+	want := []string{"bodyweight_relative", "id", "label", "per_hand", "prompt", "training_id", "unit", "unit_locked"}
+	if got := keysOf(definition); !equalStrings(got, want) {
+		t.Errorf("Expected the deep snapshot to carry exactly %v, got %v", want, got)
 	}
 
 	// And the cheap list still answers the shallow snapshot, unchanged.
@@ -190,6 +170,93 @@ func TestTrainings_ListWithIncludeItemsDeepensTheAssessmentSnapshot(t *testing.T
 	if _, ok := cheapDefinition["training_id"]; ok {
 		t.Errorf("Expected no training_id on the cheap snapshot, got %v", cheapDefinition["training_id"])
 	}
+}
+
+// A row read under include=items has to be the row the detail endpoint answers,
+// as a whole rather than field by field. Asserting the fields one at a time is
+// what let the missing training_id through the first time: a field added to the
+// detail response and forgotten here would pass every other test in this file.
+//
+// Two differences are contractual and normalised away rather than asserted:
+// referenced_assessments is a set and neither endpoint promises an order, and
+// unit_locked is the one field the list deliberately does not compute.
+func TestTrainings_ListWithIncludeItemsAnswersWhatTheDetailEndpointDoes(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "listparity@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	// A library holding both kinds of row: one that is a custom assessment, and
+	// one that carries items, a nested group and a percentage read against that
+	// assessment, so every optional field of the response is populated.
+	_, assessmentID := createAssessmentTraining(t, app, token, "Max pull ups", "repetitions", false)
+	status, created := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title":       "Volume day",
+		"description": "The heavy one",
+		"goal":        "Eight quality reps",
+		"comment":     "Stop if the last set drops off",
+		"items": []map[string]interface{}{
+			{
+				"type":        "group",
+				"group_title": "Main block",
+				"items": []map[string]interface{}{
+					{
+						"type": "exercise",
+						"reps": 8,
+						"variable_targets": map[string]interface{}{
+							"reps": map[string]interface{}{
+								"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+							},
+						},
+					},
+				},
+			},
+			{"type": "free", "comment": "Cool down"},
+		},
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the training, got %d: %v", status, created)
+	}
+
+	_, list := listTrainings(t, app, token, "?include=items")
+	for _, title := range []string{"Volume day", "Max pull ups"} {
+		row := rowNamed(t, list, title)
+		detail := readTrainingDetail(t, app, token, row["id"].(string))
+		if !reflect.DeepEqual(normaliseForParity(row), normaliseForParity(detail)) {
+			t.Errorf("Expected the %s row to be what the detail endpoint answers.\n list:   %v\n detail: %v",
+				title, row, detail)
+		}
+	}
+}
+
+func readTrainingDetail(t *testing.T, app *fiber.App, token, id string) map[string]interface{} {
+	t.Helper()
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodGet, "/api/trainings/"+id, nil, token))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 reading training %s, got %d", id, resp.StatusCode)
+	}
+	var training map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&training)
+	return training
+}
+
+// normaliseForParity drops the two differences between the list row and the
+// detail body that are deliberate, so what is left has to match exactly.
+func normaliseForParity(row map[string]interface{}) map[string]interface{} {
+	if referenced, ok := row["referenced_assessments"].([]interface{}); ok {
+		sort.Slice(referenced, func(a, b int) bool {
+			return referenced[a].(map[string]interface{})["id"].(string) <
+				referenced[b].(map[string]interface{})["id"].(string)
+		})
+	}
+	if definition, ok := row["assessment"].(map[string]interface{}); ok {
+		delete(definition, "unit_locked")
+	}
+	return row
 }
 
 // The whole point of the ticket: one request answers with the library and its
