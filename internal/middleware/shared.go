@@ -12,8 +12,10 @@ import (
 // the stack, so anything registered in cmd/api alone is behaviour no test can
 // see: compression pinned only there would leave the tests green while the
 // served API sent every response uncompressed. One list rather than two is what
-// closes that. Middleware that needs configuration only cmd/api has, the
-// request logger and CORS, stays in cmd/api.
+// closes that. This list is only what the test app must run too, which is not
+// the same as every middleware that takes no configuration: the request
+// logger, recover, the failure logger and CORS all stay in cmd/api, and moving
+// one of them here would change what every integration test's app does.
 //
 // Compression: GET /api/trainings?include=items answers a whole coach library
 // in one body, and JSON of that shape shrinks by better than a factor of ten.
