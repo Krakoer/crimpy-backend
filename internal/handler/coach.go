@@ -471,13 +471,13 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 
 // GetClientSession godoc
 // @Summary Get a client's session details
-// @Description Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies.
+// @Description Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
 // @Param session_id path string true "Session ID"
-// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
 // @Failure 404 {object} map[string]string "Session not found or does not belong to client"
@@ -502,14 +502,11 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
-	repDatas, assessments, itemResults := sessionDetailReads(c, h.queries, session.ID)
+	collections := sessionDetailReads(c, h.queries, session.ID)
 
-	return c.Status(fiber.StatusOK).JSON(SessionDetailResponse{
-		Session:     sessionToResponse(session),
-		RepDatas:    repDatasToResponses(repDatas),
-		Assessments: assessmentsToResponses(assessments),
-		ItemResults: sessionItemResultsToResponses(itemResults),
-	})
+	return c.Status(fiber.StatusOK).JSON(
+		collections.response(sessionToResponse(session)),
+	)
 }
 
 // SetClientSessionReply godoc

@@ -948,17 +948,21 @@ definitions:
   handler.SessionDetailResponse:
     properties:
       assessments:
+        description: Assessments is what the session measured, absent when that read
+          failed.
         items:
           $ref: '#/definitions/handler.AssessmentResponse'
         type: array
       item_results:
         description: |-
           ItemResults is what the athlete reported about the items they were
-          prescribed, empty for a session they reported nothing on.
+          prescribed, empty for a session they reported nothing on and absent when
+          that read failed.
         items:
           $ref: '#/definitions/handler.SessionItemResultResponse'
         type: array
       rep_datas:
+        description: RepDatas is what the sensor measured, absent when that read failed.
         items:
           $ref: '#/definitions/handler.RepDataResponse'
         type: array
@@ -3421,7 +3425,11 @@ paths:
         for a user enrolled with the authenticated coach. Each assessment carries
         the weigh-in a bodyweight relative score is divided by, the last one taken
         at or before the session, with the date it was taken so a reader can tell
-        a fresh denominator from a stale one. Both are absent when no weigh-in qualifies.'
+        a fresh denominator from a stale one. Both are absent when no weigh-in qualifies.
+        Each of rep_datas, assessments and item_results is drawn by a read of its
+        own, and a read that fails leaves its collection out of the answer rather
+        than failing the whole detail: an absent collection could not be read, an
+        empty array is a session that holds none of it.'
       parameters:
       - description: Client user ID
         in: path
@@ -3437,7 +3445,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session details with rep_datas, assessments and item_results
+          description: Session details with rep_datas, assessments and item_results.
+            A collection whose read failed is absent from the object rather than sent
+            as an empty array, so [] means the session holds none of that collection
+            and absence means it could not be read
           schema:
             $ref: '#/definitions/handler.SessionDetailResponse'
         "400":
@@ -4942,7 +4953,11 @@ paths:
         Each assessment carries the weigh-in a bodyweight relative score is divided
         by, the last one taken at or before the session, with the date it was taken
         so a reader can tell a fresh denominator from a stale one. Both are absent
-        when no weigh-in qualifies. User must own the session unless they are an admin.'
+        when no weigh-in qualifies. Each of rep_datas, assessments and item_results
+        is drawn by a read of its own, and a read that fails leaves its collection
+        out of the answer rather than failing the whole detail: an absent collection
+        could not be read, an empty array is a session that holds none of it. User
+        must own the session unless they are an admin.'
       parameters:
       - description: Session ID (UUID)
         in: path
@@ -4953,7 +4968,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session details with rep_datas, assessments and item_results
+          description: Session details with rep_datas, assessments and item_results.
+            A collection whose read failed is absent from the object rather than sent
+            as an empty array, so [] means the session holds none of that collection
+            and absence means it could not be read
           schema:
             $ref: '#/definitions/handler.SessionDetailResponse'
         "400":

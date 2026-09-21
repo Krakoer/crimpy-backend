@@ -2281,7 +2281,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies.",
+                "description": "Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it.",
                 "produces": [
                     "application/json"
                 ],
@@ -2307,7 +2307,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session details with rep_datas, assessments and item_results",
+                        "description": "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read",
                         "schema": {
                             "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
@@ -4405,7 +4405,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. User must own the session unless they are an admin.",
+                "description": "Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4427,7 +4427,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session details with rep_datas, assessments and item_results",
+                        "description": "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read",
                         "schema": {
                             "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
@@ -7435,19 +7435,21 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "assessments": {
+                    "description": "Assessments is what the session measured, absent when that read failed.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.AssessmentResponse"
                     }
                 },
                 "item_results": {
-                    "description": "ItemResults is what the athlete reported about the items they were\nprescribed, empty for a session they reported nothing on.",
+                    "description": "ItemResults is what the athlete reported about the items they were\nprescribed, empty for a session they reported nothing on and absent when\nthat read failed.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.SessionItemResultResponse"
                     }
                 },
                 "rep_datas": {
+                    "description": "RepDatas is what the sensor measured, absent when that read failed.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.RepDataResponse"
