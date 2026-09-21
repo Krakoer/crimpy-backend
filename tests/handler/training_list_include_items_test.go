@@ -1,15 +1,22 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"reflect"
 	"sort"
+	"sync/atomic"
 	"testing"
 
+	"crimpy/backend/internal/db"
+	"crimpy/backend/internal/handler"
 	"crimpy/backend/tests/testutil"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // listTrainings reads the library and hands back the decoded rows next to the
@@ -510,5 +517,106 @@ func TestTrainings_ListRefusesAnUnknownInclude(t *testing.T) {
 	// query string can leave the value off without being turned away.
 	if status, _ := listTrainings(t, app, token, "?include="); status != fiber.StatusOK {
 		t.Errorf("Expected 200 for an empty include, got %d", status)
+	}
+}
+
+// countingTracer counts the queries a pool issues, so a test can assert what a
+// request costs rather than reason about it.
+type countingTracer struct{ queries atomic.Int64 }
+
+func (c *countingTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	c.queries.Add(1)
+	return ctx
+}
+
+func (c *countingTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// tracedPool is SetupTestDB's pool with a query counter on it. Built here
+// rather than in testutil because every other test wants the plain one.
+func tracedPool(t *testing.T) (*pgxpool.Pool, *countingTracer) {
+	t.Helper()
+	tracer := &countingTracer{}
+	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("Failed to parse DATABASE_URL: %v", err)
+	}
+	config.ConnConfig.Tracer = tracer
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		t.Fatalf("Failed to open a traced pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool, tracer
+}
+
+// What the ticket is actually for. A library read has to cost the same whatever
+// the library holds, and no test in this file would notice a query per row
+// coming back: such a change answers more, not differently, so every assertion
+// about the payload still passes. Round 1 shipped exactly that, a scan per
+// assessment, and only a reviewer caught it.
+func TestTrainings_ListWithIncludeItemsCostsTheSameWhateverTheLibraryHolds(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "listqueries@test.com")
+
+	counted, tracer := tracedPool(t)
+	countedQueries := db.New(counted)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		TrainingHandler:             handler.NewTrainingHandler(countedQueries, counted),
+		AssessmentDefinitionHandler: handler.NewAssessmentDefinitionHandler(countedQueries, counted),
+	})
+
+	// Every shape that could tempt a query of its own: a plain training, one
+	// that is a custom assessment, and one that reads a number against it.
+	_, assessmentID := createAssessmentTraining(t, app, token, "Max pull ups", "repetitions", false)
+	for _, title := range []string{"Alpha", "Bravo"} {
+		if status, body := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+			"title": title,
+			"items": []map[string]interface{}{
+				{
+					"type": "exercise",
+					"reps": 8,
+					"variable_targets": map[string]interface{}{
+						"reps": map[string]interface{}{
+							"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+						},
+					},
+				},
+			},
+		}); status != fiber.StatusCreated {
+			t.Fatalf("Expected 201 creating %s, got %d: %v", title, status, body)
+		}
+	}
+
+	queriesFor := func(query string) int64 {
+		before := tracer.queries.Load()
+		if status, list := listTrainings(t, app, token, query); status != fiber.StatusOK {
+			t.Fatalf("Expected 200 listing%s, got %d: %v", query, status, list)
+		}
+		return tracer.queries.Load() - before
+	}
+
+	// Three literals rather than a constant read off the handler: the trainings
+	// themselves, then their items, then the definitions those items name.
+	if got := queriesFor("?include=items"); got != 3 {
+		t.Errorf("Expected a library of three to cost 3 queries, got %d", got)
+	}
+
+	// One more training must not mean one more query. This is the assertion
+	// that fails the moment somebody reaches for buildTrainingDetail per row.
+	if status, body := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title": "Charlie",
+		"items": []map[string]interface{}{{"type": "free", "comment": "hangs"}},
+	}); status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating Charlie, got %d: %v", status, body)
+	}
+	if got := queriesFor("?include=items"); got != 3 {
+		t.Errorf("Expected a library of four to cost the same 3 queries, got %d", got)
+	}
+
+	// And the cheap list stays at the one query it has always cost.
+	if got := queriesFor(""); got != 1 {
+		t.Errorf("Expected the cheap list to cost 1 query, got %d", got)
 	}
 }

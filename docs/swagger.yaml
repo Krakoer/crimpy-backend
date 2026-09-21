@@ -5099,7 +5099,10 @@ paths:
         name: is_assessment
         type: boolean
       - description: Comma separated extras to put on each row. Only items is understood,
-          and anything else is refused
+          and anything else is refused. The row's own assessment snapshot still answers
+          unit_locked as false whatever the truth is, since computing it reads every
+          training item through; GET /api/assessment-definitions carries the real
+          flag
         enum:
         - items
         in: query

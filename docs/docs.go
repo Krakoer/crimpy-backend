@@ -4713,7 +4713,7 @@ const docTemplate = `{
                             "items"
                         ],
                         "type": "string",
-                        "description": "Comma separated extras to put on each row. Only items is understood, and anything else is refused",
+                        "description": "Comma separated extras to put on each row. Only items is understood, and anything else is refused. The row's own assessment snapshot still answers unit_locked as false whatever the truth is, since computing it reads every training item through; GET /api/assessment-definitions carries the real flag",
                         "name": "include",
                         "in": "query"
                     }

@@ -1207,7 +1207,7 @@ func parseTrainingInclude(raw string) (includeItems bool, ok bool) {
 // @Produce json
 // @Security BearerAuth
 // @Param is_assessment query bool false "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted"
-// @Param include query string false "Comma separated extras to put on each row. Only items is understood, and anything else is refused" Enums(items)
+// @Param include query string false "Comma separated extras to put on each row. Only items is understood, and anything else is refused. The row's own assessment snapshot still answers unit_locked as false whatever the truth is, since computing it reads every training item through; GET /api/assessment-definitions carries the real flag" Enums(items)
 // @Success 200 {array} TrainingListItem "List of trainings"
 // @Failure 400 {object} map[string]string "Invalid query parameter"
 // @Router /api/trainings [get]
@@ -1289,15 +1289,19 @@ func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingList
 
 	var zeroParent pgtype.UUID
 	trees := make([][]TrainingItemResponse, len(list))
-	sources := make([][]assessmentRefSource, len(list))
-	allSources := make([]assessmentRefSource, 0, len(rows))
+	// Each training's references are collected once and kept, rather than read
+	// off the items again when the snapshots are handed out: collecting them
+	// unmarshals every item's target and load JSON, and doing that twice per
+	// library is the sort of cost this endpoint exists to stop paying.
+	refIDs := make([][]pgtype.UUID, len(list))
+	allIDs := make([]pgtype.UUID, 0, len(rows))
 	for i, row := range list {
 		trees[i] = buildTrainingItemTree(byTraining[row.ID], zeroParent)
-		sources[i] = responseRefSources(trees[i])
-		allSources = append(allSources, sources[i]...)
+		refIDs[i] = assessmentRefIDs(responseRefSources(trees[i]))
+		allIDs = append(allIDs, refIDs[i]...)
 	}
 
-	definitions, err := assessmentSnapshotsByID(ctx, q, allSources)
+	definitions, err := assessmentSnapshotsByID(ctx, q, allIDs)
 	if err != nil {
 		return err
 	}
@@ -1306,7 +1310,7 @@ func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingList
 
 	for i := range list {
 		list[i].Items = &trees[i]
-		list[i].ReferencedAssessments = namedAssessmentSnapshots(definitions, assessmentRefIDs(sources[i]))
+		list[i].ReferencedAssessments = namedAssessmentSnapshots(definitions, refIDs[i])
 	}
 	return nil
 }
@@ -1338,11 +1342,10 @@ func nameAssessmentTrainings(list []TrainingListItem) {
 	}
 }
 
-// assessmentSnapshotsByID freezes every definition the sources reference, keyed
-// by id. It is freezeAssessmentDefinitions for a caller resolving several
-// trainings, which wants one query rather than one per training.
-func assessmentSnapshotsByID(ctx context.Context, q *db.Queries, sources []assessmentRefSource) (map[string]AssessmentDefinitionSnapshot, error) {
-	ids := assessmentRefIDs(sources)
+// assessmentSnapshotsByID freezes every named definition, keyed by id. It is
+// freezeAssessmentDefinitions for a caller resolving several trainings, which
+// wants one query rather than one per training.
+func assessmentSnapshotsByID(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map[string]AssessmentDefinitionSnapshot, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
