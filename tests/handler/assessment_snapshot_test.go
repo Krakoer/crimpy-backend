@@ -56,8 +56,10 @@ func setupSnapshotFixture(t *testing.T, prefix string) snapshotFixture {
 	}
 }
 
-// recordAssessment logs an assessment session on a given day carrying one result.
-func (f snapshotFixture) recordAssessment(t *testing.T, date, assessmentID string, grip int32, right, left *float32) {
+// recordAssessment logs an assessment session on a given day carrying one result,
+// answering with the id of the session it created so a caller can read that
+// session back.
+func (f snapshotFixture) recordAssessment(t *testing.T, date, assessmentID string, grip int32, right, left *float32) string {
 	t.Helper()
 	result := map[string]interface{}{"assessment_id": assessmentID, "grip_position": grip}
 	if right != nil {
@@ -76,6 +78,11 @@ func (f snapshotFixture) recordAssessment(t *testing.T, date, assessmentID strin
 	if status != fiber.StatusCreated {
 		t.Fatalf("Expected 201 recording an assessment, got %d: %v", status, body)
 	}
+	sessionID, ok := body["id"].(string)
+	if !ok {
+		t.Fatalf("Expected the created session to carry an id, got %v", body)
+	}
+	return sessionID
 }
 
 func (f snapshotFixture) recordBodyweight(t *testing.T, measuredAt string, weightKg float32) {
