@@ -623,6 +623,16 @@ type TrainingListItem struct {
 	Assessment *AssessmentDefinitionSnapshot `json:"assessment,omitempty"`
 	CreatedAt  string                        `json:"created_at"`
 	UpdatedAt  string                        `json:"updated_at"`
+	// The item tree, present only for a caller that asked for it with
+	// include=items and absent otherwise, so the cheap list keeps the exact
+	// shape it has always answered with. A training that holds no items answers
+	// with an empty array once they were asked for, which is what lets a reader
+	// tell an empty training apart from a list it never asked to carry items.
+	Items *[]TrainingItemResponse `json:"items,omitempty"`
+	// The assessments the items reference, on the same terms as Items: a client
+	// reading the library in one request needs them to name and unit check a
+	// percentage, exactly as the detail endpoint hands them over.
+	ReferencedAssessments []AssessmentDefinitionSnapshot `json:"referenced_assessments,omitempty"`
 }
 
 func trainingToListItem(s db.Training) TrainingListItem {
@@ -1168,14 +1178,38 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(detail)
 }
 
+// trainingItemsInclude is the only extra GET /api/trainings knows how to add to
+// its rows.
+const trainingItemsInclude = "items"
+
+// parseTrainingInclude reads the include parameter, a comma separated list of
+// the extras the caller wants on every row. An unknown name is refused rather
+// than ignored: a client that misspells it would otherwise be handed the cheap
+// list and read it as a library of empty trainings.
+func parseTrainingInclude(raw string) (bool, error) {
+	includeItems := false
+	for _, name := range strings.Split(raw, ",") {
+		switch strings.TrimSpace(name) {
+		case "":
+		case trainingItemsInclude:
+			includeItems = true
+		default:
+			return false, errors.New("Invalid include")
+		}
+	}
+	return includeItems, nil
+}
+
 // GetCoachTrainings godoc
 // @Summary List user's training templates
-// @Description Get all training templates for the authenticated user (without items).
+// @Description Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request.
 // @Tags Trainings
 // @Produce json
 // @Security BearerAuth
 // @Param is_assessment query bool false "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted"
+// @Param include query string false "Comma separated extras to put on each row. Only items is understood, and anything else is refused" Enums(items)
 // @Success 200 {array} TrainingListItem "List of trainings"
+// @Failure 400 {object} map[string]string "Invalid query parameter"
 // @Router /api/trainings [get]
 func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
@@ -1193,6 +1227,11 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		isAssessment = pgtype.Bool{Bool: wanted, Valid: true}
 	}
 
+	includeItems, err := parseTrainingInclude(c.Query("include"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	trainings, err := h.queries.GetTrainings(c.Context(), db.GetTrainingsParams{
 		UserID:       userUUID,
 		IsAssessment: isAssessment,
@@ -1207,7 +1246,106 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		result = append(result, trainingRowToListItem(s))
 	}
 
+	if includeItems {
+		if err := attachTrainingItems(c.Context(), h.queries, result); err != nil {
+			slog.Error("failed to retrieve training items", "user_id", userUUID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})
+		}
+	}
+
 	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+// attachTrainingItems puts the item tree, and the assessment definitions those
+// items reference, on every row of the list.
+//
+// It reads them for the whole list at once: two queries whatever the library
+// holds, rather than the two per training a caller following the list with a
+// detail read per row would have paid for.
+func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingListItem) error {
+	if len(list) == 0 {
+		return nil
+	}
+
+	ids := make([]pgtype.UUID, 0, len(list))
+	for _, row := range list {
+		var id pgtype.UUID
+		if err := id.Scan(row.ID); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+
+	rows, err := q.GetTrainingItems(ctx, ids)
+	if err != nil {
+		return err
+	}
+
+	byTraining := make(map[string][]db.GetTrainingItemsRow, len(list))
+	for _, row := range rows {
+		key := row.TrainingID.String()
+		byTraining[key] = append(byTraining[key], row)
+	}
+
+	var zeroParent pgtype.UUID
+	trees := make([][]TrainingItemResponse, len(list))
+	sources := make([][]assessmentRefSource, len(list))
+	allSources := make([]assessmentRefSource, 0, len(rows))
+	for i, row := range list {
+		trees[i] = buildTrainingItemTree(byTraining[row.ID], zeroParent)
+		sources[i] = responseRefSources(trees[i])
+		allSources = append(allSources, sources[i]...)
+	}
+
+	definitions, err := assessmentSnapshotsByID(ctx, q, allSources)
+	if err != nil {
+		return err
+	}
+
+	for i := range list {
+		list[i].Items = &trees[i]
+		list[i].ReferencedAssessments = namedAssessmentSnapshots(definitions, assessmentRefIDs(sources[i]))
+	}
+	return nil
+}
+
+// assessmentSnapshotsByID freezes every definition the sources reference, keyed
+// by id. It is freezeAssessmentDefinitions for a caller resolving several
+// trainings, which wants one query rather than one per training.
+func assessmentSnapshotsByID(ctx context.Context, q *db.Queries, sources []assessmentRefSource) (map[string]AssessmentDefinitionSnapshot, error) {
+	ids := assessmentRefIDs(sources)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := q.GetAssessmentDefinitionsForPrescription(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]AssessmentDefinitionSnapshot, len(rows))
+	for _, row := range rows {
+		byID[row.ID.String()] = assessmentDefinitionToSnapshot(row)
+	}
+	return byID, nil
+}
+
+// namedAssessmentSnapshots picks the definitions one training references out of
+// the batch. A reference with no definition behind it is dropped, the way
+// freezeAssessmentDefinitions drops it: the query answers with the rows that
+// exist and says nothing about the ones that do not.
+func namedAssessmentSnapshots(byID map[string]AssessmentDefinitionSnapshot, ids []pgtype.UUID) []AssessmentDefinitionSnapshot {
+	if len(ids) == 0 {
+		return nil
+	}
+	snapshots := make([]AssessmentDefinitionSnapshot, 0, len(ids))
+	for _, id := range ids {
+		if snapshot, ok := byID[id.String()]; ok {
+			snapshots = append(snapshots, snapshot)
+		}
+	}
+	if len(snapshots) == 0 {
+		return nil
+	}
+	return snapshots
 }
 
 // GetCoachTraining godoc
@@ -1228,7 +1366,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return nil
 	}
 
-	rows, err := h.queries.GetTrainingItems(c.Context(), trainingUUID)
+	rows, err := h.queries.GetTrainingItems(c.Context(), []pgtype.UUID{trainingUUID})
 	if err != nil {
 		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})

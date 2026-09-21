@@ -608,7 +608,7 @@ func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.Ge
 			continue
 		}
 		read[s.TrainingID] = struct{}{}
-		rows, err := h.queries.GetTrainingItems(ctx, s.TrainingID)
+		rows, err := h.queries.GetTrainingItems(ctx, []pgtype.UUID{s.TrainingID})
 		if err != nil {
 			return nil, err
 		}

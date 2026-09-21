@@ -4693,7 +4693,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all training templates for the authenticated user (without items).",
+                "description": "Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request.",
                 "produces": [
                     "application/json"
                 ],
@@ -4707,6 +4707,15 @@ const docTemplate = `{
                         "description": "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted",
                         "name": "is_assessment",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "items"
+                        ],
+                        "type": "string",
+                        "description": "Comma separated extras to put on each row. Only items is understood, and anything else is refused",
+                        "name": "include",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4716,6 +4725,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.TrainingListItem"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameter",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     }
@@ -8013,6 +8031,20 @@ const docTemplate = `{
                 },
                 "is_favorite": {
                     "type": "boolean"
+                },
+                "items": {
+                    "description": "The item tree, present only for a caller that asked for it with\ninclude=items and absent otherwise, so the cheap list keeps the exact\nshape it has always answered with. A training that holds no items answers\nwith an empty array once they were asked for, which is what lets a reader\ntell an empty training apart from a list it never asked to carry items.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingItemResponse"
+                    }
+                },
+                "referenced_assessments": {
+                    "description": "The assessments the items reference, on the same terms as Items: a client\nreading the library in one request needs them to name and unit check a\npercentage, exactly as the detail endpoint hands them over.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentDefinitionSnapshot"
+                    }
                 },
                 "title": {
                     "type": "string"
