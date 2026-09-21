@@ -791,46 +791,86 @@ func sessionItemResultsToResponses(rows []db.SessionItemResult) []SessionItemRes
 // for the athlete's endpoint and the coach's alike, so the two cannot answer with
 // different parts of a session or disagree about what a failed read means.
 //
-// A read that fails leaves its own part empty rather than failing the whole
-// detail, which is deliberate: the caller still gets the session. It is logged
-// rather than swallowed, so that an outage does not read as an athlete who
-// recorded nothing, which is what an empty assessments array says.
+// A read that fails leaves its own collection out of the answer rather than
+// failing the whole detail: the caller still gets the session, its notes, its RPE
+// and the coach exchange. What it no longer gets is an empty array standing in
+// for a collection nobody could read, which is the one wrong answer a client
+// cannot tell from a right one. An empty assessments array reads as a session
+// that recorded none, and an empty rep_datas array makes a client say out loud
+// that the sensor measured nothing.
+//
+// So a failed read comes back nil here and is absent from the JSON, a read that
+// succeeded and found nothing comes back an empty slice and is sent as [], and
+// the two are different answers on the wire. The mappers below build the empty
+// slice, which is why nil can only mean the read failed: the generated queries
+// answer a session with no rows with a nil slice of their own, so nil out of the
+// database never reaches a caller as nil.
+//
 // GetSessionAssessments gained a new way to fail with bodyweight_for_result: on a
 // database the migration has not reached yet, which is the window of a deploy
-// whose API image rolls before its migrate container finishes.
-//
-// Each comes back as an empty slice rather than nil on failure, which is what the
-// response mappers already turn any of them into.
+// whose API image rolls before its migrate container finishes. That window is
+// every request rather than a transient one, which is what made this worth
+// spelling on the wire. Krakoer/crimpy#130 decided it.
 func sessionDetailReads(
 	c fiber.Ctx,
 	queries *db.Queries,
 	sessionID pgtype.UUID,
-) ([]db.RepData, []db.GetSessionAssessmentsRow, []db.SessionItemResult) {
+) sessionDetailCollections {
+	var collections sessionDetailCollections
+
 	repDatas, err := queries.GetSessionRepDatas(c.Context(), sessionID)
 	if err != nil {
 		slog.Error("failed to retrieve the session rep datas", "session_id", sessionID.String(), "error", err)
+	} else {
+		collections.RepDatas = repDatasToResponses(repDatas)
 	}
+
 	assessments, err := queries.GetSessionAssessments(c.Context(), sessionID)
 	if err != nil {
 		slog.Error("failed to retrieve the session assessments", "session_id", sessionID.String(), "error", err)
+	} else {
+		collections.Assessments = assessmentsToResponses(assessments)
 	}
+
 	itemResults, err := queries.GetSessionItemResults(c.Context(), sessionID)
 	if err != nil {
 		slog.Error("failed to retrieve the session item results", "session_id", sessionID.String(), "error", err)
+	} else {
+		collections.ItemResults = sessionItemResultsToResponses(itemResults)
 	}
-	return repDatas, assessments, itemResults
+
+	return collections
+}
+
+// sessionDetailCollections is the three collections in response shape, each
+// either loaded or failed. Nil is the failed one, and only the reads above
+// produce it.
+type sessionDetailCollections struct {
+	RepDatas    []RepDataResponse
+	Assessments []AssessmentResponse
+	ItemResults []SessionItemResultResponse
 }
 
 // SessionDetailResponse is the envelope both session-read endpoints return: the
 // session with the reps and assessments recorded against it. Typed so the
 // clients reading training_item_id off a rep have a generated contract for it.
+//
+// The three collections are omitzero rather than plain: a collection that was
+// read and holds nothing is sent as [], and one whose read failed is left out of
+// the object altogether, so a client can say it could not be loaded instead of
+// drawing a session that recorded nothing. omitzero and not omitempty, which
+// would drop a legitimately empty collection too and put back the ambiguity this
+// removes: for a slice only nil is the zero value.
 type SessionDetailResponse struct {
-	Session     SessionResponse      `json:"session"`
-	RepDatas    []RepDataResponse    `json:"rep_datas"`
-	Assessments []AssessmentResponse `json:"assessments"`
+	Session SessionResponse `json:"session"`
+	// RepDatas is what the sensor measured, absent when that read failed.
+	RepDatas []RepDataResponse `json:"rep_datas,omitzero"`
+	// Assessments is what the session measured, absent when that read failed.
+	Assessments []AssessmentResponse `json:"assessments,omitzero"`
 	// ItemResults is what the athlete reported about the items they were
-	// prescribed, empty for a session they reported nothing on.
-	ItemResults []SessionItemResultResponse `json:"item_results"`
+	// prescribed, empty for a session they reported nothing on and absent when
+	// that read failed.
+	ItemResults []SessionItemResultResponse `json:"item_results,omitzero"`
 }
 
 // AssessmentResponse is an assessment result as the endpoints return it, with
@@ -1882,13 +1922,13 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 
 // GetSession godoc
 // @Summary Get a session by ID
-// @Description Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. User must own the session unless they are an admin.
+// @Description Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "Session ID (UUID)"
-// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Session not found"
@@ -1899,13 +1939,13 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return nil
 	}
 
-	repDatas, assessments, itemResults := sessionDetailReads(c, h.queries, session.ID)
+	collections := sessionDetailReads(c, h.queries, session.ID)
 
 	return c.JSON(SessionDetailResponse{
 		Session:     sessionToResponse(session),
-		RepDatas:    repDatasToResponses(repDatas),
-		Assessments: assessmentsToResponses(assessments),
-		ItemResults: sessionItemResultsToResponses(itemResults),
+		RepDatas:    collections.RepDatas,
+		Assessments: collections.Assessments,
+		ItemResults: collections.ItemResults,
 	})
 }
 
