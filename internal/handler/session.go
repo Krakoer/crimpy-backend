@@ -787,6 +787,40 @@ func sessionItemResultsToResponses(rows []db.SessionItemResult) []SessionItemRes
 	return items
 }
 
+// sessionDetailReads loads the three collections a session detail is drawn from,
+// for the athlete's endpoint and the coach's alike, so the two cannot answer with
+// different parts of a session or disagree about what a failed read means.
+//
+// A read that fails leaves its own part empty rather than failing the whole
+// detail, which is deliberate: the caller still gets the session. It is logged
+// rather than swallowed, so that an outage does not read as an athlete who
+// recorded nothing, which is what an empty assessments array says.
+// GetSessionAssessments gained a new way to fail with bodyweight_for_result: on a
+// database the migration has not reached yet, which is the window of a deploy
+// whose API image rolls before its migrate container finishes.
+//
+// Each comes back as an empty slice rather than nil on failure, which is what the
+// response mappers already turn any of them into.
+func sessionDetailReads(
+	c fiber.Ctx,
+	queries *db.Queries,
+	sessionID pgtype.UUID,
+) ([]db.RepData, []db.GetSessionAssessmentsRow, []db.SessionItemResult) {
+	repDatas, err := queries.GetSessionRepDatas(c.Context(), sessionID)
+	if err != nil {
+		slog.Error("failed to retrieve the session rep datas", "session_id", sessionID.String(), "error", err)
+	}
+	assessments, err := queries.GetSessionAssessments(c.Context(), sessionID)
+	if err != nil {
+		slog.Error("failed to retrieve the session assessments", "session_id", sessionID.String(), "error", err)
+	}
+	itemResults, err := queries.GetSessionItemResults(c.Context(), sessionID)
+	if err != nil {
+		slog.Error("failed to retrieve the session item results", "session_id", sessionID.String(), "error", err)
+	}
+	return repDatas, assessments, itemResults
+}
+
 // SessionDetailResponse is the envelope both session-read endpoints return: the
 // session with the reps and assessments recorded against it. Typed so the
 // clients reading training_item_id off a rep have a generated contract for it.
@@ -814,9 +848,23 @@ type AssessmentResponse struct {
 	PerHand      bool   `json:"per_hand"`
 	// Whether the result reads as a ratio to the bodyweight it was pulled at
 	// rather than as an absolute load. Display only: the value beside it is the
-	// raw measurement. The list endpoints send the denominator on the row, see
-	// AssessmentListItem; the other read paths do not carry one.
+	// raw measurement, and the denominator is the two fields below.
 	BodyweightRelative bool `json:"bodyweight_relative"`
+	// The weigh-in a bodyweight relative score is divided by: the last one taken
+	// at or before the session that measured the result. It travels on the result
+	// rather than being left to a client to pick out of a bodyweight series, so
+	// every screen reads one result against one weight, the session detail
+	// included.
+	//
+	// Absent when no weigh-in qualifies, which is a ratio a reader declines rather
+	// than invents. That is also what POST /api/assessments answers with when the
+	// athlete has never weighed in, which is a state the clients already draw:
+	// recording a result does not require a weigh-in to exist first.
+	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
+	// When that weigh-in was taken, which is how near the denominator is to the
+	// result it divides, and what decides whether the ratio means anything at all.
+	// Absent exactly when the weight is.
+	BodyweightMeasuredAt *string `json:"bodyweight_measured_at,omitempty"`
 	// The training the assessment is run from, absent for the ones Crimpy ships.
 	TrainingID   *string  `json:"training_id,omitempty"`
 	RightValue   *float32 `json:"right_value,omitempty"`
@@ -835,6 +883,12 @@ type assessmentResult struct {
 	PerHand            bool
 	BodyweightRelative bool
 	TrainingID         pgtype.UUID
+	// The weigh-in the result divides by, as the queries send it: zero standing
+	// for "no weigh-in qualifies", since a real measurement is strictly above
+	// zero. Every caller looks it up, the recording path included, so the field
+	// means the same thing on every endpoint that answers with a result.
+	BodyweightKg         float32
+	BodyweightMeasuredAt pgtype.Timestamptz
 }
 
 func assessmentToResponse(r assessmentResult) AssessmentResponse {
@@ -851,6 +905,8 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 		GripPosition:       optionalInt32(a.GripPosition),
 		UpdatedAt:          a.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
+	resp.BodyweightKg = measuredBodyweight(r.BodyweightKg)
+	resp.BodyweightMeasuredAt = bodyweightMeasuredAt(resp.BodyweightKg, r.BodyweightMeasuredAt)
 	if r.TrainingID.Valid {
 		trainingID := r.TrainingID.String()
 		resp.TrainingID = &trainingID
@@ -864,33 +920,18 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 	return resp
 }
 
-// AssessmentListItem is an assessment as the list endpoints return it, with the
-// date of the session it was measured in and the weigh-in a bodyweight relative
-// score is divided by.
-//
-// The denominator travels with the row rather than being left to the caller to
-// pick out of a bodyweight series, so every screen reads one result against one
-// weight: the last weigh-in at or before the session, which is the rule the two
-// date snapshot already answers by. The date says how stale that weigh-in is,
-// which decides whether the ratio means anything at all. Both absent when no
-// weigh-in qualifies, which is a ratio a reader has to decline rather than
-// invent.
+// AssessmentListItem is an assessment as the list endpoints return it: the
+// result, its denominator, and the date of the session it was measured in, which
+// only the listing carries because only the listing draws results from sessions
+// the caller did not ask for by id.
 type AssessmentListItem struct {
 	AssessmentResponse
 	SessionDate string `json:"session_date"`
-	// The weigh-in a bodyweight relative score is divided by: the last one taken
-	// at or before the session. Absent when no weigh-in qualifies, which is a
-	// ratio a reader declines rather than invents.
-	BodyweightKg *float32 `json:"bodyweight_kg,omitempty"`
-	// When that weigh-in was taken, which is how near the denominator is to the
-	// result it divides. Absent exactly when the weight is.
-	BodyweightMeasuredAt *string `json:"bodyweight_measured_at,omitempty"`
 }
 
 func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentListItem {
 	items := make([]AssessmentListItem, 0, len(rows))
 	for _, r := range rows {
-		bodyweightKg := measuredBodyweight(r.BodyweightKg)
 		items = append(items, AssessmentListItem{
 			AssessmentResponse: assessmentToResponse(assessmentResult{
 				Assessment: db.Assessment{
@@ -903,15 +944,15 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 					GripPosition: r.GripPosition,
 					UpdatedAt:    r.UpdatedAt,
 				},
-				Label:              r.Label,
-				Unit:               r.Unit,
-				PerHand:            r.PerHand,
-				BodyweightRelative: r.BodyweightRelative,
-				TrainingID:         r.TrainingID,
+				Label:                r.Label,
+				Unit:                 r.Unit,
+				PerHand:              r.PerHand,
+				BodyweightRelative:   r.BodyweightRelative,
+				TrainingID:           r.TrainingID,
+				BodyweightKg:         r.BodyweightKg,
+				BodyweightMeasuredAt: r.BodyweightMeasuredAt,
 			}),
-			SessionDate:          r.SessionDate.Time.UTC().Format(time.RFC3339),
-			BodyweightKg:         bodyweightKg,
-			BodyweightMeasuredAt: bodyweightMeasuredAt(bodyweightKg, r.BodyweightMeasuredAt),
+			SessionDate: r.SessionDate.Time.UTC().Format(time.RFC3339),
 		})
 	}
 	return items
@@ -931,11 +972,13 @@ func assessmentsToResponses(rows []db.GetSessionAssessmentsRow) []AssessmentResp
 				GripPosition: r.GripPosition,
 				UpdatedAt:    r.UpdatedAt,
 			},
-			Label:              r.Label,
-			Unit:               r.Unit,
-			PerHand:            r.PerHand,
-			BodyweightRelative: r.BodyweightRelative,
-			TrainingID:         r.TrainingID,
+			Label:                r.Label,
+			Unit:                 r.Unit,
+			PerHand:              r.PerHand,
+			BodyweightRelative:   r.BodyweightRelative,
+			TrainingID:           r.TrainingID,
+			BodyweightKg:         r.BodyweightKg,
+			BodyweightMeasuredAt: r.BodyweightMeasuredAt,
 		}))
 	}
 	return items
@@ -1839,7 +1882,7 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 
 // GetSession godoc
 // @Summary Get a session by ID
-// @Description Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. User must own the session unless they are an admin.
+// @Description Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1856,9 +1899,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 		return nil
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
-	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
+	repDatas, assessments, itemResults := sessionDetailReads(c, h.queries, session.ID)
 
 	return c.JSON(SessionDetailResponse{
 		Session:     sessionToResponse(session),

@@ -91,31 +91,107 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 	return i, err
 }
 
+const getResultBodyweight = `-- name: GetResultBodyweight :one
+SELECT
+  COALESCE(w.weight_kg, 0)::real AS bodyweight_kg,
+  w.measured_at::timestamptz AS bodyweight_measured_at
+FROM (SELECT 1) AS one
+LEFT JOIN LATERAL bodyweight_for_result($1::uuid, $2::timestamptz, 'infinity'::timestamptz) w ON true
+`
+
+type GetResultBodyweightParams struct {
+	UserID     pgtype.UUID
+	MeasuredAt pgtype.Timestamptz
+}
+
+type GetResultBodyweightRow struct {
+	BodyweightKg         float32
+	BodyweightMeasuredAt pgtype.Timestamptz
+}
+
+// The weigh-in one result is divided by, for the recording path, which builds its
+// response from the row it just wrote rather than from a read query and would
+// otherwise answer "no weight on file" for an athlete who has one.
+//
+// The same bodyweight_for_result the three read paths divide by, so a result the
+// app has just recorded reads as the ratio the coachee page will show for it.
+// Nothing caps the search, for the same reason the session read caps nothing.
+//
+// The dummy row on the left keeps this a one row answer: the function returns no
+// row when no weigh-in qualifies, and a caller asking for the denominator of one
+// result wants "none" rather than an error.
+func (q *Queries) GetResultBodyweight(ctx context.Context, arg GetResultBodyweightParams) (GetResultBodyweightRow, error) {
+	row := q.db.QueryRow(ctx, getResultBodyweight, arg.UserID, arg.MeasuredAt)
+	var i GetResultBodyweightRow
+	err := row.Scan(&i.BodyweightKg, &i.BodyweightMeasuredAt)
+	return i, err
+}
+
 const getSessionAssessments = `-- name: GetSessionAssessments :many
-SELECT a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at, d.label, d.unit, d.per_hand, d.bodyweight_relative, d.training_id
+SELECT
+  a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at,
+  d.label,
+  d.unit,
+  d.per_hand,
+  d.bodyweight_relative,
+  d.training_id,
+  COALESCE(w.weight_kg, 0)::real AS bodyweight_kg,
+  w.measured_at::timestamptz AS bodyweight_measured_at
 FROM assessments a
+JOIN sessions s ON s.id = a.session_id
 JOIN assessment_definitions d ON d.id = a.assessment_id
+LEFT JOIN LATERAL bodyweight_for_result(s.user_id, s.date, 'infinity'::timestamptz) w ON true
 WHERE a.session_id = $1
+ORDER BY d.label, a.grip_position NULLS FIRST, a.id
 `
 
 type GetSessionAssessmentsRow struct {
-	ID                 pgtype.UUID
-	UserID             pgtype.UUID
-	AssessmentID       pgtype.UUID
-	RightValue         pgtype.Float4
-	LeftValue          pgtype.Float4
-	SessionID          pgtype.UUID
-	GripPosition       pgtype.Int4
-	UpdatedAt          pgtype.Timestamptz
-	Label              string
-	Unit               string
-	PerHand            bool
-	BodyweightRelative bool
-	TrainingID         pgtype.UUID
+	ID                   pgtype.UUID
+	UserID               pgtype.UUID
+	AssessmentID         pgtype.UUID
+	RightValue           pgtype.Float4
+	LeftValue            pgtype.Float4
+	SessionID            pgtype.UUID
+	GripPosition         pgtype.Int4
+	UpdatedAt            pgtype.Timestamptz
+	Label                string
+	Unit                 string
+	PerHand              bool
+	BodyweightRelative   bool
+	TrainingID           pgtype.UUID
+	BodyweightKg         float32
+	BodyweightMeasuredAt pgtype.Timestamptz
 }
 
-// The results measured in one session, each with the assessment that defines it,
-// so a caller can name and format the number without a second query.
+// The results measured in one session, each with the assessment that defines it
+// and the weigh-in it has to be divided by to read as a ratio to bodyweight, so
+// a caller can name, format and divide the number without a second query.
+//
+// The denominator is the one bodyweight_for_result answers with, which is the
+// same one the listing and the two date snapshot divide by: a weighted hang the
+// coach opens from the session list has to read as the same ratio it reads as on
+// the assessments tab two clicks away.
+//
+// Nothing caps the search here, so it passes 'infinity': a session read is not a
+// read "as of" an instant, and the weigh-in a result was pulled at is decided by
+// the result, not by when the row is fetched.
+//
+// The session is joined in for the athlete and the day, which the result row does
+// not carry: the assessment belongs to a session, and the session says whose it is
+// and when it happened.
+//
+// bodyweight_kg comes back as zero when no weigh-in qualifies, standing for
+// "unknown" rather than for a weight: user_bodyweights_weight_check keeps a real
+// measurement strictly above zero, so the two cannot be confused. The handler
+// turns it into an absent field before it reaches a client.
+//
+// Both columns carry an explicit cast because sqlc reads the schema statically and
+// cannot see through a set returning function to the columns it returns.
+// Ordered so a session holding several results draws them the same way twice.
+// Without it the order is whatever the plan yields, and the join and the lateral
+// above are exactly the kind of change that moves a plan. By label because that
+// is what a reader scans the rows by, then by grip, then by the row id so two
+// results on one grip still resolve the same way on every request.
 func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionAssessmentsRow, error) {
 	rows, err := q.db.Query(ctx, getSessionAssessments, sessionID)
 	if err != nil {
@@ -139,6 +215,8 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 			&i.PerHand,
 			&i.BodyweightRelative,
 			&i.TrainingID,
+			&i.BodyweightKg,
+			&i.BodyweightMeasuredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -187,71 +265,19 @@ SELECT
   r.right_value,
   r.date AS right_measured_at,
   COALESCE(rw.weight_kg, 0)::real AS right_bodyweight_kg,
-  rw.measured_at AS right_bodyweight_measured_at,
+  rw.measured_at::timestamptz AS right_bodyweight_measured_at,
   l.left_value,
   l.date AS left_measured_at,
   COALESCE(lw.weight_kg, 0)::real AS left_bodyweight_kg,
-  lw.measured_at AS left_bodyweight_measured_at
+  lw.measured_at::timestamptz AS left_bodyweight_measured_at
 FROM last_right r
 FULL OUTER JOIN last_left l
   ON l.assessment_id = r.assessment_id
  AND l.grip_position = r.grip_position
 JOIN assessment_definitions d
   ON d.id = COALESCE(r.assessment_id, l.assessment_id)
-LEFT JOIN LATERAL (
-  SELECT candidate.weight_kg, candidate.measured_at
-  FROM (
-    (
-      SELECT w.weight_kg, w.measured_at, 0 AS preference
-      FROM user_bodyweights w
-      WHERE w.user_id = $1
-        AND w.measured_at <= r.date
-        AND w.measured_at <= $2
-      ORDER BY w.measured_at DESC, w.created_at DESC
-      LIMIT 1
-    )
-    UNION ALL
-    (
-      SELECT w.weight_kg, w.measured_at, 1 AS preference
-      FROM user_bodyweights w
-      WHERE w.user_id = $1
-        AND w.measured_at > r.date
-        AND w.measured_at <= $2
-        AND w.measured_at < date_trunc('day', r.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
-      ORDER BY w.measured_at ASC, w.created_at DESC
-      LIMIT 1
-    )
-  ) candidate
-  ORDER BY candidate.preference
-  LIMIT 1
-) rw ON true
-LEFT JOIN LATERAL (
-  SELECT candidate.weight_kg, candidate.measured_at
-  FROM (
-    (
-      SELECT w.weight_kg, w.measured_at, 0 AS preference
-      FROM user_bodyweights w
-      WHERE w.user_id = $1
-        AND w.measured_at <= l.date
-        AND w.measured_at <= $2
-      ORDER BY w.measured_at DESC, w.created_at DESC
-      LIMIT 1
-    )
-    UNION ALL
-    (
-      SELECT w.weight_kg, w.measured_at, 1 AS preference
-      FROM user_bodyweights w
-      WHERE w.user_id = $1
-        AND w.measured_at > l.date
-        AND w.measured_at <= $2
-        AND w.measured_at < date_trunc('day', l.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
-      ORDER BY w.measured_at ASC, w.created_at DESC
-      LIMIT 1
-    )
-  ) candidate
-  ORDER BY candidate.preference
-  LIMIT 1
-) lw ON true
+LEFT JOIN LATERAL bodyweight_for_result($1::uuid, r.date, $2::timestamptz) rw ON true
+LEFT JOIN LATERAL bodyweight_for_result($1::uuid, l.date, $2::timestamptz) lw ON true
 ORDER BY d.label, 7, d.id
 `
 
@@ -297,25 +323,21 @@ type GetUserAssessmentValuesAtDateRow struct {
 // gives a ratio the athlete never achieved. One weight per hand, because the two
 // hands can come from different sessions months apart.
 //
-// The weigh-in the value is divided by is the last one taken at or before the
-// value itself, the same rule GetUserAssessments answers by, and written the same
-// way: two bounded searches the bodyweight index answers directly rather than one
-// ordered by a computed preference, which would sort the athlete's whole series
-// per row. When nothing precedes the value the search widens to the rest of that
-// day and takes the earliest one after it, because an athlete who weighs
-// themselves after training rather than before still weighed that on the day,
-// and the snapshot's own bodyweight_kg, bounded by the end of the date asked
-// for, would otherwise name a weight the same response denies to the result
-// pulled that day. Widening only where nothing precedes the value keeps the
-// morning weigh-in as the denominator for an athlete who also weighs in at
-// night, which is the weight the result was actually pulled at.
+// The weigh-in each value is divided by is the one bodyweight_for_result answers
+// with, the same rule GetUserAssessments and GetSessionAssessments divide by,
+// because it is the same function: the last weigh-in taken at or before the value
+// itself, widening to the rest of that day when nothing precedes it. The widening
+// matters most here, where the snapshot's own bodyweight_kg is bounded by the end
+// of the date asked for and would otherwise name a weight the same response
+// denies to the result pulled that day.
 //
-// Both are capped by @as_of as well, so a read "as of" an instant never divides
-// by a weight that did not exist yet at that instant, the same bound
-// GetUserBodyweightAtDate puts on the snapshot's own bodyweight_kg.
+// Both hands are capped by @as_of, so a read "as of" an instant never divides by
+// a weight that did not exist yet at that instant, the same bound
+// GetUserBodyweightAtDate puts on the snapshot's own bodyweight_kg. The other two
+// read paths have nothing to cap by and pass 'infinity'.
 //
-// The day is cut in UTC explicitly rather than through the session TimeZone, so
-// the boundary does not move with a server setting.
+// One lookup per hand, since the two hands can come from sessions months apart and
+// each divides by the weight of its own day.
 //
 // The date of that weigh-in travels with it, because how stale a denominator is
 // decides whether the ratio means anything, and a weight alone cannot say.
@@ -378,34 +400,11 @@ SELECT
   d.bodyweight_relative,
   d.training_id,
   COALESCE(w.weight_kg, 0)::real AS bodyweight_kg,
-  w.measured_at AS bodyweight_measured_at
+  w.measured_at::timestamptz AS bodyweight_measured_at
 FROM assessments a
 JOIN sessions s ON a.session_id = s.id
 JOIN assessment_definitions d ON d.id = a.assessment_id
-LEFT JOIN LATERAL (
-  SELECT candidate.weight_kg, candidate.measured_at
-  FROM (
-    (
-      SELECT b.weight_kg, b.measured_at, 0 AS preference
-      FROM user_bodyweights b
-      WHERE b.user_id = s.user_id AND b.measured_at <= s.date
-      ORDER BY b.measured_at DESC, b.created_at DESC
-      LIMIT 1
-    )
-    UNION ALL
-    (
-      SELECT b.weight_kg, b.measured_at, 1 AS preference
-      FROM user_bodyweights b
-      WHERE b.user_id = s.user_id
-        AND b.measured_at > s.date
-        AND b.measured_at < date_trunc('day', s.date AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'
-      ORDER BY b.measured_at ASC, b.created_at DESC
-      LIMIT 1
-    )
-  ) candidate
-  ORDER BY candidate.preference
-  LIMIT 1
-) w ON true
+LEFT JOIN LATERAL bodyweight_for_result(s.user_id, s.date, 'infinity'::timestamptz) w ON true
 WHERE s.user_id = $1
 ORDER BY s.date DESC
 `
@@ -432,24 +431,17 @@ type GetUserAssessmentsRow struct {
 // Every result the athlete has recorded, each with the assessment that defines
 // it and the weigh-in it has to be divided by to read as a ratio to bodyweight.
 //
-// The weigh-in is picked by the same rule GetUserAssessmentValuesAtDate uses for
-// the snapshot the comparison panel is drawn from: the last one taken at or
-// before the result, widening to the earliest one later the same day when
-// nothing precedes it, because an athlete who weighs themselves after training
-// rather than before still weighed that on the day. Two rules would let the
-// cards and the comparison panel print two different ratios for one result.
+// The weigh-in is the one bodyweight_for_result answers with, which is the same
+// rule the two date snapshot and the session detail divide by, because it is the
+// same function. Two rules would let the cards and the comparison panel print two
+// different ratios for one result.
 //
-// The snapshot also caps its search at the instant it is read as of, which this
-// query has nothing to cap by. The two therefore agree for every snapshot asked
-// for a day, which is what a client asks for and what the comparison panel
-// sends, and can differ for one asked for an instant mid day: a weigh-in taken
-// that evening is the denominator here and does not exist yet there.
-//
-// The lookup is written as two bounded searches rather than one ordered by a
-// computed preference, so each is answered straight off
-// user_bodyweights_user_id_measured_at_idx. Ordering the whole series by an
-// expression would fetch and sort every weigh-in the athlete ever recorded, once
-// per result row.
+// The snapshot caps its search at the instant it is read as of, which this query
+// has nothing to cap by, so it passes 'infinity'. The two therefore agree for
+// every snapshot asked for a day, which is what a client asks for and what the
+// comparison panel sends, and can differ for one asked for an instant mid day: a
+// weigh-in taken that evening is the denominator here and does not exist yet
+// there.
 //
 // It runs for every row rather than only for a bodyweight_relative definition,
 // which costs two index probes on a result nothing will divide. That is the

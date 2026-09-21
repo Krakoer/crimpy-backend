@@ -774,3 +774,11 @@ CREATE INDEX "builtin_training_weights_user_id_idx" ON "builtin_training_weights
 CREATE INDEX "user_bodyweights_user_id_measured_at_idx"
   ON "user_bodyweights"("user_id", "measured_at" DESC);
 
+
+-- bodyweight_for_result(user_id, measured_at, as_of) lives in
+-- migrations/20260921120000_add_bodyweight_for_result.sql rather than here. It is
+-- the one definition of the weigh-in an assessment result is divided by, shared
+-- by the listing, the two date snapshot and the session detail. Atlas Community
+-- refuses a declarative schema that declares a function, so writing it here would
+-- break "just make_migration"; it ignores functions when inspecting a database,
+-- so "atlas migrate diff" still reports this file and migrations/ in sync.

@@ -471,7 +471,7 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 
 // GetClientSession godoc
 // @Summary Get a client's session details
-// @Description Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach.
+// @Description Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -502,16 +502,7 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
-	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
-
-	if repDatas == nil {
-		repDatas = []db.RepData{}
-	}
-	if assessments == nil {
-		assessments = []db.GetSessionAssessmentsRow{}
-	}
+	repDatas, assessments, itemResults := sessionDetailReads(c, h.queries, session.ID)
 
 	return c.Status(fiber.StatusOK).JSON(SessionDetailResponse{
 		Session:     sessionToResponse(session),
