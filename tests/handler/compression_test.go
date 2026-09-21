@@ -268,9 +268,13 @@ func TestCompression_EmptyLibraryAnswersPlainJSON(t *testing.T) {
 	}
 }
 
+// maxPrintedBodyBytes caps how much of a failing body reaches the test log. It
+// has nothing to do with compressionFloor above and must not move with it.
+const maxPrintedBodyBytes = 512
+
 func truncateBody(body []byte) []byte {
-	if len(body) > 200 {
-		return body[:200]
+	if len(body) > maxPrintedBodyBytes {
+		return body[:maxPrintedBodyBytes]
 	}
 	return body
 }

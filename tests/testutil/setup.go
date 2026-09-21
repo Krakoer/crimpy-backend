@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -219,11 +218,10 @@ type HandlerConfig struct {
 func SetupFiberApp(config HandlerConfig) *fiber.App {
 	app := fiber.New()
 
-	// Mirror the production middleware stack so handlers get the same
+	// The same registration cmd/api makes, so handlers get the same
 	// request-scoped context and the same response encoding they get when
-	// served by cmd/api.
-	app.Use(compress.New())
-	app.Use(middleware.RequestContext())
+	// served for real.
+	middleware.RegisterShared(app)
 
 	// Public routes
 	if config.AuthHandler != nil {

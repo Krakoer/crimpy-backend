@@ -18,7 +18,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
-	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -111,19 +110,10 @@ func main() {
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
 	app.Use(recover.New())
-	// Response compression. GET /api/trainings?include=items answers a whole
-	// coach library in one body, and JSON of that shape shrinks by better than
-	// a factor of ten. The encoding is negotiated from Accept-Encoding, so the
-	// browser portal gets brotli and the app gets gzip.
-	//
-	// Krakoer/crimpy#131 wanted a size threshold rather than compressing
-	// everything. compress.Config cannot express one: Next is its only hook and
-	// runs before the handler, with nothing to measure. Writing a middleware of
-	// our own to get it was not worth it, since no response measured came out
-	// bigger compressed. What is left is the floor fasthttp applies for itself,
-	// pinned by TestCompression_FloorSitsAtTwoHundredBytes.
-	app.Use(compress.New())
-	app.Use(middleware.RequestContext())
+	// Response compression and the request context deadline. Both are shared
+	// with the app the tests build, so they live in one place rather than being
+	// registered here and copied there.
+	middleware.RegisterShared(app)
 	// Response bodies are deliberately not logged: handlers already log the
 	// cause of a failure, and bodies can carry user data.
 	app.Use(func(c fiber.Ctx) error {
