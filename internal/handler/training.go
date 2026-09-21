@@ -1183,21 +1183,21 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 const trainingItemsInclude = "items"
 
 // parseTrainingInclude reads the include parameter, a comma separated list of
-// the extras the caller wants on every row. An unknown name is refused rather
-// than ignored: a client that misspells it would otherwise be handed the cheap
-// list and read it as a library of empty trainings.
-func parseTrainingInclude(raw string) (bool, error) {
-	includeItems := false
+// the extras the caller wants on every row. It answers whether the items were
+// asked for, and whether the parameter was readable at all. An unknown name is
+// refused rather than ignored: a client that misspells it would otherwise be
+// handed the cheap list and read it as a library of empty trainings.
+func parseTrainingInclude(raw string) (includeItems bool, ok bool) {
 	for _, name := range strings.Split(raw, ",") {
 		switch strings.TrimSpace(name) {
 		case "":
 		case trainingItemsInclude:
 			includeItems = true
 		default:
-			return false, errors.New("Invalid include")
+			return false, false
 		}
 	}
-	return includeItems, nil
+	return includeItems, true
 }
 
 // GetCoachTrainings godoc
@@ -1227,9 +1227,9 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		isAssessment = pgtype.Bool{Bool: wanted, Valid: true}
 	}
 
-	includeItems, err := parseTrainingInclude(c.Query("include"))
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	includeItems, ok := parseTrainingInclude(c.Query("include"))
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid include"})
 	}
 
 	trainings, err := h.queries.GetTrainings(c.Context(), db.GetTrainingsParams{
@@ -1302,9 +1302,52 @@ func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingList
 		return err
 	}
 
+	if err := deepenAssessmentSnapshots(ctx, q, list); err != nil {
+		return err
+	}
+
 	for i := range list {
 		list[i].Items = &trees[i]
 		list[i].ReferencedAssessments = namedAssessmentSnapshots(definitions, assessmentRefIDs(sources[i]))
+	}
+	return nil
+}
+
+// deepenAssessmentSnapshots fills the fields the cheap list leaves off its
+// assessment snapshot, so a row answered with its items is what the detail
+// endpoint answers rather than nearly it.
+//
+// The cheap list has always reported the shallow snapshot, and it keeps doing
+// so, because a caller reading it today must not see its shape move. But a
+// client that asked for the items is reading the list instead of the detail
+// endpoint, and the difference is load bearing: an assessment is read as one
+// Crimpy ships when its training_id is absent, so the shallow snapshot would
+// report an athlete's own assessment as a builtin.
+func deepenAssessmentSnapshots(ctx context.Context, q *db.Queries, list []TrainingListItem) error {
+	definitionIDs := make([]pgtype.UUID, 0, len(list))
+	for i := range list {
+		if list[i].Assessment == nil {
+			continue
+		}
+		var id pgtype.UUID
+		if err := id.Scan(list[i].Assessment.ID); err != nil {
+			return err
+		}
+		definitionIDs = append(definitionIDs, id)
+	}
+
+	locked, err := lockedAssessmentUnits(ctx, q, definitionIDs)
+	if err != nil {
+		return err
+	}
+
+	for i := range list {
+		if list[i].Assessment == nil {
+			continue
+		}
+		trainingID := list[i].ID
+		list[i].Assessment.TrainingID = &trainingID
+		list[i].Assessment.UnitLocked = locked[list[i].Assessment.ID]
 	}
 	return nil
 }

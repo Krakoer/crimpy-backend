@@ -122,6 +122,74 @@ func TestTrainings_CheapListStillMarksAnAssessment(t *testing.T) {
 	if definition["unit"] != "repetitions" {
 		t.Errorf("Expected the unit on the snapshot, got %v", definition["unit"])
 	}
+
+	// The cheap snapshot is the shallow one it has always been, down to the
+	// fields it leaves off. Spelled out for the same reason the row above is.
+	want := []string{"bodyweight_relative", "id", "label", "per_hand", "prompt", "unit", "unit_locked"}
+	if got := keysOf(definition); !equalStrings(got, want) {
+		t.Errorf("Expected the cheap snapshot to carry exactly %v, got %v", want, got)
+	}
+}
+
+// A client reading the list instead of the detail endpoint has to get the same
+// snapshot, because an assessment with no training_id on it reads as one Crimpy
+// ships rather than as the athlete's own.
+func TestTrainings_ListWithIncludeItemsDeepensTheAssessmentSnapshot(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	_, token := testutil.CreateTestUser(t, queries, "listsnapshot@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	trainingID, assessmentID := createAssessmentTraining(t, app, token, "Max pull ups", "repetitions", false)
+
+	_, list := listTrainings(t, app, token, "?include=items")
+	row := rowNamed(t, list, "Max pull ups")
+	definition, ok := row["assessment"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected the assessment definition on the row, got %v", row["assessment"])
+	}
+	if definition["id"] != assessmentID {
+		t.Errorf("Expected the definition id, got %v", definition["id"])
+	}
+	if definition["training_id"] != trainingID {
+		t.Errorf("Expected the training the assessment is run from, got %v", definition["training_id"])
+	}
+	if definition["unit_locked"] != false {
+		t.Errorf("Expected a fresh assessment to be free to re-unit, got %v", definition["unit_locked"])
+	}
+
+	// A training reading a number against it locks the unit, and the row has to
+	// say so exactly as the detail endpoint does.
+	if status, body := postJSON(t, app, "/api/trainings", token, map[string]interface{}{
+		"title": "Volume day",
+		"items": []map[string]interface{}{
+			{
+				"type": "exercise",
+				"reps": 8,
+				"variable_targets": map[string]interface{}{
+					"reps": map[string]interface{}{
+						"assessment_id": assessmentID, "percent": 60, "fallback": 8,
+					},
+				},
+			},
+		},
+	}); status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 creating the training that reads it, got %d: %v", status, body)
+	}
+
+	_, list = listTrainings(t, app, token, "?include=items")
+	definition = rowNamed(t, list, "Max pull ups")["assessment"].(map[string]interface{})
+	if definition["unit_locked"] != true {
+		t.Errorf("Expected the unit to be locked once a training reads it, got %v", definition["unit_locked"])
+	}
+
+	// And the cheap list still answers the shallow snapshot, unchanged.
+	_, cheap := listTrainings(t, app, token, "")
+	cheapDefinition := rowNamed(t, cheap, "Max pull ups")["assessment"].(map[string]interface{})
+	if _, ok := cheapDefinition["training_id"]; ok {
+		t.Errorf("Expected no training_id on the cheap snapshot, got %v", cheapDefinition["training_id"])
+	}
 }
 
 // The whole point of the ticket: one request answers with the library and its

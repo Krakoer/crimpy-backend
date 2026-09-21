@@ -595,26 +595,33 @@ func weekTrainingBySession(sessions []db.GetCoachProgramWeekSessionsRow) map[pgt
 	return bySession
 }
 
-// weekTrainingItems reads the items of every training the week runs, one query
-// per distinct training rather than one per override, and flattens them by id so
-// an override finds the item it targets without a query of its own. Each item
-// carries the training it belongs to, so a caller can still tell an item the
-// session's own training holds from one that merely exists elsewhere.
+// weekTrainingItems reads the items of every training the week runs in one
+// query, and flattens them by id so an override finds the item it targets
+// without a query of its own. Each item carries the training it belongs to, so
+// a caller can still tell an item the session's own training holds from one
+// that merely exists elsewhere.
 func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.GetCoachProgramWeekSessionsRow) (map[pgtype.UUID]db.TrainingItem, error) {
-	itemsByID := make(map[pgtype.UUID]db.TrainingItem)
+	trainingIDs := make([]pgtype.UUID, 0, len(sessions))
 	read := make(map[pgtype.UUID]struct{}, len(sessions))
 	for _, s := range sessions {
 		if _, done := read[s.TrainingID]; done {
 			continue
 		}
 		read[s.TrainingID] = struct{}{}
-		rows, err := h.queries.GetTrainingItems(ctx, []pgtype.UUID{s.TrainingID})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			itemsByID[row.ID] = trainingItemFromRow(row)
-		}
+		trainingIDs = append(trainingIDs, s.TrainingID)
+	}
+
+	itemsByID := make(map[pgtype.UUID]db.TrainingItem)
+	if len(trainingIDs) == 0 {
+		return itemsByID, nil
+	}
+
+	rows, err := h.queries.GetTrainingItems(ctx, trainingIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		itemsByID[row.ID] = trainingItemFromRow(row)
 	}
 	return itemsByID, nil
 }
