@@ -13,11 +13,11 @@ SELECT id FROM trainings WHERE id = @id AND user_id = @user_id;
 -- @is_assessment is null for the whole library, true for the assessments alone
 -- and false for the trainings that are not one.
 --
--- row_limit is null for every row, which is what the cheap list reads and what
--- this answered before the include=items ceiling existed. A caller that sends
--- one gets at most that many trainings, not join rows: assessment_definitions
--- carries a unique index on training_id, so the LEFT JOIN cannot fan a training
--- out into several.
+-- A null row_limit means every row, which is what the cheap list asks for and
+-- what this answered before the include=items ceiling existed. A caller that
+-- sends a number gets at most that many trainings, not that many join rows:
+-- assessment_definitions carries a unique index on training_id, so the LEFT
+-- JOIN cannot fan a training out into several.
 --
 -- The id breaks ties on title. Titles are not unique, and Postgres orders a tie
 -- by whatever the heap hands it, which moves the moment a row in the tie group

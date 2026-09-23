@@ -205,6 +205,50 @@ func idsOf(list []map[string]interface{}) []string {
 	return ids
 }
 
+// The ceiling the handler applies is the second one. The first is in the query,
+// and every test above seeds at most one row past the cap, so the SQL LIMIT
+// never has to cut anything for their assertions to hold: they would all still
+// pass against a query that answered the whole library and left the trimming to
+// Go. That is exactly the unbounded materialisation this ticket was filed
+// about, so the bound is asserted here against the query directly.
+func TestTrainings_QueryBoundsTheRowsItAnswers(t *testing.T) {
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	userID, _ := testutil.CreateTestUser(t, queries, "capquerybound@test.com")
+
+	var owner pgtype.UUID
+	if err := owner.Scan(userID); err != nil {
+		t.Fatalf("Failed to read the user id: %v", err)
+	}
+	const seeded = handler.MaxTrainingsWithItems + 2
+	seedLibrary(t, queries, userID, seeded)
+
+	limited, err := queries.GetTrainings(context.Background(), db.GetTrainingsParams{
+		UserID:   owner,
+		RowLimit: pgtype.Int4{Int32: handler.MaxTrainingsWithItems + 1, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("Failed to read the limited library: %v", err)
+	}
+	if len(limited) != handler.MaxTrainingsWithItems+1 {
+		t.Errorf("Expected the query to stop at %d rows, got %d", handler.MaxTrainingsWithItems+1, len(limited))
+	}
+
+	// And a null limit is still every row, which is what keeps the cheap list
+	// uncapped. Without this half, a query that ignored row_limit entirely
+	// would fail only the assertion above and a query that always capped would
+	// fail neither.
+	whole, err := queries.GetTrainings(context.Background(), db.GetTrainingsParams{
+		UserID: owner,
+	})
+	if err != nil {
+		t.Fatalf("Failed to read the whole library: %v", err)
+	}
+	if len(whole) != seeded {
+		t.Errorf("Expected a null limit to answer all %d rows, got %d", seeded, len(whole))
+	}
+}
+
 // The ceiling is counted per caller, not across the table. A coach whose own
 // library is small must not be handed a truncation header because somebody
 // else's is large, which is what a cap applied before the ownership filter

@@ -1267,10 +1267,12 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	}
 
 	// The ceiling is pushed down to the query rather than applied to whatever
-	// it hands back, so a large library is never sorted, decoded and built into
-	// response structs only to be thrown away. One row past the ceiling, which
-	// is what tells a whole answer from a cut one without paying for a second
-	// counting query. The cheap list sends no limit and stays uncapped.
+	// it hands back, so the rows past it are never sent over the wire, decoded
+	// or built into response structs. Postgres still reads and sorts the whole
+	// matching set to answer an ORDER BY with a LIMIT, so the sort is not what
+	// this saves. One row past the ceiling, which is what tells a whole answer
+	// from a cut one without paying for a second counting query. The cheap list
+	// sends no limit and stays uncapped.
 	var rowLimit pgtype.Int4
 	if includeItems {
 		rowLimit = pgtype.Int4{Int32: MaxTrainingsWithItems + 1, Valid: true}
