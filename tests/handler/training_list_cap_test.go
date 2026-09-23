@@ -212,6 +212,7 @@ func idsOf(list []map[string]interface{}) []string {
 // Go. That is exactly the unbounded materialisation this ticket was filed
 // about, so the bound is asserted here against the query directly.
 func TestTrainings_QueryBoundsTheRowsItAnswers(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 	userID, _ := testutil.CreateTestUser(t, queries, "capquerybound@test.com")
