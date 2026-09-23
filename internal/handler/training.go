@@ -1195,9 +1195,10 @@ const (
 	// The cap counts trainings rather than items. A training count bounds the
 	// response only loosely, since libraries vary in items per training by an
 	// order of magnitude, but it cuts at a row boundary the caller can name and
-	// at a stable point: GetTrainings orders by title, so the same library cut
-	// twice answers the same rows. An item budget would bound the bytes tighter
-	// and move the cut every time a training in the middle gained a set.
+	// at a stable point: GetTrainings orders by title and then by id, so the
+	// same library cut twice answers the same rows even where titles repeat. An
+	// item budget would bound the bytes tighter and move the cut every time a
+	// training in the middle gained a set.
 	//
 	// The cheap list is not capped. It carries no items, which is the cost this
 	// ceiling is about, and capping it would shrink an answer clients already
@@ -1265,9 +1266,19 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid include"})
 	}
 
+	// The ceiling is pushed down to the query rather than applied to whatever
+	// it hands back, so a large library is never sorted, decoded and built into
+	// response structs only to be thrown away. One row past the ceiling, which
+	// is what tells a whole answer from a cut one without paying for a second
+	// counting query. The cheap list sends no limit and stays uncapped.
+	var rowLimit pgtype.Int4
+	if includeItems {
+		rowLimit = pgtype.Int4{Int32: MaxTrainingsWithItems + 1, Valid: true}
+	}
 	trainings, err := h.queries.GetTrainings(c.Context(), db.GetTrainingsParams{
 		UserID:       userUUID,
 		IsAssessment: isAssessment,
+		RowLimit:     rowLimit,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve trainings", "user_id", userUUID.String(), "error", err)
@@ -1279,13 +1290,15 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		result = append(result, trainingRowToListItem(s))
 	}
 
+	truncated := false
 	if includeItems {
 		// Cut before the trees are read, not after. Attaching items to rows
 		// that are about to be dropped would pay the whole cost the cap exists
 		// to avoid and then throw the result away.
-		if len(result) > MaxTrainingsWithItems {
+		truncated = len(result) > MaxTrainingsWithItems
+		if truncated {
 			result = result[:MaxTrainingsWithItems]
-			c.Set(TrainingsTruncatedHeader, "true")
+			slog.Warn("training listing truncated", "user_id", userUUID.String(), "max_trainings", MaxTrainingsWithItems)
 		}
 		if err := attachTrainingItems(c.Context(), h.queries, result); err != nil {
 			slog.Error("failed to retrieve training items", "user_id", userUUID.String(), "error", err)
@@ -1293,6 +1306,13 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		}
 	}
 
+	// Set on the way out rather than where the cut is decided, so the header
+	// rides only on the body it describes. Setting it earlier would leave it on
+	// the 500 an item read failure answers with, where it would say a response
+	// carrying no library at all was a cut library.
+	if truncated {
+		c.Set(TrainingsTruncatedHeader, "true")
+	}
 	return c.Status(fiber.StatusOK).JSON(result)
 }
 

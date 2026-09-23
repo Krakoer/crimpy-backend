@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"testing"
 
 	"crimpy/backend/internal/db"
@@ -142,6 +143,66 @@ func TestTrainings_CheapListIsNotCapped(t *testing.T) {
 	if truncated != "" {
 		t.Errorf("Expected no truncation header on an uncapped cheap list, got %q", truncated)
 	}
+}
+
+// The cut has to be the same prefix every time, and titles are not unique. A
+// tie on title is ordered by whatever Postgres hands off the heap, which moves
+// the moment a row in the tie group is written, so without the id tiebreaker a
+// coach editing one training would find a different one leave their library.
+//
+// Every row here carries the same title, which makes the whole library one tie
+// group and leaves the ordering entirely to the tiebreaker. The answer is then
+// asserted to be the lowest ids of that group, in order, which is what the
+// tiebreaker promises and what heap order does not give: ids are
+// gen_random_uuid, so the order rows were written in is not the order their ids
+// sort in, and a query ordering on title alone answers the wrong two hundred.
+func TestTrainings_CutIsTheSamePrefixWhenTitlesRepeat(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+	userID, token := testutil.CreateTestUser(t, queries, "capstable@test.com")
+	app := assessmentApp(t, pool, queries)
+
+	var owner pgtype.UUID
+	if err := owner.Scan(userID); err != nil {
+		t.Fatalf("Failed to read the user id: %v", err)
+	}
+	written := make([]string, 0, handler.MaxTrainingsWithItems+1)
+	for i := 0; i < handler.MaxTrainingsWithItems+1; i++ {
+		row, err := queries.CreateTraining(context.Background(), db.CreateTrainingParams{
+			UserID:       owner,
+			Title:        "Projet",
+			TrainingType: "climbing",
+		})
+		if err != nil {
+			t.Fatalf("Failed to seed training %d: %v", i, err)
+		}
+		written = append(written, row.ID.String())
+	}
+	sort.Strings(written)
+	wanted := written[:handler.MaxTrainingsWithItems]
+
+	_, list, truncated := listTrainingsWithHeaders(t, app, token, "?include=items")
+	if truncated != "true" {
+		t.Fatalf("Expected the truncation header on a cut library, got %q", truncated)
+	}
+	got := idsOf(list)
+	if len(got) != len(wanted) {
+		t.Fatalf("Expected %d rows, got %d", len(wanted), len(got))
+	}
+	for i := range wanted {
+		if got[i] != wanted[i] {
+			t.Fatalf("Expected the cut to be the lowest ids in order, row %d should be %s and is %s", i, wanted[i], got[i])
+		}
+	}
+}
+
+func idsOf(list []map[string]interface{}) []string {
+	ids := make([]string, 0, len(list))
+	for _, row := range list {
+		ids = append(ids, row["id"].(string))
+	}
+	return ids
 }
 
 // The ceiling is counted per caller, not across the table. A coach whose own
