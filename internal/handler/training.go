@@ -1182,6 +1182,38 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 // its rows.
 const trainingItemsInclude = "items"
 
+const (
+	// MaxTrainingsWithItems is how many rows an include=items listing answers
+	// with at most. It bounds the only unbounded thing about this endpoint:
+	// every row it answers is materialised in Go, with its whole item tree and
+	// the assessment definitions those items reference, and marshalled to JSON
+	// in memory before a byte leaves the process. Compression bounds the wire
+	// and nothing else, and it holds the compressed copy beside the plain one
+	// while it works, so the ceiling here is the only ceiling this endpoint has,
+	// on the server and on the client both.
+	//
+	// The cap counts trainings rather than items. A training count bounds the
+	// response only loosely, since libraries vary in items per training by an
+	// order of magnitude, but it cuts at a row boundary the caller can name and
+	// at a stable point: GetTrainings orders by title, so the same library cut
+	// twice answers the same rows. An item budget would bound the bytes tighter
+	// and move the cut every time a training in the middle gained a set.
+	//
+	// The cheap list is not capped. It carries no items, which is the cost this
+	// ceiling is about, and capping it would shrink an answer clients already
+	// read whole for no gain.
+	MaxTrainingsWithItems = 200
+	// What a truncated listing says so the caller is not left guessing. The
+	// answer is a bare JSON array that clients already parse, so the fact
+	// cannot ride in the body without breaking them, and a short library reads
+	// exactly like a coach who owns fewer trainings.
+	//
+	// Exported because the CORS middleware has to expose exactly this header
+	// for a browser to be allowed to read it, and a second spelling of it over
+	// there would drift without anything failing.
+	TrainingsTruncatedHeader = "X-Trainings-Truncated"
+)
+
 // parseTrainingInclude reads the include parameter, a comma separated list of
 // the extras the caller wants on every row. It answers whether the items were
 // asked for, and whether the parameter was readable at all. An unknown name is
@@ -1202,13 +1234,14 @@ func parseTrainingInclude(raw string) (includeItems bool, ok bool) {
 
 // GetCoachTrainings godoc
 // @Summary List user's training templates
-// @Description Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request.
+// @Description Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request. An include=items listing answers at most 200 rows, ordered by title, and sets X-Trainings-Truncated to true when it cut the library short. The cheap list is not capped.
 // @Tags Trainings
 // @Produce json
 // @Security BearerAuth
 // @Param is_assessment query bool false "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted"
 // @Param include query string false "Comma separated extras to put on each row. Only items is understood, and anything else is refused. The row's own assessment snapshot still answers unit_locked as false whatever the truth is, since computing it reads every training item through; GET /api/assessment-definitions carries the real flag" Enums(items)
-// @Success 200 {array} TrainingListItem "List of trainings"
+// @Success 200 {array} TrainingListItem "List of trainings. Carries X-Trainings-Truncated: true when include=items cut the library at 200 rows"
+// @Header 200 {string} X-Trainings-Truncated "Set to true only when an include=items listing was cut at 200 rows. Absent otherwise, which is the caller's proof it read the whole library"
 // @Failure 400 {object} map[string]string "Invalid query parameter"
 // @Router /api/trainings [get]
 func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
@@ -1247,6 +1280,13 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	}
 
 	if includeItems {
+		// Cut before the trees are read, not after. Attaching items to rows
+		// that are about to be dropped would pay the whole cost the cap exists
+		// to avoid and then throw the result away.
+		if len(result) > MaxTrainingsWithItems {
+			result = result[:MaxTrainingsWithItems]
+			c.Set(TrainingsTruncatedHeader, "true")
+		}
 		if err := attachTrainingItems(c.Context(), h.queries, result); err != nil {
 			slog.Error("failed to retrieve training items", "user_id", userUUID.String(), "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})

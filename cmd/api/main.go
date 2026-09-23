@@ -136,9 +136,13 @@ func main() {
 		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		// A header a handler sets is invisible to a browser unless CORS says
 		// it may be read. Without this the web coach would get a truncated
-		// availability listing with no way to tell it was truncated, which is
-		// the one answer that endpoint must not give.
-		ExposeHeaders:    []string{handler.AvailabilityTruncatedHeader},
+		// availability listing, or a library cut at the include=items cap, with
+		// no way to tell it was truncated, which is the one answer those
+		// endpoints must not give.
+		ExposeHeaders: []string{
+			handler.AvailabilityTruncatedHeader,
+			handler.TrainingsTruncatedHeader,
+		},
 		AllowCredentials: true,
 	}))
 

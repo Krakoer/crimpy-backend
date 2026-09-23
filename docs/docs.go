@@ -4693,7 +4693,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request.",
+                "description": "Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request. An include=items listing answers at most 200 rows, ordered by title, and sets X-Trainings-Truncated to true when it cut the library short. The cheap list is not capped.",
                 "produces": [
                     "application/json"
                 ],
@@ -4720,11 +4720,17 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of trainings",
+                        "description": "List of trainings. Carries X-Trainings-Truncated: true when include=items cut the library at 200 rows",
                         "schema": {
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.TrainingListItem"
+                            }
+                        },
+                        "headers": {
+                            "X-Trainings-Truncated": {
+                                "type": "string",
+                                "description": "Set to true only when an include=items listing was cut at 200 rows. Absent otherwise, which is the caller's proof it read the whole library"
                             }
                         }
                     },
