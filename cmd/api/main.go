@@ -83,7 +83,7 @@ func main() {
 	go pruneExpiredRefreshTokens(queries)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	adminHandler := handler.NewAdminHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries, pool)
 	assessmentHandler := handler.NewAssessmentHandler(queries)

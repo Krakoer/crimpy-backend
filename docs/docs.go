@@ -5943,7 +5943,7 @@ const docTemplate = `{
         },
         "/auth/refresh": {
             "post": {
-                "description": "Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned.",
+                "description": "Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned. For one minute after a rotation the old token may be presented again, as long as its successor was never used and the session was not ended by sign out or a password change. That reissue revokes the undelivered successor.",
                 "consumes": [
                     "application/json"
                 ],
