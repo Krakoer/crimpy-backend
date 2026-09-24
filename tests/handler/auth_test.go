@@ -939,3 +939,30 @@ func TestAuthHandler_Refresh_RotatedTokenRejectedAfterRevokeAll(t *testing.T) {
 		t.Errorf("Expected 401 reusing a rotated token after revoking all, got %d", status)
 	}
 }
+
+// A client signing out with a rotated token never received its successor, and
+// that successor must not outlive the sign out.
+func TestAuthHandler_Logout_WithRotatedTokenRevokesUndeliveredSuccessor(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries, pool),
+	})
+
+	_, original := registerAndLogin(t, app, "logout-rotated@test.com", "password123")
+	_, undelivered := postRefresh(t, app, original)
+
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": original})
+	if _, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/logout", body)); err != nil {
+		t.Fatalf("Logout failed: %v", err)
+	}
+
+	if status, _ := postRefresh(t, app, undelivered); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected the undelivered successor to be revoked by the logout, got %d", status)
+	}
+	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected the logged out token to stay revoked, got %d", status)
+	}
+}

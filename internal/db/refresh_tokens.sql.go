@@ -108,6 +108,15 @@ func (q *Queries) LockRefreshTokenByID(ctx context.Context, id pgtype.UUID) (Ref
 	return i, err
 }
 
+const lockUserRefreshTokens = `-- name: LockUserRefreshTokens :exec
+SELECT id FROM refresh_tokens WHERE user_id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, lockUserRefreshTokens, userID)
+	return err
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens
 SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL

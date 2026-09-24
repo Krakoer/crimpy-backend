@@ -481,14 +481,71 @@ func (h *AuthHandler) Logout(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 	}
 	if req.RefreshToken != "" {
-		stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
-		if err == nil {
-			if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
-				slog.Error("failed to revoke refresh token on logout", "error", err)
-			}
+		if err := h.revokeWithUndeliveredSuccessor(c.Context(), utils.HashToken(req.RefreshToken)); err != nil {
+			slog.Error("failed to revoke refresh token on logout", "error", err)
 		}
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
+}
+
+// revokeWithUndeliveredSuccessor revokes a refresh token, and the successor its
+// rotation minted if that was never used: a client signing out with a rotated
+// token is the one that never received it, and leaving it live would keep the
+// session open. Rows are locked token first, then successor, the order Refresh
+// takes them in.
+func (h *AuthHandler) revokeWithUndeliveredSuccessor(ctx context.Context, tokenHash string) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	stored, err := qtx.LockRefreshTokenByHash(ctx, tokenHash)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	if stored.ReplacedBy.Valid {
+		successor, err := qtx.LockRefreshTokenByID(ctx, stored.ReplacedBy)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+		if err == nil && !successor.Revoked {
+			if err := qtx.RevokeRefreshToken(ctx, successor.ID); err != nil {
+				return err
+			}
+		}
+	}
+	if err := qtx.RevokeRefreshToken(ctx, stored.ID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// revokeAllUserRefreshTokens ends every session of an account. The rows are
+// locked in one statement and revoked in the next: a refresh holding one of
+// them commits its successor in between, and only a statement started after
+// that commit sees the successor to revoke it.
+func (h *AuthHandler) revokeAllUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
+		return err
+	}
+	if err := qtx.RevokeUserRefreshTokens(ctx, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 type ChangePasswordRequest struct {
@@ -604,7 +661,7 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 	}
 
 	// Sessions established with the old password must not survive the change.
-	if err := h.queries.RevokeUserRefreshTokens(c.Context(), userUUID); err != nil {
+	if err := h.revokeAllUserRefreshTokens(c.Context(), userUUID); err != nil {
 		slog.Error("failed to revoke refresh tokens after password change", "target_user_id", targetUserID, "error", err)
 	}
 

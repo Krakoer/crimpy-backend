@@ -24,6 +24,9 @@ UPDATE refresh_tokens
 SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL
 WHERE id = @id;
 
+-- name: LockUserRefreshTokens :exec
+SELECT id FROM refresh_tokens WHERE user_id = @user_id FOR UPDATE;
+
 -- name: RevokeUserRefreshTokens :exec
 UPDATE refresh_tokens
 SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL

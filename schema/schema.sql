@@ -42,6 +42,9 @@ CREATE TABLE "refresh_tokens" (
 
 CREATE UNIQUE INDEX "refresh_tokens_token_hash_key" ON "refresh_tokens" ("token_hash");
 CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
+-- Deleting a token looks up the rows it replaced, for the prune of expired
+-- tokens and the cascade from a deleted user.
+CREATE INDEX "refresh_tokens_replaced_by_idx" ON "refresh_tokens"("replaced_by");
 
 -- Stores the training sessions the user has done.
 --
