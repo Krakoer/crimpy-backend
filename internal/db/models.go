@@ -164,12 +164,14 @@ type PinnedBuiltinTraining struct {
 }
 
 type RefreshToken struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	TokenHash string
-	ExpiresAt pgtype.Timestamptz
-	Revoked   bool
-	CreatedAt pgtype.Timestamptz
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	TokenHash  string
+	ExpiresAt  pgtype.Timestamptz
+	Revoked    bool
+	RevokedAt  pgtype.Timestamptz
+	ReplacedBy pgtype.UUID
+	CreatedAt  pgtype.Timestamptz
 }
 
 type RepData struct {

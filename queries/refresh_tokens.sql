@@ -6,11 +6,28 @@ RETURNING *;
 -- name: GetRefreshTokenByHash :one
 SELECT * FROM refresh_tokens WHERE token_hash = @token_hash;
 
+-- name: LockRefreshTokenByHash :one
+SELECT * FROM refresh_tokens WHERE token_hash = @token_hash FOR UPDATE;
+
+-- name: LockRefreshTokenByID :one
+SELECT * FROM refresh_tokens WHERE id = @id FOR UPDATE;
+
+-- The first rotation's time is kept, so presenting the token again inside the
+-- grace does not stretch the grace.
+-- name: RotateRefreshToken :exec
+UPDATE refresh_tokens
+SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = @replaced_by
+WHERE id = @id;
+
 -- name: RevokeRefreshToken :exec
-UPDATE refresh_tokens SET revoked = true WHERE id = @id;
+UPDATE refresh_tokens
+SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL
+WHERE id = @id;
 
 -- name: RevokeUserRefreshTokens :exec
-UPDATE refresh_tokens SET revoked = true WHERE user_id = @user_id;
+UPDATE refresh_tokens
+SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL
+WHERE user_id = @user_id;
 
 -- name: DeleteExpiredRefreshTokens :exec
 DELETE FROM refresh_tokens WHERE expires_at < now();
