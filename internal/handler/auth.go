@@ -526,14 +526,18 @@ func (h *AuthHandler) revokeWithUndeliveredSuccessor(ctx context.Context, tokenH
 	return tx.Commit(ctx)
 }
 
-// revokeAllUserRefreshTokens ends every session of an account. The rows are
-// locked in one statement and revoked in the next: a refresh holding one of
-// them commits its successor in between, and only a statement started after
-// that commit sees the successor to revoke it. That covers the refresh already
-// running when the revoke starts; a second one, presenting that successor in
-// the gap between the two statements, would need a full client round trip to
-// fit there.
-func (h *AuthHandler) revokeAllUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
+// updatePasswordAndRevokeSessions stores the new password and ends every
+// session established with the old one, or does neither: a password reported
+// as changed while those sessions live on is the failure this exists to rule
+// out.
+//
+// The refresh token rows are locked in one statement and revoked in the next:
+// a refresh holding one of them commits its successor in between, and only a
+// statement started after that commit sees the successor to revoke it. That
+// covers the refresh already running when the revoke starts; a second one,
+// presenting that successor in the gap between the two statements, would need
+// a full client round trip to fit there.
+func (h *AuthHandler) updatePasswordAndRevokeSessions(ctx context.Context, userID pgtype.UUID, hashedPassword string) error {
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -542,6 +546,12 @@ func (h *AuthHandler) revokeAllUserRefreshTokens(ctx context.Context, userID pgt
 
 	qtx := h.queries.WithTx(tx)
 
+	if err := qtx.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:       userID,
+		Password: hashedPassword,
+	}); err != nil {
+		return err
+	}
 	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
 		return err
 	}
@@ -652,20 +662,11 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.UpdateUserPassword(c.Context(), db.UpdateUserPasswordParams{
-		ID:       userUUID,
-		Password: hashedPassword,
-	})
-	if err != nil {
+	if err := h.updatePasswordAndRevokeSessions(c.Context(), userUUID, hashedPassword); err != nil {
 		slog.Error("failed to update password", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update password",
 		})
-	}
-
-	// Sessions established with the old password must not survive the change.
-	if err := h.revokeAllUserRefreshTokens(c.Context(), userUUID); err != nil {
-		slog.Error("failed to revoke refresh tokens after password change", "target_user_id", targetUserID, "error", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
