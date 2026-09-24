@@ -109,9 +109,12 @@ func (q *Queries) LockRefreshTokenByID(ctx context.Context, id pgtype.UUID) (Ref
 }
 
 const lockUserRefreshTokens = `-- name: LockUserRefreshTokens :exec
-SELECT id FROM refresh_tokens WHERE user_id = $1 FOR UPDATE
+SELECT id FROM refresh_tokens WHERE user_id = $1 ORDER BY created_at, id FOR UPDATE
 `
 
+// Locked oldest first. A successor is always created after its predecessor
+// committed, so this is the order Refresh and Logout lock a token and its
+// successor in, and the three cannot wait on each other in a cycle.
 func (q *Queries) LockUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, lockUserRefreshTokens, userID)
 	return err

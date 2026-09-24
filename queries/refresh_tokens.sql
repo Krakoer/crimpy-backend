@@ -24,8 +24,11 @@ UPDATE refresh_tokens
 SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL
 WHERE id = @id;
 
+-- Locked oldest first. A successor is always created after its predecessor
+-- committed, so this is the order Refresh and Logout lock a token and its
+-- successor in, and the three cannot wait on each other in a cycle.
 -- name: LockUserRefreshTokens :exec
-SELECT id FROM refresh_tokens WHERE user_id = @user_id FOR UPDATE;
+SELECT id FROM refresh_tokens WHERE user_id = @user_id ORDER BY created_at, id FOR UPDATE;
 
 -- name: RevokeUserRefreshTokens :exec
 UPDATE refresh_tokens

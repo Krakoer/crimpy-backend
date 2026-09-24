@@ -529,7 +529,10 @@ func (h *AuthHandler) revokeWithUndeliveredSuccessor(ctx context.Context, tokenH
 // revokeAllUserRefreshTokens ends every session of an account. The rows are
 // locked in one statement and revoked in the next: a refresh holding one of
 // them commits its successor in between, and only a statement started after
-// that commit sees the successor to revoke it.
+// that commit sees the successor to revoke it. That covers the refresh already
+// running when the revoke starts; a second one, presenting that successor in
+// the gap between the two statements, would need a full client round trip to
+// fit there.
 func (h *AuthHandler) revokeAllUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {

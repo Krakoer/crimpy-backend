@@ -914,8 +914,8 @@ func TestAuthHandler_Refresh_RotatedTokenRejectedAfterLogout(t *testing.T) {
 }
 
 // A password change revokes every token of the account, including a rotated
-// one still inside its grace.
-func TestAuthHandler_Refresh_RotatedTokenRejectedAfterRevokeAll(t *testing.T) {
+// one still inside its grace and the successor it was rotated to.
+func TestAuthHandler_Refresh_RotatedTokenRejectedAfterPasswordChange(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
@@ -924,19 +924,28 @@ func TestAuthHandler_Refresh_RotatedTokenRejectedAfterRevokeAll(t *testing.T) {
 		AuthHandler: handler.NewAuthHandler(queries, pool),
 	})
 
-	_, original := registerAndLogin(t, app, "refresh-revoke-all@test.com", "password123")
-	postRefresh(t, app, original)
+	accessToken, original := registerAndLogin(t, app, "refresh-password-change@test.com", "password123")
+	_, successor := postRefresh(t, app, original)
 
-	stored, err := queries.GetRefreshTokenByHash(context.Background(), utils.HashToken(original))
+	body, _ := json.Marshal(map[string]interface{}{
+		"old_password": "password123",
+		"new_password": "newpassword456",
+	})
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(accessToken))
+	resp, err := app.Test(req)
 	if err != nil {
-		t.Fatalf("Failed to load the rotated token: %v", err)
+		t.Fatalf("Password change failed: %v", err)
 	}
-	if err := queries.RevokeUserRefreshTokens(context.Background(), stored.UserID); err != nil {
-		t.Fatalf("Failed to revoke the account's tokens: %v", err)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 on password change, got %d", resp.StatusCode)
 	}
 
 	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
-		t.Errorf("Expected 401 reusing a rotated token after revoking all, got %d", status)
+		t.Errorf("Expected 401 reusing a rotated token after a password change, got %d", status)
+	}
+	if status, _ := postRefresh(t, app, successor); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 using the successor after a password change, got %d", status)
 	}
 }
 
