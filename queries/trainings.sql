@@ -12,13 +12,26 @@ SELECT id FROM trainings WHERE id = @id AND user_id = @user_id;
 -- name: GetTrainings :many
 -- @is_assessment is null for the whole library, true for the assessments alone
 -- and false for the trainings that are not one.
+--
+-- A null row_limit means every row, which is what the cheap list asks for and
+-- what this answered before the include=items ceiling existed. A caller that
+-- sends a number gets at most that many trainings, not that many join rows:
+-- assessment_definitions carries a unique index on training_id, so the LEFT
+-- JOIN cannot fan a training out into several.
+--
+-- The id breaks ties on title. Titles are not unique, and Postgres orders a tie
+-- by whatever the heap hands it, which moves the moment a row in the tie group
+-- is updated. Without the tiebreaker a limited read is not a stable prefix: a
+-- training could leave the answer and another take its place with nothing about
+-- the library having changed.
 SELECT t.*, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand, d.bodyweight_relative
 FROM trainings t
 LEFT JOIN assessment_definitions d ON d.training_id = t.id
 WHERE t.user_id = @user_id
   AND (sqlc.narg('is_assessment')::bool IS NULL
        OR (d.id IS NOT NULL) = sqlc.narg('is_assessment')::bool)
-ORDER BY t.title;
+ORDER BY t.title, t.id
+LIMIT sqlc.narg('row_limit')::int;
 
 -- name: UpdateTraining :one
 UPDATE trainings
