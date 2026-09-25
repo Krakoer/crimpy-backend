@@ -326,7 +326,7 @@ func (q *Queries) SetVerificationToken(ctx context.Context, arg SetVerificationT
 	return err
 }
 
-const updateUserPassword = `-- name: UpdateUserPassword :exec
+const updateUserPassword = `-- name: UpdateUserPassword :execrows
 UPDATE users SET password = $2 WHERE id = $1
 `
 
@@ -335,9 +335,12 @@ type UpdateUserPasswordParams struct {
 	Password string
 }
 
-func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
-	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.Password)
-	return err
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.Password)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const validateCoach = `-- name: ValidateCoach :exec

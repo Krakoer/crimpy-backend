@@ -22,18 +22,29 @@ CREATE UNIQUE INDEX "users_email_key" ON "users" (lower("email"));
 
 -- Long-lived refresh tokens used to mint new short-lived access tokens.
 -- Only the SHA-256 hash of the token is stored.
+--
+-- A refresh rotates the token: the one presented is revoked and "replaced_by"
+-- points at its successor. A client whose copy of the answer was lost still
+-- holds the revoked one, so for a short grace after "revoked_at" it may present
+-- it again, as long as the successor was never used. Revoking on sign out or a
+-- password change clears "replaced_by", which is what keeps those final.
 CREATE TABLE "refresh_tokens" (
-  "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "token_hash" TEXT        NOT NULL,
-  "expires_at" TIMESTAMPTZ NOT NULL,
-  "revoked"    BOOLEAN     NOT NULL DEFAULT false,
-  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"     UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "token_hash"  TEXT        NOT NULL,
+  "expires_at"  TIMESTAMPTZ NOT NULL,
+  "revoked"     BOOLEAN     NOT NULL DEFAULT false,
+  "revoked_at"  TIMESTAMPTZ NULL,
+  "replaced_by" UUID        NULL REFERENCES "refresh_tokens"("id") ON DELETE SET NULL,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 CREATE UNIQUE INDEX "refresh_tokens_token_hash_key" ON "refresh_tokens" ("token_hash");
 CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
+-- Deleting a token looks up the rows it replaced, for the prune of expired
+-- tokens and the cascade from a deleted user.
+CREATE INDEX "refresh_tokens_replaced_by_idx" ON "refresh_tokens"("replaced_by");
 
 -- Stores the training sessions the user has done.
 --

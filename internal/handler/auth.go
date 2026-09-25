@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // minPasswordLength is the shortest password accepted at registration and on change.
@@ -25,12 +27,11 @@ func normalizeEmail(email string) string {
 
 type AuthHandler struct {
 	queries *db.Queries
+	pool    *pgxpool.Pool
 }
 
-func NewAuthHandler(queries *db.Queries) *AuthHandler {
-	return &AuthHandler{
-		queries: queries,
-	}
+func NewAuthHandler(queries *db.Queries, pool *pgxpool.Pool) *AuthHandler {
+	return &AuthHandler{queries: queries, pool: pool}
 }
 
 type RegisterRequest struct {
@@ -295,7 +296,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	refreshToken, err := h.issueRefreshToken(c.Context(), user.ID)
+	refreshToken, _, err := issueRefreshToken(c.Context(), h.queries, user.ID)
 	if err != nil {
 		slog.Error("failed to create refresh token", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -321,24 +322,24 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 	})
 }
 
-func (h *AuthHandler) issueRefreshToken(ctx context.Context, userID pgtype.UUID) (string, error) {
+func issueRefreshToken(ctx context.Context, q *db.Queries, userID pgtype.UUID) (string, pgtype.UUID, error) {
 	raw, err := utils.GenerateRefreshToken()
 	if err != nil {
-		return "", err
+		return "", pgtype.UUID{}, err
 	}
 	expiresAt := pgtype.Timestamptz{}
 	if err := expiresAt.Scan(time.Now().Add(utils.RefreshTokenTTL)); err != nil {
-		return "", err
+		return "", pgtype.UUID{}, err
 	}
-	_, err = h.queries.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+	created, err := q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		UserID:    userID,
 		TokenHash: utils.HashToken(raw),
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		return "", err
+		return "", pgtype.UUID{}, err
 	}
-	return raw, nil
+	return raw, created.ID, nil
 }
 
 type RefreshRequest struct {
@@ -347,7 +348,7 @@ type RefreshRequest struct {
 
 // Refresh godoc
 // @Summary Refresh access token
-// @Description Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned.
+// @Description Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned. For one minute after a rotation the old token may be presented again, as long as its successor was never used and the session was not ended by sign out or a password change. That reissue revokes the undelivered successor.
 // @Tags Authentication
 // @Accept json
 // @Produce json
@@ -366,7 +367,25 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Refresh token is required"})
 	}
 
-	stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
+	tx, err := h.pool.Begin(c.Context())
+	if err != nil {
+		slog.Error("failed to begin transaction", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+	}
+	defer tx.Rollback(c.Context())
+
+	qtx := h.queries.WithTx(tx)
+
+	// Locked so two refreshes presenting the same token take turns, and the
+	// second one sees what the first did to it.
+	//
+	// Holding this lock, the successor insert below takes FOR KEY SHARE on the
+	// user row for its foreign key. An admin deleting that user at the same
+	// moment holds the row FOR UPDATE and cascades into this token, so one of
+	// the two is aborted as a deadlock: the refresh answers 500 for an account
+	// that is going away, or the admin retries the delete. Neither leaves a
+	// token behind, so it is accepted rather than locked around.
+	stored, err := qtx.LockRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
@@ -375,34 +394,84 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
 
-	if stored.Revoked || stored.ExpiresAt.Time.Before(time.Now()) {
+	if stored.ExpiresAt.Time.Before(time.Now()) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
+	if stored.Revoked {
+		allowed, err := reissuableWithinGrace(c.Context(), qtx, stored)
+		if err != nil {
+			slog.Error("failed to check refresh token grace", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+		}
+		if !allowed {
+			slog.Warn("auth rejected", "reason", "revoked refresh token presented", "user_id", stored.UserID.String(), "ip", c.IP())
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+		}
+		// The client never got the successor, so it goes: one live token per
+		// chain, and the one about to be issued is it.
+		if err := qtx.RevokeRefreshToken(c.Context(), stored.ReplacedBy); err != nil {
+			slog.Error("failed to revoke undelivered refresh token", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+		}
+	}
 
-	user, err := h.queries.GetUserByID(c.Context(), stored.UserID)
+	user, err := qtx.GetUserByID(c.Context(), stored.UserID)
 	if err != nil {
 		slog.Error("failed to load user for refresh", "user_id", stored.UserID.String(), "error", err)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
-	if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
-		slog.Error("failed to revoke refresh token", "error", err)
+	accessToken, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
+	if err != nil {
+		slog.Error("failed to generate JWT", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+	newRefresh, newRefreshID, err := issueRefreshToken(c.Context(), qtx, user.ID)
+	if err != nil {
+		slog.Error("failed to create refresh token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+	if err := qtx.RotateRefreshToken(c.Context(), db.RotateRefreshTokenParams{
+		ID:         stored.ID,
+		ReplacedBy: newRefreshID,
+	}); err != nil {
+		slog.Error("failed to rotate refresh token", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
 
-	accessToken, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
-	}
-	newRefresh, err := h.issueRefreshToken(c.Context(), user.ID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	// Nothing is revoked until the successor is stored with it, so a failure
+	// anywhere above leaves the presented token as good as it was.
+	if err := tx.Commit(c.Context()); err != nil {
+		slog.Error("failed to commit refresh token rotation", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"token":         accessToken,
 		"refresh_token": newRefresh,
 	})
+}
+
+// reissuableWithinGrace reports whether a revoked refresh token may be
+// exchanged again because the answer to its rotation never reached the client.
+// That holds only shortly after the rotation, and only while the successor is
+// untouched: a successor that was presented, revoked or expired proves the
+// client did get it, or that the chain was ended on purpose.
+func reissuableWithinGrace(ctx context.Context, q *db.Queries, stored db.RefreshToken) (bool, error) {
+	if !stored.ReplacedBy.Valid || !stored.RevokedAt.Valid {
+		return false, nil
+	}
+	if time.Since(stored.RevokedAt.Time) > utils.RefreshTokenReuseGrace {
+		return false, nil
+	}
+	successor, err := q.LockRefreshTokenByID(ctx, stored.ReplacedBy)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return !successor.Revoked && successor.ExpiresAt.Time.After(time.Now()), nil
 }
 
 // Logout godoc
@@ -420,14 +489,99 @@ func (h *AuthHandler) Logout(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 	}
 	if req.RefreshToken != "" {
-		stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
-		if err == nil {
-			if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
-				slog.Error("failed to revoke refresh token on logout", "error", err)
-			}
+		if err := h.revokeWithUndeliveredSuccessor(c.Context(), utils.HashToken(req.RefreshToken)); err != nil {
+			slog.Error("failed to revoke refresh token on logout", "error", err)
 		}
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
+}
+
+// revokeWithUndeliveredSuccessor revokes a refresh token, and the successor its
+// rotation minted if that was never used: a client signing out with a rotated
+// token is the one that never received it, and leaving it live would keep the
+// session open. Rows are locked token first, then successor, the order Refresh
+// takes them in.
+func (h *AuthHandler) revokeWithUndeliveredSuccessor(ctx context.Context, tokenHash string) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	stored, err := qtx.LockRefreshTokenByHash(ctx, tokenHash)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	if stored.ReplacedBy.Valid {
+		successor, err := qtx.LockRefreshTokenByID(ctx, stored.ReplacedBy)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+		if err == nil && !successor.Revoked {
+			if err := qtx.RevokeRefreshToken(ctx, successor.ID); err != nil {
+				return err
+			}
+		}
+	}
+	if err := qtx.RevokeRefreshToken(ctx, stored.ID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// errUserGone reports a password change for an account deleted while the
+// request was being handled.
+var errUserGone = errors.New("user no longer exists")
+
+// updatePasswordAndRevokeSessions stores the new password and ends every
+// session established with the old one, or does neither: a password reported
+// as changed while those sessions live on is the failure this exists to rule
+// out.
+//
+// The user row is locked first, then the refresh tokens. A refresh holds a
+// token while its successor insert takes FOR KEY SHARE on the user row, and
+// that does not wait on the FOR NO KEY UPDATE this password update takes,
+// which is why the two orders cannot deadlock. An update that also wrote email
+// or id would take FOR UPDATE instead and deadlock with every refresh running
+// during a password change.
+//
+// The refresh token rows are locked in one statement and revoked in the next:
+// a refresh holding one of them commits its successor in between, and only a
+// statement started after that commit sees the successor to revoke it. That
+// covers the refresh already running when the revoke starts; a second one,
+// presenting that successor in the gap between the two statements, would need
+// a full client round trip to fit there.
+func (h *AuthHandler) updatePasswordAndRevokeSessions(ctx context.Context, userID pgtype.UUID, hashedPassword string) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	updated, err := qtx.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:       userID,
+		Password: hashedPassword,
+	})
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return errUserGone
+	}
+	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
+		return err
+	}
+	if err := qtx.RevokeUserRefreshTokens(ctx, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 type ChangePasswordRequest struct {
@@ -531,20 +685,16 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.UpdateUserPassword(c.Context(), db.UpdateUserPasswordParams{
-		ID:       userUUID,
-		Password: hashedPassword,
-	})
-	if err != nil {
+	if err := h.updatePasswordAndRevokeSessions(c.Context(), userUUID, hashedPassword); err != nil {
+		if errors.Is(err, errUserGone) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "User not found",
+			})
+		}
 		slog.Error("failed to update password", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update password",
 		})
-	}
-
-	// Sessions established with the old password must not survive the change.
-	if err := h.queries.RevokeUserRefreshTokens(c.Context(), userUUID); err != nil {
-		slog.Error("failed to revoke refresh tokens after password change", "target_user_id", targetUserID, "error", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{

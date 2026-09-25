@@ -1,9 +1,12 @@
 package handler_test
 
 import (
+	"context"
 	"crimpy/backend/internal/handler"
+	"crimpy/backend/internal/utils"
 	"crimpy/backend/tests/testutil"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -14,7 +17,7 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -62,7 +65,7 @@ func TestAuthHandler_Register_DuplicateEmail(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -106,7 +109,7 @@ func TestAuthHandler_Register_MissingFields(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -174,7 +177,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -237,7 +240,7 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -307,7 +310,7 @@ func TestAuthHandler_Login_MissingFields(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -358,7 +361,7 @@ func TestAuthHandler_ChangePassword_Success(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -397,7 +400,7 @@ func TestAuthHandler_ChangePassword_WrongOldPassword(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -434,7 +437,7 @@ func TestAuthHandler_ChangePassword_MissingOldPassword(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -470,7 +473,7 @@ func TestAuthHandler_ChangePassword_ShortPassword(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -507,7 +510,7 @@ func TestAuthHandler_ChangePassword_AdminChangesOtherUserPassword(t *testing.T) 
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -545,7 +548,7 @@ func TestAuthHandler_ChangePassword_NonAdminCannotChangeOtherUserPassword(t *tes
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -583,7 +586,7 @@ func TestAuthHandler_ChangePassword_NoAuth(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -610,7 +613,7 @@ func TestAuthHandler_GetCurrentUser_Success(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -649,7 +652,7 @@ func TestAuthHandler_GetCurrentUser_AdminUser(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -684,7 +687,7 @@ func TestAuthHandler_GetCurrentUser_NoAuth(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -734,7 +737,7 @@ func TestAuthHandler_Login_ReturnsRefreshToken(t *testing.T) {
 	defer testutil.CleanupTestDB(t, pool)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		AuthHandler: handler.NewAuthHandler(queries),
+		AuthHandler: handler.NewAuthHandler(queries, pool),
 	})
 
 	_, refreshToken := registerAndLogin(t, app, "refresh-login@test.com", "password123")
@@ -749,7 +752,7 @@ func TestAuthHandler_Refresh_Success(t *testing.T) {
 	defer testutil.CleanupTestDB(t, pool)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		AuthHandler: handler.NewAuthHandler(queries),
+		AuthHandler: handler.NewAuthHandler(queries, pool),
 	})
 
 	_, refreshToken := registerAndLogin(t, app, "refresh-ok@test.com", "password123")
@@ -780,7 +783,7 @@ func TestAuthHandler_Refresh_InvalidToken(t *testing.T) {
 	defer testutil.CleanupTestDB(t, pool)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		AuthHandler: handler.NewAuthHandler(queries),
+		AuthHandler: handler.NewAuthHandler(queries, pool),
 	})
 
 	body, _ := json.Marshal(map[string]interface{}{"refresh_token": "not-a-real-token"})
@@ -793,27 +796,182 @@ func TestAuthHandler_Refresh_InvalidToken(t *testing.T) {
 	}
 }
 
-func TestAuthHandler_Refresh_RotatedTokenRejected(t *testing.T) {
+func postRefresh(t *testing.T, app *fiber.App, refreshToken string) (int, string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": refreshToken})
+	resp, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body))
+	if err != nil {
+		t.Fatalf("Refresh request failed: %v", err)
+	}
+	var response map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&response)
+	rotated, _ := response["refresh_token"].(string)
+	return resp.StatusCode, rotated
+}
+
+// A client whose rotation answer was lost still holds the token it sent. It
+// must be able to present it again rather than be signed out.
+func TestAuthHandler_Refresh_RotatedTokenReissuedWithinGrace(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		AuthHandler: handler.NewAuthHandler(queries),
+		AuthHandler: handler.NewAuthHandler(queries, pool),
 	})
 
-	_, refreshToken := registerAndLogin(t, app, "refresh-rotate@test.com", "password123")
+	_, original := registerAndLogin(t, app, "refresh-grace@test.com", "password123")
 
-	body, _ := json.Marshal(map[string]interface{}{"refresh_token": refreshToken})
-	if _, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body)); err != nil {
-		t.Fatalf("First refresh failed: %v", err)
+	status, lost := postRefresh(t, app, original)
+	if status != fiber.StatusOK {
+		t.Fatalf("Expected 200 on first refresh, got %d", status)
 	}
 
-	resp, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/refresh", body))
+	status, reissued := postRefresh(t, app, original)
+	if status != fiber.StatusOK {
+		t.Fatalf("Expected 200 presenting the rotated token within the grace, got %d", status)
+	}
+	if reissued == "" || reissued == lost || reissued == original {
+		t.Fatal("Expected a fresh successor on the reissue")
+	}
+
+	if status, _ := postRefresh(t, app, lost); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected the undelivered successor to be revoked, got %d", status)
+	}
+	if status, _ := postRefresh(t, app, reissued); status != fiber.StatusOK {
+		t.Errorf("Expected the reissued successor to work, got %d", status)
+	}
+}
+
+// A successor that was presented proves the client got it, so the token it
+// replaced is spent for good.
+func TestAuthHandler_Refresh_RotatedTokenRejectedOnceSuccessorUsed(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries, pool),
+	})
+
+	_, original := registerAndLogin(t, app, "refresh-rotate@test.com", "password123")
+
+	_, successor := postRefresh(t, app, original)
+	if status, _ := postRefresh(t, app, successor); status != fiber.StatusOK {
+		t.Fatalf("Expected 200 refreshing with the successor, got %d", status)
+	}
+
+	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 reusing a token whose successor was used, got %d", status)
+	}
+}
+
+func TestAuthHandler_Refresh_RotatedTokenRejectedAfterGrace(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries, pool),
+	})
+
+	_, original := registerAndLogin(t, app, "refresh-grace-over@test.com", "password123")
+	postRefresh(t, app, original)
+
+	_, err := pool.Exec(context.Background(),
+		"UPDATE refresh_tokens SET revoked_at = now() - $1::interval WHERE token_hash = $2",
+		fmt.Sprintf("%d seconds", int(utils.RefreshTokenReuseGrace.Seconds())+1), utils.HashToken(original))
 	if err != nil {
-		t.Fatalf("Second refresh failed: %v", err)
+		t.Fatalf("Failed to age the rotation: %v", err)
 	}
-	if resp.StatusCode != fiber.StatusUnauthorized {
-		t.Errorf("Expected 401 reusing rotated token, got %d", resp.StatusCode)
+
+	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 once the grace is over, got %d", status)
+	}
+}
+
+// Signing out ends the chain on purpose, and the grace must not reopen it.
+func TestAuthHandler_Refresh_RotatedTokenRejectedAfterLogout(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries, pool),
+	})
+
+	_, original := registerAndLogin(t, app, "refresh-logout@test.com", "password123")
+	_, successor := postRefresh(t, app, original)
+
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": successor})
+	if _, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/logout", body)); err != nil {
+		t.Fatalf("Logout failed: %v", err)
+	}
+
+	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 reusing a rotated token after logout, got %d", status)
+	}
+}
+
+// A password change revokes every token of the account, including a rotated
+// one still inside its grace and the successor it was rotated to.
+func TestAuthHandler_Refresh_RotatedTokenRejectedAfterPasswordChange(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries, pool),
+	})
+
+	accessToken, original := registerAndLogin(t, app, "refresh-password-change@test.com", "password123")
+	_, successor := postRefresh(t, app, original)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"old_password": "password123",
+		"new_password": "newpassword456",
+	})
+	req := testutil.NewJSONRequest(http.MethodPut, "/api/auth/change-password", body)
+	req.Header.Set("Authorization", testutil.GetAuthHeader(accessToken))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Password change failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 on password change, got %d", resp.StatusCode)
+	}
+
+	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 reusing a rotated token after a password change, got %d", status)
+	}
+	if status, _ := postRefresh(t, app, successor); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401 using the successor after a password change, got %d", status)
+	}
+}
+
+// A client signing out with a rotated token never received its successor, and
+// that successor must not outlive the sign out.
+func TestAuthHandler_Logout_WithRotatedTokenRevokesUndeliveredSuccessor(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		AuthHandler: handler.NewAuthHandler(queries, pool),
+	})
+
+	_, original := registerAndLogin(t, app, "logout-rotated@test.com", "password123")
+	_, undelivered := postRefresh(t, app, original)
+
+	body, _ := json.Marshal(map[string]interface{}{"refresh_token": original})
+	if _, err := app.Test(testutil.NewJSONRequest(http.MethodPost, "/auth/logout", body)); err != nil {
+		t.Fatalf("Logout failed: %v", err)
+	}
+
+	if status, _ := postRefresh(t, app, undelivered); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected the undelivered successor to be revoked by the logout, got %d", status)
+	}
+	if status, _ := postRefresh(t, app, original); status != fiber.StatusUnauthorized {
+		t.Errorf("Expected the logged out token to stay revoked, got %d", status)
 	}
 }

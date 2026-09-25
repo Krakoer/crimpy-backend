@@ -18,7 +18,7 @@ func TestAuthHandler_RegisterCoach_Success(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -73,7 +73,7 @@ func TestAuthHandler_RegisterRegularUser_CoachFieldsFalse(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})
@@ -124,7 +124,7 @@ func TestAuthHandler_LoginCoach_ReturnsCoachFields(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	app := testutil.SetupFiberApp(testutil.HandlerConfig{
 		AuthHandler: authHandler,
 	})

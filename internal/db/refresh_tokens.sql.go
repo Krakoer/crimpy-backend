@@ -14,7 +14,7 @@ import (
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
 VALUES ($1, $2, $3)
-RETURNING id, user_id, token_hash, expires_at, revoked, created_at
+RETURNING id, user_id, token_hash, expires_at, revoked, revoked_at, replaced_by, created_at
 `
 
 type CreateRefreshTokenParams struct {
@@ -32,6 +32,8 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.Revoked,
+		&i.RevokedAt,
+		&i.ReplacedBy,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -47,7 +49,7 @@ func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) error {
 }
 
 const getRefreshTokenByHash = `-- name: GetRefreshTokenByHash :one
-SELECT id, user_id, token_hash, expires_at, revoked, created_at FROM refresh_tokens WHERE token_hash = $1
+SELECT id, user_id, token_hash, expires_at, revoked, revoked_at, replaced_by, created_at FROM refresh_tokens WHERE token_hash = $1
 `
 
 func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error) {
@@ -59,13 +61,69 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.Revoked,
+		&i.RevokedAt,
+		&i.ReplacedBy,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const lockRefreshTokenByHash = `-- name: LockRefreshTokenByHash :one
+SELECT id, user_id, token_hash, expires_at, revoked, revoked_at, replaced_by, created_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE
+`
+
+func (q *Queries) LockRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, lockRefreshTokenByHash, tokenHash)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.Revoked,
+		&i.RevokedAt,
+		&i.ReplacedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockRefreshTokenByID = `-- name: LockRefreshTokenByID :one
+SELECT id, user_id, token_hash, expires_at, revoked, revoked_at, replaced_by, created_at FROM refresh_tokens WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockRefreshTokenByID(ctx context.Context, id pgtype.UUID) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, lockRefreshTokenByID, id)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.Revoked,
+		&i.RevokedAt,
+		&i.ReplacedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockUserRefreshTokens = `-- name: LockUserRefreshTokens :exec
+SELECT id FROM refresh_tokens WHERE user_id = $1 ORDER BY created_at, id FOR UPDATE
+`
+
+// Locked oldest first. A successor is always created after its predecessor
+// committed, so this is the order Refresh and Logout lock a token and its
+// successor in, and the three cannot wait on each other in a cycle.
+func (q *Queries) LockUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, lockUserRefreshTokens, userID)
+	return err
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
-UPDATE refresh_tokens SET revoked = true WHERE id = $1
+UPDATE refresh_tokens
+SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL
+WHERE id = $1
 `
 
 func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error {
@@ -74,10 +132,30 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error 
 }
 
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
-UPDATE refresh_tokens SET revoked = true WHERE user_id = $1
+UPDATE refresh_tokens
+SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = NULL
+WHERE user_id = $1
 `
 
 func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
+	return err
+}
+
+const rotateRefreshToken = `-- name: RotateRefreshToken :exec
+UPDATE refresh_tokens
+SET revoked = true, revoked_at = COALESCE(revoked_at, now()), replaced_by = $1
+WHERE id = $2
+`
+
+type RotateRefreshTokenParams struct {
+	ReplacedBy pgtype.UUID
+	ID         pgtype.UUID
+}
+
+// The first rotation's time is kept, so presenting the token again inside the
+// grace does not stretch the grace.
+func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) error {
+	_, err := q.db.Exec(ctx, rotateRefreshToken, arg.ReplacedBy, arg.ID)
 	return err
 }
