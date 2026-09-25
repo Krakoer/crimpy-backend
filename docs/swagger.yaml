@@ -6070,7 +6070,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new user account with email and password
+      description: 'Create a new user account with email and password. An address
+        that already has an account gets the same answer as a new one, so the endpoint
+        does not tell a caller which addresses are registered: its owner is emailed
+        instead, with a fresh verification link if the account is still unverified,
+        or a note that someone tried to register with it otherwise.'
       parameters:
       - description: Registration details
         in: body
@@ -6092,12 +6096,6 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "409":
-          description: Email already registered
-          schema:
-            additionalProperties:
-              type: string
-            type: object
         "500":
           description: Internal server error
           schema:
@@ -6111,7 +6109,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Resend verification email with a 10-minute cooldown per email
+      description: Send a new verification link to an unverified account. The answer
+        is the same whether or not the address has an account, is already verified,
+        or asked less than 10 minutes ago, in which case nothing is sent.
       parameters:
       - description: Email address
         in: body
@@ -6123,25 +6123,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: Verification email sent
+          description: Verification email sent if the account needs one
           schema:
             additionalProperties:
               type: string
             type: object
         "400":
-          description: Invalid request or email already verified
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: User not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "429":
-          description: Too many requests - cooldown active
+          description: Invalid request
           schema:
             additionalProperties:
               type: string

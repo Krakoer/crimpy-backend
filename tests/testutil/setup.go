@@ -109,6 +109,7 @@ type HandlerConfig struct {
 		Logout(fiber.Ctx) error
 		ForgotPassword(fiber.Ctx) error
 		ResetPassword(fiber.Ctx) error
+		ResendVerificationEmail(fiber.Ctx) error
 		ChangePassword(fiber.Ctx) error
 		GetCurrentUser(fiber.Ctx) error
 	}
@@ -233,6 +234,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		app.Post("/auth/logout", config.AuthHandler.Logout)
 		app.Post("/auth/forgot-password", config.AuthHandler.ForgotPassword)
 		app.Post("/auth/reset-password", config.AuthHandler.ResetPassword)
+		app.Post("/auth/resend-verification", config.AuthHandler.ResendVerificationEmail)
 	}
 
 	// Protected routes

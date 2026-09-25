@@ -61,50 +61,6 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 	}
 }
 
-func TestAuthHandler_Register_DuplicateEmail(t *testing.T) {
-	pool, queries := testutil.SetupTestDB(t)
-	defer testutil.CleanupTestDB(t, pool)
-
-	authHandler := handler.NewAuthHandler(queries, pool)
-	app := testutil.SetupFiberApp(testutil.HandlerConfig{
-		AuthHandler: authHandler,
-	})
-
-	// Create first user
-	reqBody := map[string]interface{}{
-		"email":     "duplicate@test.com",
-		"password":  "password123",
-		"firstname": "John",
-		"lastname":  "Doe",
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req1 := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
-	_, err := app.Test(req1)
-	if err != nil {
-		t.Fatalf("Failed to create first user: %v", err)
-	}
-
-	// Try to create second user with same email
-	req2 := testutil.NewJSONRequest(http.MethodPost, "/auth/register", body)
-	resp, err := app.Test(req2)
-	if err != nil {
-		t.Fatalf("Failed to execute request: %v", err)
-	}
-
-	// Assert response
-	if resp.StatusCode != fiber.StatusConflict {
-		t.Errorf("Expected status %d, got %d", fiber.StatusConflict, resp.StatusCode)
-	}
-
-	var response map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&response)
-
-	if response["error"] != "Email already registered" {
-		t.Errorf("Expected 'Email already registered' error, got %v", response["error"])
-	}
-}
-
 func TestAuthHandler_Register_MissingFields(t *testing.T) {
 	pool, queries := testutil.SetupTestDB(t)
 	defer testutil.CleanupTestDB(t, pool)
