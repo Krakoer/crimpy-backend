@@ -15,7 +15,30 @@ SELECT * FROM users WHERE email = $1;
 SELECT * FROM users WHERE id = $1;
 
 -- name: UpdateUserPassword :execrows
-UPDATE users SET password = $2 WHERE id = $1;
+UPDATE users
+SET password = $2, password_reset_token_hash = NULL, password_reset_requested_at = NULL
+WHERE id = $1;
+
+-- name: SetPasswordResetToken :execrows
+UPDATE users
+SET password_reset_token_hash = @token_hash, password_reset_requested_at = @requested_at
+WHERE id = @id
+  AND (password_reset_requested_at IS NULL OR password_reset_requested_at < @resend_cutoff);
+
+-- name: ClearPasswordResetToken :exec
+UPDATE users SET password_reset_token_hash = NULL, password_reset_requested_at = NULL WHERE id = $1;
+
+-- name: ResetPasswordWithToken :one
+UPDATE users
+SET password = @password,
+    password_reset_token_hash = NULL,
+    password_reset_requested_at = NULL,
+    email_verified = true,
+    verification_token = NULL,
+    verification_token_expires_at = NULL
+WHERE password_reset_token_hash = @token_hash
+  AND password_reset_requested_at > @issued_after
+RETURNING id, is_coach;
 
 -- name: GetPendingCoaches :many
 SELECT * FROM users WHERE is_coach = true AND coach_validated = false AND email_verified = true ORDER BY created_at ASC;

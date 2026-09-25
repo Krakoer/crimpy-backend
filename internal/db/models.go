@@ -305,6 +305,8 @@ type User struct {
 	VerificationToken          pgtype.Text
 	VerificationTokenExpiresAt pgtype.Timestamptz
 	VerificationEmailSentAt    pgtype.Timestamptz
+	PasswordResetTokenHash     pgtype.Text
+	PasswordResetRequestedAt   pgtype.Timestamptz
 	CreatedAt                  pgtype.Timestamptz
 	LastSeenAt                 pgtype.Timestamptz
 }
