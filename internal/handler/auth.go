@@ -926,8 +926,8 @@ type ForgotPasswordRequest struct {
 }
 
 // forgotPasswordAnswer is the same whether or not the address has an account,
-// and whether or not an email actually went out, so the endpoint does not tell
-// a caller which addresses are registered.
+// and whether or not the cooldown held the email back. Only a failed send
+// answers otherwise, since that is a retry the caller has to know about.
 const forgotPasswordAnswer = "If an account exists for this email, a password reset link has been sent to it."
 
 // ForgotPassword godoc
@@ -996,8 +996,11 @@ func (h *AuthHandler) ForgotPassword(c fiber.Ctx) error {
 	if err := utils.SendPasswordResetEmail(c.Context(), user.Email, user.Firstname, resetToken); err != nil {
 		slog.Error("failed to send password reset email", "user_id", user.ID.String(), "error", err)
 		// Dropped so the cooldown does not hold back a retry for an email that
-		// never went out.
-		if err := h.queries.ClearPasswordResetToken(c.Context(), user.ID); err != nil {
+		// never went out. Detached from the request, whose deadline may be what
+		// failed the send.
+		clearCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Context()), 5*time.Second)
+		defer cancel()
+		if err := h.queries.ClearPasswordResetToken(clearCtx, user.ID); err != nil {
 			slog.Error("failed to clear unsent password reset token", "user_id", user.ID.String(), "error", err)
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

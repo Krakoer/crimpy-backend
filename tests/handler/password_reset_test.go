@@ -299,3 +299,22 @@ func TestAuthHandler_ChangePassword_ClearsPendingResetToken(t *testing.T) {
 		t.Errorf("Expected a password change to void the pending reset link, got %d", status)
 	}
 }
+
+// Outside the test environment a missing Resend key fails the send, which is
+// the path a Resend outage takes.
+func TestAuthHandler_ForgotPassword_FailedSendLeavesNoCooldown(t *testing.T) {
+	pool, queries, app := setupPasswordResetApp(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	testutil.CreateTestUser(t, queries, "forgot-unsent@test.com")
+	t.Setenv("ENV", "development")
+	t.Setenv("RESEND_API_KEY", "")
+
+	status, _ := postPublicJSON(t, app, "/auth/forgot-password", map[string]interface{}{"email": "forgot-unsent@test.com"})
+	if status != fiber.StatusInternalServerError {
+		t.Fatalf("Expected 500 when the email cannot be sent, got %d", status)
+	}
+	if storedResetTokenHash(t, pool, "forgot-unsent@test.com") != nil {
+		t.Error("Expected the unsent token to be cleared so a retry is not held back")
+	}
+}
