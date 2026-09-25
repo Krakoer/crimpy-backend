@@ -1,4 +1,4 @@
-h1:6ChtWMj0F/6OKbQ0TdQ9gJAAeafRXFBOtjD0X5hurXk=
+h1:CyoWmzLKaHC1xpvz43CZonTZDlc/XPfOX17fQURi+7s=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -65,3 +65,4 @@ h1:6ChtWMj0F/6OKbQ0TdQ9gJAAeafRXFBOtjD0X5hurXk=
 20260924172635_add_refresh_token_rotation_grace.sql h1:odo2r8yKt3+XS3JLPjl4PxvrD8v5yJELfZ3kDpfMFUo=
 20260924174000_add_refresh_token_replaced_by_index.sql h1:rMCsKiSYSKTLdd3iWT0mooYG+xKPzOZCff+qG3kHnwk=
 20260925154245_add_password_reset.sql h1:5R3djuKEi/+N5twM5lit4lsV0LbkCDKSfATHdqy4Z7g=
+20260925182959_add_account_notice_sent_at.sql h1:hbfukWT1+3ASGhpcp64s8OuO5hyCDJG2Kl/2z8E8ZJM=

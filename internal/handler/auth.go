@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -61,14 +62,13 @@ type UserResponse struct {
 
 // Register godoc
 // @Summary Register a new user
-// @Description Create a new user account with email and password
+// @Description Create a new user account with email and password. An address that already has an account gets the same answer as a new one, so the endpoint does not tell a caller which addresses are registered: its owner is emailed instead, with a fresh verification link if the account is still unverified, or a note that someone tried to register with it otherwise.
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body RegisterRequest true "Registration details"
 // @Success 201 {object} map[string]interface{} "User registered successfully"
 // @Failure 400 {object} map[string]string "Invalid request or validation error"
-// @Failure 409 {object} map[string]string "Email already registered"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /auth/register [post]
 func (h *AuthHandler) Register(c fiber.Ctx) error {
@@ -129,9 +129,8 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "Email already registered",
-			})
+			h.notifyOwnerOfTakenAddress(c.Context(), req.Email)
+			return registrationAccepted(c, req.IsCoach, takenAddressUserResponse(req))
 		}
 		slog.Error("failed to create user", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -147,91 +146,140 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 				"error": "Failed to verify email",
 			})
 		}
-
-		// Return simple success message for tests
-		message := "User registered successfully"
-		if req.IsCoach {
-			message = "Coach account created. Pending admin validation."
-		}
-
-		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-			"message": message,
-			"user": UserResponse{
-				ID:             user.ID.String(),
-				Email:          user.Email,
-				Firstname:      user.Firstname,
-				Lastname:       user.Lastname,
-				IsCoach:        user.IsCoach,
-				CoachValidated: user.CoachValidated,
-				IsAdmin:        user.IsAdmin,
-				EmailVerified:  true,
-				CreatedAt:      user.CreatedAt.Time.String(),
-			},
-		})
+		user.EmailVerified = true
+		return registrationAccepted(c, req.IsCoach, newUserResponse(user))
 	}
 
-	// Generate verification token and send email (production)
-	verificationToken, err := utils.GenerateVerificationToken()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to generate verification token",
-		})
-	}
-
-	// Set token expiration to 24 hours from now
-	expiresAt := pgtype.Timestamptz{}
-	expiresAt.Scan(time.Now().Add(24 * time.Hour))
-
-	err = h.queries.SetVerificationToken(c.Context(), db.SetVerificationTokenParams{
-		ID:                         user.ID,
-		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
-		VerificationTokenExpiresAt: expiresAt,
-	})
-	if err != nil {
-		slog.Error("failed to save verification token", "user_id", user.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to save verification token",
-		})
-	}
-
-	if err := utils.SendVerificationEmail(c.Context(), user.Email, user.Firstname, verificationToken, req.IsCoach); err != nil {
+	if _, err := h.sendVerificationEmail(c.Context(), user); err != nil {
 		slog.Error("failed to send verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 			"message": "User registered, but verification email failed to send. Please request a new verification email.",
-			"user": UserResponse{
-				ID:             user.ID.String(),
-				Email:          user.Email,
-				Firstname:      user.Firstname,
-				Lastname:       user.Lastname,
-				IsCoach:        user.IsCoach,
-				CoachValidated: user.CoachValidated,
-				IsAdmin:        user.IsAdmin,
-				EmailVerified:  user.EmailVerified,
-				CreatedAt:      user.CreatedAt.Time.String(),
-			},
+			"user":    newUserResponse(user),
 		})
 	}
 
-	// Return user response (without password)
+	return registrationAccepted(c, req.IsCoach, newUserResponse(user))
+}
+
+// registrationAccepted is the one answer a registration gets, whether it
+// created an account or found the address taken.
+func registrationAccepted(c fiber.Ctx, isCoach bool, user UserResponse) error {
 	message := "User registered successfully. Please check your email to verify your account."
-	if req.IsCoach {
+	if isCoach {
 		message = "Coach account created. Please verify your email to proceed with admin validation."
 	}
-
+	if utils.IsTestEnv() {
+		message = "User registered successfully"
+		if isCoach {
+			message = "Coach account created. Pending admin validation."
+		}
+	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": message,
-		"user": UserResponse{
-			ID:             user.ID.String(),
-			Email:          user.Email,
-			Firstname:      user.Firstname,
-			Lastname:       user.Lastname,
-			IsCoach:        user.IsCoach,
-			CoachValidated: user.CoachValidated,
-			IsAdmin:        user.IsAdmin,
-			EmailVerified:  user.EmailVerified,
-			CreatedAt:      user.CreatedAt.Time.String(),
-		},
+		"user":    user,
 	})
+}
+
+func newUserResponse(user db.User) UserResponse {
+	return UserResponse{
+		ID:             user.ID.String(),
+		Email:          user.Email,
+		Firstname:      user.Firstname,
+		Lastname:       user.Lastname,
+		IsCoach:        user.IsCoach,
+		CoachValidated: user.CoachValidated,
+		IsAdmin:        user.IsAdmin,
+		EmailVerified:  user.EmailVerified,
+		CreatedAt:      user.CreatedAt.Time.String(),
+	}
+}
+
+// takenAddressUserResponse is shaped like the user a new registration returns,
+// built from the request alone, so nothing in it tells a caller the address
+// already had an account. Truncating the clock drops its monotonic reading and
+// matches the precision Postgres stores, so created_at prints the same way.
+func takenAddressUserResponse(req RegisterRequest) UserResponse {
+	emailVerified := utils.IsTestEnv()
+	return UserResponse{
+		ID:            uuid.NewString(),
+		Email:         req.Email,
+		Firstname:     req.Firstname,
+		Lastname:      req.Lastname,
+		IsCoach:       req.IsCoach,
+		EmailVerified: emailVerified,
+		CreatedAt:     time.Now().Truncate(time.Microsecond).String(),
+	}
+}
+
+// notifyOwnerOfTakenAddress emails whoever owns an address someone just tried
+// to register: an unverified owner is most likely the one retrying, and gets a
+// fresh verification link unless one went out in the last cooldown; a verified
+// owner is told about the attempt and pointed at sign in. Failures are logged
+// and never surface, since the answer must not differ from a new registration.
+func (h *AuthHandler) notifyOwnerOfTakenAddress(ctx context.Context, email string) {
+	owner, err := h.queries.GetUserByEmail(ctx, email)
+	if err != nil {
+		slog.Error("failed to load the owner of a taken address", "error", err)
+		return
+	}
+
+	if owner.EmailVerified {
+		claimed, err := h.queries.ClaimAccountNotice(ctx, db.ClaimAccountNoticeParams{
+			ID:           owner.ID,
+			ResendCutoff: pgtype.Timestamptz{Time: time.Now().Add(-accountNoticeCooldown), Valid: true},
+		})
+		if err != nil {
+			slog.Error("failed to claim an account already registered notice", "user_id", owner.ID.String(), "error", err)
+			return
+		}
+		if claimed == 0 {
+			return
+		}
+		if err := utils.SendAccountAlreadyRegisteredEmail(ctx, owner.Email, owner.Firstname); err != nil {
+			slog.Error("failed to send account already registered email", "user_id", owner.ID.String(), "error", err)
+		}
+		return
+	}
+
+	if _, err := h.sendVerificationEmail(ctx, owner); err != nil {
+		slog.Error("failed to resend verification email for a taken address", "user_id", owner.ID.String(), "error", err)
+	}
+}
+
+// accountNoticeCooldown is how long after telling an owner about an attempt to
+// register with their address another attempt goes unmentioned. It is claimed
+// in the same update that checks it, so concurrent attempts send one email.
+const accountNoticeCooldown = 10 * time.Minute
+
+// verificationEmailCooldown is how long after a verification email another one
+// is held back for the same account.
+const verificationEmailCooldown = 10 * time.Minute
+
+// sendVerificationEmail stores a new verification token, valid 24 hours, and
+// emails the link, unless the account is verified or was sent one within the
+// cooldown. The write is what checks both, so concurrent requests send at most
+// one email. Reports whether it sent.
+func (h *AuthHandler) sendVerificationEmail(ctx context.Context, user db.User) (bool, error) {
+	verificationToken, err := utils.GenerateVerificationToken()
+	if err != nil {
+		return false, err
+	}
+
+	now := time.Now()
+	stored, err := h.queries.SetVerificationToken(ctx, db.SetVerificationTokenParams{
+		ID:                         user.ID,
+		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
+		VerificationTokenExpiresAt: pgtype.Timestamptz{Time: now.Add(24 * time.Hour), Valid: true},
+		ResendCutoff:               pgtype.Timestamptz{Time: now.Add(-verificationEmailCooldown), Valid: true},
+	})
+	if err != nil {
+		return false, err
+	}
+	if stored == 0 {
+		return false, nil
+	}
+
+	return true, utils.SendVerificationEmail(ctx, user.Email, user.Firstname, verificationToken, user.IsCoach)
 }
 
 // Login godoc
@@ -825,17 +873,20 @@ type ResendVerificationRequest struct {
 	Email string `json:"email"`
 }
 
+// resendVerificationAnswer is the same for an unknown address, a verified one,
+// one inside its cooldown and one that was just sent a link, so the endpoint
+// does not tell a caller which addresses are registered or verified.
+const resendVerificationAnswer = "If this address has an account waiting for verification, a new verification link has been sent to it."
+
 // ResendVerificationEmail godoc
 // @Summary Resend verification email
-// @Description Resend verification email with a 10-minute cooldown per email
+// @Description Send a new verification link to an unverified account. The answer is the same whether or not the address has an account, is already verified, or asked less than 10 minutes ago, in which case nothing is sent.
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body ResendVerificationRequest true "Email address"
-// @Success 200 {object} map[string]string "Verification email sent"
-// @Failure 400 {object} map[string]string "Invalid request or email already verified"
-// @Failure 404 {object} map[string]string "User not found"
-// @Failure 429 {object} map[string]string "Too many requests - cooldown active"
+// @Success 200 {object} map[string]string "Verification email sent if the account needs one"
+// @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /auth/resend-verification [post]
 func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
@@ -857,9 +908,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 	user, err := h.queries.GetUserByEmail(c.Context(), req.Email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "User not found",
-			})
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": resendVerificationAnswer})
 		}
 		slog.Error("failed to retrieve user for resend verification", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -867,58 +916,14 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 		})
 	}
 
-	if user.EmailVerified {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Email is already verified",
-		})
-	}
-
-	// Check cooldown (10 minutes)
-	lastSent, err := h.queries.GetVerificationEmailSentAt(c.Context(), req.Email)
-	if err == nil && lastSent.Valid {
-		timeSinceLastSent := time.Since(lastSent.Time)
-		if timeSinceLastSent < 10*time.Minute {
-			remainingTime := 10*time.Minute - timeSinceLastSent
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": "Please wait before requesting another verification email. Try again in " + remainingTime.Round(time.Second).String(),
-			})
-		}
-	}
-
-	// Generate new verification token
-	verificationToken, err := utils.GenerateVerificationToken()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to generate verification token",
-		})
-	}
-
-	// Set token expiration to 24 hours from now
-	expiresAt := pgtype.Timestamptz{}
-	expiresAt.Scan(time.Now().Add(24 * time.Hour))
-
-	err = h.queries.SetVerificationToken(c.Context(), db.SetVerificationTokenParams{
-		ID:                         user.ID,
-		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
-		VerificationTokenExpiresAt: expiresAt,
-	})
-	if err != nil {
-		slog.Error("failed to save resend verification token", "user_id", user.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to save verification token",
-		})
-	}
-
-	if err := utils.SendVerificationEmail(c.Context(), user.Email, user.Firstname, verificationToken, user.IsCoach); err != nil {
+	if _, err := h.sendVerificationEmail(c.Context(), user); err != nil {
 		slog.Error("failed to resend verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to send verification email",
 		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Verification email sent successfully. Please check your inbox.",
-	})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": resendVerificationAnswer})
 }
 
 type ForgotPasswordRequest struct {
