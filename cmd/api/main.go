@@ -182,6 +182,8 @@ func main() {
 	app.Post("/auth/logout", authHandler.Logout)
 	app.Post("/auth/verify", authLimiter, authHandler.VerifyEmail)
 	app.Post("/auth/resend-verification", authLimiter, authHandler.ResendVerificationEmail)
+	app.Post("/auth/forgot-password", authLimiter, authHandler.ForgotPassword)
+	app.Post("/auth/reset-password", authLimiter, authHandler.ResetPassword)
 
 	// Protected routes - require authentication
 	api := app.Group("/api", middleware.AuthMiddleware())

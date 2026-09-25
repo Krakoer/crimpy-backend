@@ -772,6 +772,11 @@ definitions:
       week_start:
         type: string
     type: object
+  handler.ForgotPasswordRequest:
+    properties:
+      email:
+        type: string
+    type: object
   handler.LoginRequest:
     properties:
       email:
@@ -938,6 +943,13 @@ definitions:
   handler.ResendVerificationRequest:
     properties:
       email:
+        type: string
+    type: object
+  handler.ResetPasswordRequest:
+    properties:
+      new_password:
+        type: string
+      token:
         type: string
     type: object
   handler.SessionCoachReplyRequest:
@@ -5903,6 +5915,45 @@ paths:
       summary: Get a week from one of my programs
       tags:
       - Programs
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Email a password reset link, valid for one hour, to the account
+        with this address. The answer is the same whether or not the account exists.
+        A request made within a minute of the previous one for the same account sends
+        nothing.
+      parameters:
+      - description: Email address
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reset email sent if the account exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Request a password reset email
+      tags:
+      - Authentication
   /auth/login:
     post:
       consumes:
@@ -6102,6 +6153,50 @@ paths:
               type: string
             type: object
       summary: Resend verification email
+      tags:
+      - Authentication
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Set a new password using the token from a password reset email.
+        The token is single use and valid for one hour. Every session of the account
+        is signed out, and the email address is marked verified since the link reached
+        it.
+      parameters:
+      - description: Reset token and new password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request or validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Invalid or expired reset token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password with an emailed token
       tags:
       - Authentication
   /auth/verify:

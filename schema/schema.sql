@@ -11,6 +11,10 @@ CREATE TABLE "users" (
   "verification_token"            TEXT,
   "verification_token_expires_at" TIMESTAMPTZ,
   "verification_email_sent_at"    TIMESTAMPTZ,
+  -- Only the SHA-256 hash of the emailed reset token is stored. A new request
+  -- replaces it, and the link is good for an hour from the request.
+  "password_reset_token_hash"     TEXT,
+  "password_reset_requested_at"   TIMESTAMPTZ,
   "created_at"                    TIMESTAMPTZ NOT NULL DEFAULT now(),
   "last_seen_at"                  TIMESTAMPTZ,
   PRIMARY KEY ("id")
@@ -19,6 +23,11 @@ CREATE TABLE "users" (
 -- Emails are stored normalized to lowercase; the index enforces that two
 -- addresses differing only by case cannot both be registered.
 CREATE UNIQUE INDEX "users_email_key" ON "users" (lower("email"));
+
+-- Not unique on purpose: an update writing a column under a unique index takes
+-- FOR UPDATE on the row, which the password lock order in the auth handler
+-- rules out. The tokens are 32 random bytes, so they do not collide anyway.
+CREATE INDEX "users_password_reset_token_hash_idx" ON "users" ("password_reset_token_hash");
 
 -- Long-lived refresh tokens used to mint new short-lived access tokens.
 -- Only the SHA-256 hash of the token is stored.

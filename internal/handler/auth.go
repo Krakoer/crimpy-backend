@@ -575,13 +575,20 @@ func (h *AuthHandler) updatePasswordAndRevokeSessions(ctx context.Context, userI
 	if updated == 0 {
 		return errUserGone
 	}
-	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
-		return err
-	}
-	if err := qtx.RevokeUserRefreshTokens(ctx, userID); err != nil {
+	if err := revokeAllSessions(ctx, qtx, userID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// revokeAllSessions revokes every refresh token of an account. It runs inside
+// a transaction that has already locked the user row by writing its password,
+// for the lock order described on updatePasswordAndRevokeSessions.
+func revokeAllSessions(ctx context.Context, qtx *db.Queries, userID pgtype.UUID) error {
+	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
+		return err
+	}
+	return qtx.RevokeUserRefreshTokens(ctx, userID)
 }
 
 type ChangePasswordRequest struct {
@@ -911,5 +918,193 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Verification email sent successfully. Please check your inbox.",
+	})
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// forgotPasswordAnswer is the same whether or not the address has an account,
+// and whether or not the cooldown held the email back. Only a failed send
+// answers otherwise, since that is a retry the caller has to know about.
+const forgotPasswordAnswer = "If an account exists for this email, a password reset link has been sent to it."
+
+// ForgotPassword godoc
+// @Summary Request a password reset email
+// @Description Email a password reset link, valid for one hour, to the account with this address. The answer is the same whether or not the account exists. A request made within a minute of the previous one for the same account sends nothing.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body ForgotPasswordRequest true "Email address"
+// @Success 200 {object} map[string]string "Reset email sent if the account exists"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/forgot-password [post]
+func (h *AuthHandler) ForgotPassword(c fiber.Ctx) error {
+	var req ForgotPasswordRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	req.Email = normalizeEmail(req.Email)
+
+	if req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email is required",
+		})
+	}
+
+	user, err := h.queries.GetUserByEmail(c.Context(), req.Email)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": forgotPasswordAnswer})
+		}
+		slog.Error("failed to retrieve user for password reset", "email", req.Email, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to request password reset",
+		})
+	}
+
+	resetToken, err := utils.GenerateVerificationToken()
+	if err != nil {
+		slog.Error("failed to generate password reset token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to request password reset",
+		})
+	}
+
+	now := time.Now()
+	stored, err := h.queries.SetPasswordResetToken(c.Context(), db.SetPasswordResetTokenParams{
+		ID:           user.ID,
+		TokenHash:    pgtype.Text{String: utils.HashToken(resetToken), Valid: true},
+		RequestedAt:  pgtype.Timestamptz{Time: now, Valid: true},
+		ResendCutoff: pgtype.Timestamptz{Time: now.Add(-utils.PasswordResetResendCooldown), Valid: true},
+	})
+	if err != nil {
+		slog.Error("failed to save password reset token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to request password reset",
+		})
+	}
+	if stored == 0 {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": forgotPasswordAnswer})
+	}
+
+	if err := utils.SendPasswordResetEmail(c.Context(), user.Email, user.Firstname, resetToken); err != nil {
+		slog.Error("failed to send password reset email", "user_id", user.ID.String(), "error", err)
+		// Dropped so the cooldown does not hold back a retry for an email that
+		// never went out. Detached from the request, whose deadline may be what
+		// failed the send.
+		clearCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Context()), 5*time.Second)
+		defer cancel()
+		if err := h.queries.ClearPasswordResetToken(clearCtx, user.ID); err != nil {
+			slog.Error("failed to clear unsent password reset token", "user_id", user.ID.String(), "error", err)
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send password reset email",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": forgotPasswordAnswer})
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+// errResetTokenInvalid reports a reset token that is unknown, already used,
+// superseded by a newer request, or older than PasswordResetTokenTTL.
+var errResetTokenInvalid = errors.New("invalid or expired password reset token")
+
+// resetPasswordAndRevokeSessions consumes a reset token, stores the new
+// password and ends every session of the account, or does none of it. The
+// token is matched and cleared by the same update, so two requests presenting
+// it cannot both succeed.
+func (h *AuthHandler) resetPasswordAndRevokeSessions(ctx context.Context, resetToken, hashedPassword string) (db.ResetPasswordWithTokenRow, error) {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return db.ResetPasswordWithTokenRow{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	user, err := qtx.ResetPasswordWithToken(ctx, db.ResetPasswordWithTokenParams{
+		Password:    hashedPassword,
+		TokenHash:   pgtype.Text{String: utils.HashToken(resetToken), Valid: true},
+		IssuedAfter: pgtype.Timestamptz{Time: time.Now().Add(-utils.PasswordResetTokenTTL), Valid: true},
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return db.ResetPasswordWithTokenRow{}, errResetTokenInvalid
+		}
+		return db.ResetPasswordWithTokenRow{}, err
+	}
+	if err := revokeAllSessions(ctx, qtx, user.ID); err != nil {
+		return db.ResetPasswordWithTokenRow{}, err
+	}
+	return user, tx.Commit(ctx)
+}
+
+// ResetPassword godoc
+// @Summary Reset password with an emailed token
+// @Description Set a new password using the token from a password reset email. The token is single use and valid for one hour. Every session of the account is signed out, and the email address is marked verified since the link reached it.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body ResetPasswordRequest true "Reset token and new password"
+// @Success 200 {object} map[string]interface{} "Password reset"
+// @Failure 400 {object} map[string]string "Invalid request or validation error"
+// @Failure 404 {object} map[string]string "Invalid or expired reset token"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/reset-password [post]
+func (h *AuthHandler) ResetPassword(c fiber.Ctx) error {
+	var req ResetPasswordRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if req.Token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Token is required",
+		})
+	}
+
+	if len(req.NewPassword) < minPasswordLength {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "New password must be at least 6 characters",
+		})
+	}
+
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		slog.Error("failed to hash password during reset", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process password",
+		})
+	}
+
+	user, err := h.resetPasswordAndRevokeSessions(c.Context(), req.Token, hashedPassword)
+	if err != nil {
+		if errors.Is(err, errResetTokenInvalid) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "This reset link is invalid or has expired. Please request a new one.",
+			})
+		}
+		slog.Error("failed to reset password", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to reset password",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message":  "Password reset successfully. You can now sign in with your new password.",
+		"is_coach": user.IsCoach,
 	})
 }

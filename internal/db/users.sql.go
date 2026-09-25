@@ -11,8 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearPasswordResetToken = `-- name: ClearPasswordResetToken :exec
+UPDATE users SET password_reset_token_hash = NULL, password_reset_requested_at = NULL WHERE id = $1
+`
+
+func (q *Queries) ClearPasswordResetToken(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearPasswordResetToken, id)
+	return err
+}
+
 const createAdminUser = `-- name: CreateAdminUser :one
-INSERT INTO users (email, firstname, lastname, password, is_admin, email_verified) VALUES ($1, $2, $3, $4, true, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at
+INSERT INTO users (email, firstname, lastname, password, is_admin, email_verified) VALUES ($1, $2, $3, $4, true, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at
 `
 
 type CreateAdminUserParams struct {
@@ -43,6 +52,8 @@ func (q *Queries) CreateAdminUser(ctx context.Context, arg CreateAdminUserParams
 		&i.VerificationToken,
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
+		&i.PasswordResetTokenHash,
+		&i.PasswordResetRequestedAt,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)
@@ -50,7 +61,7 @@ func (q *Queries) CreateAdminUser(ctx context.Context, arg CreateAdminUserParams
 }
 
 const createCoachUser = `-- name: CreateCoachUser :one
-INSERT INTO users (email, firstname, lastname, password, is_coach) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at
+INSERT INTO users (email, firstname, lastname, password, is_coach) VALUES ($1, $2, $3, $4, true) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at
 `
 
 type CreateCoachUserParams struct {
@@ -81,6 +92,8 @@ func (q *Queries) CreateCoachUser(ctx context.Context, arg CreateCoachUserParams
 		&i.VerificationToken,
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
+		&i.PasswordResetTokenHash,
+		&i.PasswordResetRequestedAt,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)
@@ -88,7 +101,7 @@ func (q *Queries) CreateCoachUser(ctx context.Context, arg CreateCoachUserParams
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at
+INSERT INTO users (email, firstname, lastname, password) VALUES ($1, $2, $3, $4) RETURNING id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at
 `
 
 type CreateUserParams struct {
@@ -120,6 +133,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.VerificationToken,
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
+		&i.PasswordResetTokenHash,
+		&i.PasswordResetRequestedAt,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)
@@ -136,7 +151,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getPendingCoaches = `-- name: GetPendingCoaches :many
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE is_coach = true AND coach_validated = false AND email_verified = true ORDER BY created_at ASC
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at FROM users WHERE is_coach = true AND coach_validated = false AND email_verified = true ORDER BY created_at ASC
 `
 
 func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
@@ -161,6 +176,8 @@ func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
 			&i.VerificationToken,
 			&i.VerificationTokenExpiresAt,
 			&i.VerificationEmailSentAt,
+			&i.PasswordResetTokenHash,
+			&i.PasswordResetRequestedAt,
 			&i.CreatedAt,
 			&i.LastSeenAt,
 		); err != nil {
@@ -175,7 +192,7 @@ func (q *Queries) GetPendingCoaches(ctx context.Context) ([]User, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE email = $1
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -194,6 +211,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.VerificationToken,
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
+		&i.PasswordResetTokenHash,
+		&i.PasswordResetRequestedAt,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)
@@ -201,7 +220,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE id = $1
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -220,6 +239,8 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.VerificationToken,
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
+		&i.PasswordResetTokenHash,
+		&i.PasswordResetRequestedAt,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)
@@ -227,7 +248,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 }
 
 const getUserByVerificationToken = `-- name: GetUserByVerificationToken :one
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users WHERE verification_token = $1 AND verification_token_expires_at > NOW()
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at FROM users WHERE verification_token = $1 AND verification_token_expires_at > NOW()
 `
 
 func (q *Queries) GetUserByVerificationToken(ctx context.Context, verificationToken pgtype.Text) (User, error) {
@@ -246,6 +267,8 @@ func (q *Queries) GetUserByVerificationToken(ctx context.Context, verificationTo
 		&i.VerificationToken,
 		&i.VerificationTokenExpiresAt,
 		&i.VerificationEmailSentAt,
+		&i.PasswordResetTokenHash,
+		&i.PasswordResetRequestedAt,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)
@@ -264,7 +287,7 @@ func (q *Queries) GetVerificationEmailSentAt(ctx context.Context, email string) 
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, created_at, last_seen_at FROM users ORDER BY created_at DESC
+SELECT id, email, password, firstname, lastname, is_admin, is_coach, coach_validated, email_verified, verification_token, verification_token_expires_at, verification_email_sent_at, password_reset_token_hash, password_reset_requested_at, created_at, last_seen_at FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -289,6 +312,8 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.VerificationToken,
 			&i.VerificationTokenExpiresAt,
 			&i.VerificationEmailSentAt,
+			&i.PasswordResetTokenHash,
+			&i.PasswordResetRequestedAt,
 			&i.CreatedAt,
 			&i.LastSeenAt,
 		); err != nil {
@@ -311,6 +336,64 @@ func (q *Queries) RejectCoach(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const resetPasswordWithToken = `-- name: ResetPasswordWithToken :one
+UPDATE users
+SET password = $1,
+    password_reset_token_hash = NULL,
+    password_reset_requested_at = NULL,
+    email_verified = true,
+    verification_token = NULL,
+    verification_token_expires_at = NULL
+WHERE password_reset_token_hash = $2
+  AND password_reset_requested_at > $3
+RETURNING id, is_coach
+`
+
+type ResetPasswordWithTokenParams struct {
+	Password    string
+	TokenHash   pgtype.Text
+	IssuedAfter pgtype.Timestamptz
+}
+
+type ResetPasswordWithTokenRow struct {
+	ID      pgtype.UUID
+	IsCoach bool
+}
+
+func (q *Queries) ResetPasswordWithToken(ctx context.Context, arg ResetPasswordWithTokenParams) (ResetPasswordWithTokenRow, error) {
+	row := q.db.QueryRow(ctx, resetPasswordWithToken, arg.Password, arg.TokenHash, arg.IssuedAfter)
+	var i ResetPasswordWithTokenRow
+	err := row.Scan(&i.ID, &i.IsCoach)
+	return i, err
+}
+
+const setPasswordResetToken = `-- name: SetPasswordResetToken :execrows
+UPDATE users
+SET password_reset_token_hash = $1, password_reset_requested_at = $2
+WHERE id = $3
+  AND (password_reset_requested_at IS NULL OR password_reset_requested_at < $4)
+`
+
+type SetPasswordResetTokenParams struct {
+	TokenHash    pgtype.Text
+	RequestedAt  pgtype.Timestamptz
+	ID           pgtype.UUID
+	ResendCutoff pgtype.Timestamptz
+}
+
+func (q *Queries) SetPasswordResetToken(ctx context.Context, arg SetPasswordResetTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPasswordResetToken,
+		arg.TokenHash,
+		arg.RequestedAt,
+		arg.ID,
+		arg.ResendCutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setVerificationToken = `-- name: SetVerificationToken :exec
 UPDATE users SET verification_token = $2, verification_token_expires_at = $3, verification_email_sent_at = NOW() WHERE id = $1
 `
@@ -327,7 +410,9 @@ func (q *Queries) SetVerificationToken(ctx context.Context, arg SetVerificationT
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :execrows
-UPDATE users SET password = $2 WHERE id = $1
+UPDATE users
+SET password = $2, password_reset_token_hash = NULL, password_reset_requested_at = NULL
+WHERE id = $1
 `
 
 type UpdateUserPasswordParams struct {
