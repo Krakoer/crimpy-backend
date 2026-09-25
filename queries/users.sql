@@ -14,7 +14,7 @@ SELECT * FROM users WHERE email = $1;
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 
--- name: UpdateUserPassword :exec
+-- name: UpdateUserPassword :execrows
 UPDATE users SET password = $2 WHERE id = $1;
 
 -- name: GetPendingCoaches :many

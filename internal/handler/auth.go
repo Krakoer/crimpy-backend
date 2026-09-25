@@ -5,6 +5,7 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -377,6 +378,13 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 
 	// Locked so two refreshes presenting the same token take turns, and the
 	// second one sees what the first did to it.
+	//
+	// Holding this lock, the successor insert below takes FOR KEY SHARE on the
+	// user row for its foreign key. An admin deleting that user at the same
+	// moment holds the row FOR UPDATE and cascades into this token, so one of
+	// the two is aborted as a deadlock: the refresh answers 500 for an account
+	// that is going away, or the admin retries the delete. Neither leaves a
+	// token behind, so it is accepted rather than locked around.
 	stored, err := qtx.LockRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -526,10 +534,21 @@ func (h *AuthHandler) revokeWithUndeliveredSuccessor(ctx context.Context, tokenH
 	return tx.Commit(ctx)
 }
 
+// errUserGone reports a password change for an account deleted while the
+// request was being handled.
+var errUserGone = errors.New("user no longer exists")
+
 // updatePasswordAndRevokeSessions stores the new password and ends every
 // session established with the old one, or does neither: a password reported
 // as changed while those sessions live on is the failure this exists to rule
 // out.
+//
+// The user row is locked first, then the refresh tokens. A refresh holds a
+// token while its successor insert takes FOR KEY SHARE on the user row, and
+// that does not wait on the FOR NO KEY UPDATE this password update takes,
+// which is why the two orders cannot deadlock. An update that also wrote email
+// or id would take FOR UPDATE instead and deadlock with every refresh running
+// during a password change.
 //
 // The refresh token rows are locked in one statement and revoked in the next:
 // a refresh holding one of them commits its successor in between, and only a
@@ -546,11 +565,15 @@ func (h *AuthHandler) updatePasswordAndRevokeSessions(ctx context.Context, userI
 
 	qtx := h.queries.WithTx(tx)
 
-	if err := qtx.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+	updated, err := qtx.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
 		ID:       userID,
 		Password: hashedPassword,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
+	}
+	if updated == 0 {
+		return errUserGone
 	}
 	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
 		return err
@@ -663,6 +686,11 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 	}
 
 	if err := h.updatePasswordAndRevokeSessions(c.Context(), userUUID, hashedPassword); err != nil {
+		if errors.Is(err, errUserGone) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "User not found",
+			})
+		}
 		slog.Error("failed to update password", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update password",
