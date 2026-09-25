@@ -411,19 +411,34 @@ func (q *Queries) SetPasswordResetToken(ctx context.Context, arg SetPasswordRese
 	return result.RowsAffected(), nil
 }
 
-const setVerificationToken = `-- name: SetVerificationToken :exec
-UPDATE users SET verification_token = $2, verification_token_expires_at = $3, verification_email_sent_at = NOW() WHERE id = $1
+const setVerificationToken = `-- name: SetVerificationToken :execrows
+UPDATE users
+SET verification_token = $1,
+    verification_token_expires_at = $2,
+    verification_email_sent_at = NOW()
+WHERE id = $3
+  AND email_verified = false
+  AND (verification_email_sent_at IS NULL OR verification_email_sent_at < $4)
 `
 
 type SetVerificationTokenParams struct {
-	ID                         pgtype.UUID
 	VerificationToken          pgtype.Text
 	VerificationTokenExpiresAt pgtype.Timestamptz
+	ID                         pgtype.UUID
+	ResendCutoff               pgtype.Timestamptz
 }
 
-func (q *Queries) SetVerificationToken(ctx context.Context, arg SetVerificationTokenParams) error {
-	_, err := q.db.Exec(ctx, setVerificationToken, arg.ID, arg.VerificationToken, arg.VerificationTokenExpiresAt)
-	return err
+func (q *Queries) SetVerificationToken(ctx context.Context, arg SetVerificationTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setVerificationToken,
+		arg.VerificationToken,
+		arg.VerificationTokenExpiresAt,
+		arg.ID,
+		arg.ResendCutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :execrows

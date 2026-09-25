@@ -150,7 +150,7 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 		return registrationAccepted(c, req.IsCoach, newUserResponse(user))
 	}
 
-	if err := h.sendVerificationEmail(c.Context(), user); err != nil {
+	if _, err := h.sendVerificationEmail(c.Context(), user); err != nil {
 		slog.Error("failed to send verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 			"message": "User registered, but verification email failed to send. Please request a new verification email.",
@@ -241,10 +241,7 @@ func (h *AuthHandler) notifyOwnerOfTakenAddress(ctx context.Context, email strin
 		return
 	}
 
-	if verificationCooldownActive(owner) {
-		return
-	}
-	if err := h.sendVerificationEmail(ctx, owner); err != nil {
+	if _, err := h.sendVerificationEmail(ctx, owner); err != nil {
 		slog.Error("failed to resend verification email for a taken address", "user_id", owner.ID.String(), "error", err)
 	}
 }
@@ -258,28 +255,31 @@ const accountNoticeCooldown = 10 * time.Minute
 // is held back for the same account.
 const verificationEmailCooldown = 10 * time.Minute
 
-func verificationCooldownActive(user db.User) bool {
-	return user.VerificationEmailSentAt.Valid && time.Since(user.VerificationEmailSentAt.Time) < verificationEmailCooldown
-}
-
 // sendVerificationEmail stores a new verification token, valid 24 hours, and
-// emails the link to the account.
-func (h *AuthHandler) sendVerificationEmail(ctx context.Context, user db.User) error {
+// emails the link, unless the account is verified or was sent one within the
+// cooldown. The write is what checks both, so concurrent requests send at most
+// one email. Reports whether it sent.
+func (h *AuthHandler) sendVerificationEmail(ctx context.Context, user db.User) (bool, error) {
 	verificationToken, err := utils.GenerateVerificationToken()
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	expiresAt := pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}
-	if err := h.queries.SetVerificationToken(ctx, db.SetVerificationTokenParams{
+	now := time.Now()
+	stored, err := h.queries.SetVerificationToken(ctx, db.SetVerificationTokenParams{
 		ID:                         user.ID,
 		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
-		VerificationTokenExpiresAt: expiresAt,
-	}); err != nil {
-		return err
+		VerificationTokenExpiresAt: pgtype.Timestamptz{Time: now.Add(24 * time.Hour), Valid: true},
+		ResendCutoff:               pgtype.Timestamptz{Time: now.Add(-verificationEmailCooldown), Valid: true},
+	})
+	if err != nil {
+		return false, err
+	}
+	if stored == 0 {
+		return false, nil
 	}
 
-	return utils.SendVerificationEmail(ctx, user.Email, user.Firstname, verificationToken, user.IsCoach)
+	return true, utils.SendVerificationEmail(ctx, user.Email, user.Firstname, verificationToken, user.IsCoach)
 }
 
 // Login godoc
@@ -916,11 +916,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 		})
 	}
 
-	if user.EmailVerified || verificationCooldownActive(user) {
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": resendVerificationAnswer})
-	}
-
-	if err := h.sendVerificationEmail(c.Context(), user); err != nil {
+	if _, err := h.sendVerificationEmail(c.Context(), user); err != nil {
 		slog.Error("failed to resend verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to send verification email",

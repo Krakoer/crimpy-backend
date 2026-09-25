@@ -237,7 +237,9 @@ func TestAuthHandler_ResendVerification_SendsOnlyOutsideTheCooldown(t *testing.T
 		t.Error("Expected a request within the cooldown to leave the sent link in place")
 	}
 
-	pool.Exec(context.Background(), `UPDATE users SET verification_email_sent_at = now() - interval '11 minutes' WHERE email = $1`, "resend-cooldown@test.com")
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET verification_email_sent_at = now() - interval '11 minutes' WHERE email = $1`, "resend-cooldown@test.com"); err != nil {
+		t.Fatalf("Failed to move the cooldown back: %v", err)
+	}
 	postAuth(t, app, "/auth/resend-verification", map[string]interface{}{"email": "resend-cooldown@test.com"})
 	third := readVerificationState(t, pool, "resend-cooldown@test.com")
 	if third.token == nil || *third.token == *first.token {
@@ -305,7 +307,9 @@ func TestAuthHandler_Register_TakenVerifiedAddressNoticeHasACooldown(t *testing.
 		t.Error("Expected an attempt within the cooldown to send no second notice")
 	}
 
-	pool.Exec(context.Background(), `UPDATE users SET account_notice_sent_at = now() - interval '11 minutes' WHERE email = $1`, "taken-notice@test.com")
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET account_notice_sent_at = now() - interval '11 minutes' WHERE email = $1`, "taken-notice@test.com"); err != nil {
+		t.Fatalf("Failed to move the cooldown back: %v", err)
+	}
 	postAuth(t, app, "/auth/register", registration("taken-notice@test.com", false))
 	if third := accountNoticeSentAt(t, pool, "taken-notice@test.com"); third == nil || !third.After(*first) {
 		t.Error("Expected an attempt after the cooldown to notify the owner again")

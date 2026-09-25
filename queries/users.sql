@@ -49,8 +49,14 @@ UPDATE users SET coach_validated = true WHERE id = $1 AND is_coach = true;
 -- name: RejectCoach :exec
 UPDATE users SET is_coach = false, coach_validated = false WHERE id = $1 AND is_coach = true;
 
--- name: SetVerificationToken :exec
-UPDATE users SET verification_token = $2, verification_token_expires_at = $3, verification_email_sent_at = NOW() WHERE id = $1;
+-- name: SetVerificationToken :execrows
+UPDATE users
+SET verification_token = @verification_token,
+    verification_token_expires_at = @verification_token_expires_at,
+    verification_email_sent_at = NOW()
+WHERE id = @id
+  AND email_verified = false
+  AND (verification_email_sent_at IS NULL OR verification_email_sent_at < @resend_cutoff);
 
 -- name: GetUserByVerificationToken :one
 SELECT * FROM users WHERE verification_token = $1 AND verification_token_expires_at > NOW();
