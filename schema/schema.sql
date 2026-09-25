@@ -15,6 +15,9 @@ CREATE TABLE "users" (
   -- replaces it, and the link is good for an hour from the request.
   "password_reset_token_hash"     TEXT,
   "password_reset_requested_at"   TIMESTAMPTZ,
+  -- When the owner was last told that someone tried to register with their
+  -- address, so a stream of such attempts cannot flood their inbox.
+  "account_notice_sent_at"        TIMESTAMPTZ,
   "created_at"                    TIMESTAMPTZ NOT NULL DEFAULT now(),
   "last_seen_at"                  TIMESTAMPTZ,
   PRIMARY KEY ("id")

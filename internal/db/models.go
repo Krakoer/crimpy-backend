@@ -307,6 +307,7 @@ type User struct {
 	VerificationEmailSentAt    pgtype.Timestamptz
 	PasswordResetTokenHash     pgtype.Text
 	PasswordResetRequestedAt   pgtype.Timestamptz
+	AccountNoticeSentAt        pgtype.Timestamptz
 	CreatedAt                  pgtype.Timestamptz
 	LastSeenAt                 pgtype.Timestamptz
 }

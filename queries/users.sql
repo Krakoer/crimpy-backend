@@ -58,8 +58,11 @@ SELECT * FROM users WHERE verification_token = $1 AND verification_token_expires
 -- name: VerifyUserEmail :exec
 UPDATE users SET email_verified = true, verification_token = NULL, verification_token_expires_at = NULL WHERE id = $1;
 
--- name: GetVerificationEmailSentAt :one
-SELECT verification_email_sent_at FROM users WHERE email = $1;
+-- name: ClaimAccountNotice :execrows
+UPDATE users
+SET account_notice_sent_at = NOW()
+WHERE id = @id
+  AND (account_notice_sent_at IS NULL OR account_notice_sent_at < @resend_cutoff);
 
 -- name: ListAllUsers :many
 SELECT * FROM users ORDER BY created_at DESC;

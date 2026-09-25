@@ -272,3 +272,42 @@ func TestAuthHandler_Register_TakenAddressHidesAFailedEmail(t *testing.T) {
 		t.Errorf("Expected the plain registration message, got %q", response["message"])
 	}
 }
+
+func accountNoticeSentAt(t *testing.T, pool *pgxpool.Pool, email string) *time.Time {
+	t.Helper()
+	var sentAt *time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT account_notice_sent_at FROM users WHERE email = $1`, email).Scan(&sentAt); err != nil {
+		t.Fatalf("Failed to read account notice: %v", err)
+	}
+	return sentAt
+}
+
+// Every attempt on a verified address would otherwise email its owner, which
+// turns registration into a way to flood an inbox.
+func TestAuthHandler_Register_TakenVerifiedAddressNoticeHasACooldown(t *testing.T) {
+	pool, queries, app := setupEnumerationApp(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	testutil.CreateTestUser(t, queries, "taken-notice@test.com")
+
+	postAuth(t, app, "/auth/register", registration("taken-notice@test.com", false))
+	first := accountNoticeSentAt(t, pool, "taken-notice@test.com")
+	if first == nil {
+		t.Fatal("Expected the first attempt to notify the owner")
+	}
+
+	status, _ := postAuth(t, app, "/auth/register", registration("taken-notice@test.com", false))
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 within the cooldown, got %d", status)
+	}
+	if second := accountNoticeSentAt(t, pool, "taken-notice@test.com"); second == nil || !second.Equal(*first) {
+		t.Error("Expected an attempt within the cooldown to send no second notice")
+	}
+
+	pool.Exec(context.Background(), `UPDATE users SET account_notice_sent_at = now() - interval '11 minutes' WHERE email = $1`, "taken-notice@test.com")
+	postAuth(t, app, "/auth/register", registration("taken-notice@test.com", false))
+	if third := accountNoticeSentAt(t, pool, "taken-notice@test.com"); third == nil || !third.After(*first) {
+		t.Error("Expected an attempt after the cooldown to notify the owner again")
+	}
+}

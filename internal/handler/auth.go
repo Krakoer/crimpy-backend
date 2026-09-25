@@ -224,6 +224,17 @@ func (h *AuthHandler) notifyOwnerOfTakenAddress(ctx context.Context, email strin
 	}
 
 	if owner.EmailVerified {
+		claimed, err := h.queries.ClaimAccountNotice(ctx, db.ClaimAccountNoticeParams{
+			ID:           owner.ID,
+			ResendCutoff: pgtype.Timestamptz{Time: time.Now().Add(-accountNoticeCooldown), Valid: true},
+		})
+		if err != nil {
+			slog.Error("failed to claim an account already registered notice", "user_id", owner.ID.String(), "error", err)
+			return
+		}
+		if claimed == 0 {
+			return
+		}
 		if err := utils.SendAccountAlreadyRegisteredEmail(ctx, owner.Email, owner.Firstname); err != nil {
 			slog.Error("failed to send account already registered email", "user_id", owner.ID.String(), "error", err)
 		}
@@ -237,6 +248,11 @@ func (h *AuthHandler) notifyOwnerOfTakenAddress(ctx context.Context, email strin
 		slog.Error("failed to resend verification email for a taken address", "user_id", owner.ID.String(), "error", err)
 	}
 }
+
+// accountNoticeCooldown is how long after telling an owner about an attempt to
+// register with their address another attempt goes unmentioned. It is claimed
+// in the same update that checks it, so concurrent attempts send one email.
+const accountNoticeCooldown = 10 * time.Minute
 
 // verificationEmailCooldown is how long after a verification email another one
 // is held back for the same account.
