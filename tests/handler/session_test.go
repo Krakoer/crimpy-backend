@@ -1361,23 +1361,31 @@ func TestSessionHandler_CreateSession_DropsRepItemOutsidePrescription(t *testing
 		})
 	}
 
-	// A malformed id cannot come from a race, so it still fails the request.
-	t.Run("malformed id", func(t *testing.T) {
-		resp, err := app.Test(testutil.NewJSONRequestWithAuth(
-			http.MethodPost, "/api/sessions",
-			repItemLinkPayload(map[string]interface{}{"training_id": trainingID}, "not-a-uuid"), token))
-		if err != nil {
-			t.Fatalf("Failed to create session: %v", err)
-		}
-		if resp.StatusCode != fiber.StatusBadRequest {
-			t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
-		}
-		var body map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&body)
-		if got, _ := body["error"].(string); !strings.Contains(got, "rep 0") {
-			t.Errorf("Expected the error to name the offending rep, got %q", got)
-		}
-	})
+	// A link is a name in the snapshot rather than a uuid, so one that does not
+	// parse is only a link the prescription does not hold, and is dropped like
+	// any other. What still fails the request is a link the column could not
+	// hold at all, which cannot come from a race either.
+	for name, itemID := range map[string]string{
+		"blank id":    "",
+		"overlong id": strings.Repeat("k", 201),
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp, err := app.Test(testutil.NewJSONRequestWithAuth(
+				http.MethodPost, "/api/sessions",
+				repItemLinkPayload(map[string]interface{}{"training_id": trainingID}, itemID), token))
+			if err != nil {
+				t.Fatalf("Failed to create session: %v", err)
+			}
+			if resp.StatusCode != fiber.StatusBadRequest {
+				t.Errorf("Expected status %d, got %d", fiber.StatusBadRequest, resp.StatusCode)
+			}
+			var body map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&body)
+			if got, _ := body["error"].(string); !strings.Contains(got, "rep 0") {
+				t.Errorf("Expected the error to name the offending rep, got %q", got)
+			}
+		})
+	}
 }
 
 // repItemLinkPayload is a one-rep session body carrying itemID as its link.

@@ -11,6 +11,13 @@ CREATE TABLE "users" (
   "verification_token"            TEXT,
   "verification_token_expires_at" TIMESTAMPTZ,
   "verification_email_sent_at"    TIMESTAMPTZ,
+  -- Only the SHA-256 hash of the emailed reset token is stored. A new request
+  -- replaces it, and the link is good for an hour from the request.
+  "password_reset_token_hash"     TEXT,
+  "password_reset_requested_at"   TIMESTAMPTZ,
+  -- When the owner was last told that someone tried to register with their
+  -- address, so a stream of such attempts cannot flood their inbox.
+  "account_notice_sent_at"        TIMESTAMPTZ,
   "created_at"                    TIMESTAMPTZ NOT NULL DEFAULT now(),
   "last_seen_at"                  TIMESTAMPTZ,
   PRIMARY KEY ("id")
@@ -20,20 +27,36 @@ CREATE TABLE "users" (
 -- addresses differing only by case cannot both be registered.
 CREATE UNIQUE INDEX "users_email_key" ON "users" (lower("email"));
 
+-- Not unique on purpose: an update writing a column under a unique index takes
+-- FOR UPDATE on the row, which the password lock order in the auth handler
+-- rules out. The tokens are 32 random bytes, so they do not collide anyway.
+CREATE INDEX "users_password_reset_token_hash_idx" ON "users" ("password_reset_token_hash");
+
 -- Long-lived refresh tokens used to mint new short-lived access tokens.
 -- Only the SHA-256 hash of the token is stored.
+--
+-- A refresh rotates the token: the one presented is revoked and "replaced_by"
+-- points at its successor. A client whose copy of the answer was lost still
+-- holds the revoked one, so for a short grace after "revoked_at" it may present
+-- it again, as long as the successor was never used. Revoking on sign out or a
+-- password change clears "replaced_by", which is what keeps those final.
 CREATE TABLE "refresh_tokens" (
-  "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "token_hash" TEXT        NOT NULL,
-  "expires_at" TIMESTAMPTZ NOT NULL,
-  "revoked"    BOOLEAN     NOT NULL DEFAULT false,
-  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"     UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "token_hash"  TEXT        NOT NULL,
+  "expires_at"  TIMESTAMPTZ NOT NULL,
+  "revoked"     BOOLEAN     NOT NULL DEFAULT false,
+  "revoked_at"  TIMESTAMPTZ NULL,
+  "replaced_by" UUID        NULL REFERENCES "refresh_tokens"("id") ON DELETE SET NULL,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
 CREATE UNIQUE INDEX "refresh_tokens_token_hash_key" ON "refresh_tokens" ("token_hash");
 CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
+-- Deleting a token looks up the rows it replaced, for the prune of expired
+-- tokens and the cascade from a deleted user.
+CREATE INDEX "refresh_tokens_replaced_by_idx" ON "refresh_tokens"("replaced_by");
 
 -- Stores the training sessions the user has done.
 --
@@ -67,8 +90,13 @@ CREATE TABLE "sessions" (
   -- The prescription resolved at create time: the training as it read then,
   -- with the program session overrides already merged into its items. The
   -- template it was resolved from stays editable, so only this snapshot still
-  -- describes what the athlete was actually asked to do. Null exactly when the
-  -- session was not run from a training, see the check below.
+  -- describes what the athlete was actually asked to do.
+  --
+  -- Also set, with no "training_id" beside it, on a run of a training the
+  -- server cannot read: one the client generates on the device and hands over
+  -- with the session. So this is not null exactly when the session answers a
+  -- prescription, which is weaker than naming a training; the check below is
+  -- the implication that still holds.
   "prescription"        JSONB,
   -- The force curve the sensor recorded, on an assessment session only: the
   -- samples are what a critical force or an MVC result means, while on an
@@ -91,6 +119,20 @@ CREATE TABLE "sessions" (
   -- what the app raises a notification for. Reset by a coach rewriting their
   -- answer, since the athlete has then not seen what it now says.
   "coach_reply_read_at" TIMESTAMPTZ,
+  -- How much recovery the session cost, on the coach's session RPE scale: 5 is
+  -- active recovery, 10 needs three or more full rest days. Reported by the
+  -- athlete, and null until they do, which stays the normal case: the prompt is
+  -- skippable and the value is editable long after the session.
+  --
+  -- Not the set RPE scale, which measures reps left in reserve and lives on the
+  -- item a set was played from. A bare number is ambiguous between the two, so
+  -- nothing else may be stored here.
+  "rpe"                 INTEGER,
+  -- The scale's ECHEC, a session the athlete could not carry through. Kept off
+  -- the column above rather than given a sentinel inside it: a sentinel would
+  -- have to sit outside the range the check constraint exists to hold, and
+  -- every reader averaging or plotting RPE would have to know to drop it.
+  "rpe_failed"          BOOLEAN     NOT NULL DEFAULT false,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
@@ -112,7 +154,16 @@ CREATE TABLE "sessions" (
   CONSTRAINT "sessions_coach_reply_at_check"
     CHECK ((coach_reply IS NULL) = (coach_reply_at IS NULL)),
   CONSTRAINT "sessions_coach_reply_read_at_check"
-    CHECK (coach_reply_read_at IS NULL OR coach_reply IS NOT NULL)
+    CHECK (coach_reply_read_at IS NULL OR coach_reply IS NOT NULL),
+  -- The scale starts at 5 because that is where its written anchors start: the
+  -- values below it name nothing, and a number with no anchor is what makes an
+  -- RPE unreadable.
+  CONSTRAINT "sessions_rpe_check"
+    CHECK (rpe IS NULL OR rpe BETWEEN 5 AND 10),
+  -- ECHEC is a value of the scale, not a grade beside one, so a session cannot
+  -- be both failed and rated.
+  CONSTRAINT "sessions_rpe_failed_check"
+    CHECK (NOT rpe_failed OR rpe IS NULL)
 );
 
 -- Stores the assessments the user has done, with the results.
@@ -159,7 +210,11 @@ CREATE TABLE "rep_datas" (
   -- into the still editable "training_items" row. A reference would have to null
   -- itself when the coach deletes the item, losing the grouping the snapshot can
   -- still describe.
-  "training_item_id" UUID,
+  --
+  -- Text rather than a uuid because a snapshot names its own items: one frozen
+  -- from a training carries the row ids it was resolved with, while one a client
+  -- sent for a run of nothing it owns carries the keys that client generated.
+  "training_item_id" TEXT,
   -- Whether the step prescribed a load nothing measured, which is a sensor that
   -- dropped while a hang it was meant to read was running. Such a rep stores no
   -- target, exactly as a step nothing was ever going to measure does (a both
@@ -170,7 +225,11 @@ CREATE TABLE "rep_datas" (
   "target_unmeasured" BOOLEAN NOT NULL DEFAULT FALSE,
   "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
-  CONSTRAINT "rep_datas_hand_check" CHECK (hand IN ('left', 'right', 'both'))
+  CONSTRAINT "rep_datas_hand_check" CHECK (hand IN ('left', 'right', 'both')),
+  CONSTRAINT "rep_datas_item_check" CHECK (
+    training_item_id IS NULL
+    OR (training_item_id <> '' AND char_length(training_item_id) <= 200)
+  )
 );
 
 -- Stores the IDs of pinned builtin trainings
@@ -179,6 +238,25 @@ CREATE TABLE "pinned_builtin_trainings" (
   "user_id"             UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("builtin_training_id", "user_id")
+);
+
+-- A dated bodyweight measurement. Every finger and pulling number a coach reads
+-- is a ratio to the bodyweight of the day rather than an absolute, so the series
+-- is what makes those numbers comparable across a season, and what a percent_bw
+-- prescription is frozen against. Deliberately a plain series: one number and
+-- when it was taken, not body composition.
+CREATE TABLE "user_bodyweights" (
+  "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"     UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "weight_kg"   REAL        NOT NULL,
+  -- When the athlete weighed themselves, which is not when the row reached the
+  -- server: a measurement taken offline is sent when the device next has a
+  -- network, and the day it belongs to is the day it was taken.
+  "measured_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "user_bodyweights_weight_check"
+    CHECK (weight_kg > 0 AND weight_kg <= 500),
+  PRIMARY KEY ("id")
 );
 
 -- Stores the saved sensor configs.
@@ -280,11 +358,24 @@ CREATE TABLE "assessment_definitions" (
   "unit"        TEXT        NOT NULL,
   -- Whether the two hands are measured apart, as a one arm test is.
   "per_hand"    BOOLEAN     NOT NULL DEFAULT FALSE,
+  -- Whether a result in kilograms reads as a ratio to the bodyweight it was
+  -- pulled at, (bodyweight + result) / bodyweight, rather than as a load. A
+  -- finger strength number is not comparable across a season until it is
+  -- divided by the weight that hung off it.
+  --
+  -- Strictly a display concern: the kilograms and the dated bodyweight series
+  -- are what is stored, never the ratio, so the formula can be corrected
+  -- without rewriting history. Nothing reads this to resolve a prescription.
+  "bodyweight_relative" BOOLEAN NOT NULL DEFAULT FALSE,
   "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
   CONSTRAINT "assessment_definitions_unit_check"
     CHECK (unit IN ('kilograms', 'seconds', 'repetitions')),
+  -- A ratio to a bodyweight only means something when the result is a weight.
+  -- Seconds or repetitions divided by kilograms is not a number anybody reads.
+  CONSTRAINT "assessment_definitions_bodyweight_relative_check"
+    CHECK (NOT bodyweight_relative OR unit = 'kilograms'),
   CONSTRAINT "assessment_definitions_builtin_check"
     CHECK (num_nonnulls(user_id, training_id, prompt) IN (0, 3))
 );
@@ -353,6 +444,26 @@ CREATE TABLE "training_items" (
   "free_text"            TEXT,
   -- Optional coach comment shown to the athlete (e.g. "first rep in pronation")
   "comment"              TEXT,
+  -- Why the exercise is in the program (e.g. "resi doigts", "explo jambes").
+  -- Distinct from "comment" above and deliberately not an override key: a goal
+  -- is what the block is for and holds across the weeks that retune it, while a
+  -- comment says how to execute this instance. A week that really trains
+  -- something else is a different block, not the same one relabelled.
+  "goal"                 TEXT,
+  -- The rule the athlete resolves while performing the block, in the coach's
+  -- own prose ("to failure or 40s; past 40s add 5kg, short of it put your feet
+  -- on the ground"). A prescription is often a condition rather than a number,
+  -- and the numeric columns above can only carry the number. Free text rather
+  -- than a condition/threshold/adjustment grammar: what the athlete does with
+  -- it is read by a person, and what came out of it is recorded on
+  -- "session_item_results" beside it. Nothing evaluates this column.
+  --
+  -- Distinct from "comment", which says how to execute the movement, and from
+  -- "goal", which says what the block is for. Not an override key either
+  -- (contract/override-keys.json), for the reason both of those are not: a week
+  -- that resolves differently is retuning the numbers the protocol reads, not
+  -- the protocol.
+  "protocol"             TEXT,
   -- Configurable fields (JSONB arrays, see the layout note above the table).
   -- Each holds exactly one entry per configuration row.
   -- loads: [{value: float, unit: string}]. Right hand of a two-handed mode,
@@ -398,36 +509,65 @@ CREATE TABLE "training_items" (
 CREATE INDEX "training_items_training_id_idx" ON "training_items"("training_id");
 CREATE INDEX "training_items_parent_id_idx" ON "training_items"("parent_id");
 
--- Stores what the athlete achieved on a step the prescription left open. An
--- AMRAP exercise has no rep count until it has been run, and an emom the
--- athlete dropped out of ran fewer rounds than it asked for. Neither number can
--- be read back off "rep_datas": a set of pull ups passes through no sensor, so
--- without this table nothing records that twenty three of them were done.
+-- Stores what the athlete reported on one pass through a prescribed step. It
+-- started as the two counts the prescription itself left open, an AMRAP with no
+-- rep count until it has been run and an emom the athlete dropped out of, and
+-- now carries what they did on any step at all: the set of pull ups that passed
+-- through no sensor, the dip taken at a load nobody prescribed, and the line of
+-- text that is the whole of the coaching loop ("28, hard on the shoulders",
+-- "did it with a band, no dumbbell available").
 --
--- One row per open field of one pass through an item. "occurrence" tells the
--- passes apart when the item sits inside a block that repeats, counting from 0
--- in the order the run played them.
+-- One row per pass through an item, not per field: that is what lets one pass
+-- carry a count, a load and a note together, and it is how the athlete fills it
+-- in, a line per exercise. "occurrence" tells the passes apart when the item
+-- sits inside a block that repeats, counting from 0 in the order the run played
+-- them.
+--
+-- Every reported field is nullable, since a pass reports whichever of them the
+-- athlete has something to say about, and a row reporting none of them is the
+-- row that should never have been written.
 CREATE TABLE "session_item_results" (
   "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
   "session_id"       UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
   "user_id"          UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  -- Which item of the prescription the count answers. Deliberately not a
-  -- foreign key, for the reason "rep_datas"."training_item_id" is not one
-  -- either: it points into the session frozen prescription snapshot, which
-  -- keeps the item ids it was resolved with, not into the still editable
-  -- "training_items" row.
-  "training_item_id" UUID        NOT NULL,
+  -- Which item of the prescription the row answers. Deliberately not a
+  -- foreign key, and text rather than a uuid, for the reasons
+  -- "rep_datas"."training_item_id" is neither: it points into the session
+  -- frozen prescription snapshot, which names its own items, not into the still
+  -- editable "training_items" row.
+  "training_item_id" TEXT        NOT NULL,
   "occurrence"       INTEGER     NOT NULL DEFAULT 0,
-  -- Which open field the count answers: 'reps' for an AMRAP, 'cycles' for the
-  -- rounds an emom was carried through before the athlete dropped out.
-  "field"            TEXT        NOT NULL,
-  "value"            INTEGER     NOT NULL,
+  -- How many repetitions the pass actually did, which an AMRAP has no other
+  -- record of.
+  "reps"             INTEGER,
+  -- How many rounds of a block the pass was carried through before the athlete
+  -- dropped out, which an emom has no other record of.
+  "cycles"           INTEGER,
+  -- The load the pass was actually worked at, in kilograms, the unit the sensor
+  -- measures and the one a prescribed load resolves to. Reported rather than
+  -- measured, so it covers the dip and the weighted pull up no sensor sees.
+  "load_kg"          REAL,
+  -- How long the pass actually held, in seconds.
+  "duration_seconds" INTEGER,
+  -- What the athlete wrote about the pass, free text, the column the whole
+  -- issue is about.
+  "note"             TEXT,
   "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
-  CONSTRAINT "session_item_results_field_check" CHECK (field IN ('reps', 'cycles')),
-  CONSTRAINT "session_item_results_value_check" CHECK (value >= 0),
+  CONSTRAINT "session_item_results_reps_check" CHECK (reps IS NULL OR reps >= 0),
+  CONSTRAINT "session_item_results_cycles_check" CHECK (cycles IS NULL OR cycles >= 0),
+  CONSTRAINT "session_item_results_load_check" CHECK (load_kg IS NULL OR load_kg >= 0),
+  CONSTRAINT "session_item_results_duration_check" CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  CONSTRAINT "session_item_results_note_check" CHECK (note IS NULL OR (note <> '' AND char_length(note) <= 2000)),
+  CONSTRAINT "session_item_results_reported_check" CHECK (
+    reps IS NOT NULL OR cycles IS NOT NULL OR load_kg IS NOT NULL
+    OR duration_seconds IS NOT NULL OR note IS NOT NULL
+  ),
   CONSTRAINT "session_item_results_occurrence_check" CHECK (occurrence >= 0),
-  CONSTRAINT "session_item_results_unique" UNIQUE ("session_id", "training_item_id", "occurrence", "field")
+  CONSTRAINT "session_item_results_item_check" CHECK (
+    training_item_id <> '' AND char_length(training_item_id) <= 200
+  ),
+  CONSTRAINT "session_item_results_unique" UNIQUE ("session_id", "training_item_id", "occurrence")
 );
 
 -- Stores one-time enrollment invitation tokens generated by coaches.
@@ -478,6 +618,11 @@ CREATE TABLE "coach_program_weeks" (
   "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
   "program_id"  UUID        NOT NULL REFERENCES "coach_programs"("id") ON DELETE CASCADE,
   "week_number" INTEGER     NOT NULL,
+  -- Short label for the training phase this week belongs to (e.g. "capacity",
+  -- "deload", "tests"). Reused across the weeks of one block, which is how a
+  -- coach scans the arc of a program. Distinct from "notes" below: the name is
+  -- what the week is, the notes are a message about this particular week.
+  "name"        TEXT,
   "notes"       TEXT,
   "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -530,32 +675,53 @@ CREATE TABLE "coach_program_session_overrides" (
 
 CREATE INDEX "coach_program_session_overrides_session_id_idx" ON "coach_program_session_overrides"("session_id");
 
--- What a coachee declared they can do on each day of a calendar week, so a coach
--- builds the program around the week the athlete actually has.
--- week_start is the Monday of that week; day_of_week 0=Mon...6=Sun.
--- A week is always written whole, so the existence of any row for a week is what
--- says the coachee has declared it, and an all unavailable week is still 7 rows.
-CREATE TABLE "coachee_day_availabilities" (
-  "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
-  "user_id"          UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "week_start"       DATE        NOT NULL,
-  "day_of_week"      INTEGER     NOT NULL,
-  "is_available"     BOOLEAN     NOT NULL DEFAULT FALSE,
-  "duration_minutes" INTEGER,
-  "note"             TEXT,
-  "created_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT "cda_day_range_check" CHECK (day_of_week >= 0 AND day_of_week <= 6),
-  CONSTRAINT "cda_duration_check"
-    CHECK (duration_minutes IS NULL OR duration_minutes > 0),
-  CONSTRAINT "cda_week_start_monday_check"
+-- A coachee saying "here is my week", so a coach builds the program around the
+-- week the athlete actually has. week_start is the Monday of that week.
+--
+-- The row is the declaration itself. What the athlete plans lives in
+-- "coachee_day_activities" hanging off it, and a week where they plan nothing
+-- at all is still a declared week. Inferring the declaration from the presence
+-- of activity rows would make an empty week indistinguishable from a week never
+-- answered, and the reminder would keep nudging an athlete who already answered.
+CREATE TABLE "coachee_week_declarations" (
+  "id"         UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "user_id"    UUID        NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "week_start" DATE        NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cwd_week_start_monday_check"
     CHECK (EXTRACT(ISODOW FROM week_start) = 1),
-  UNIQUE ("user_id", "week_start", "day_of_week"),
+  UNIQUE ("user_id", "week_start"),
   PRIMARY KEY ("id")
 );
 
-CREATE INDEX "coachee_day_availabilities_user_week_idx"
-  ON "coachee_day_availabilities"("user_id", "week_start");
+-- One thing the athlete plans to do on one day of a declared week, day_of_week
+-- 0=Mon...6=Sun. A day holds as many as the athlete cares to enter, ordered by
+-- "position" so the list reads back the way it was written. Everything but the
+-- label is optional: "when" and "where" are free text, and the morning against
+-- afternoon distinction lives in "when_text" rather than in the schema.
+--
+-- The week is written whole, so a save deletes every activity of the
+-- declaration and re-inserts the ones sent. That is why there is no updated_at
+-- here: the week is dated by its declaration.
+CREATE TABLE "coachee_day_activities" (
+  "id"               UUID        NOT NULL DEFAULT gen_random_uuid(),
+  "declaration_id"   UUID        NOT NULL REFERENCES "coachee_week_declarations"("id") ON DELETE CASCADE,
+  "day_of_week"      INTEGER     NOT NULL,
+  "position"         INTEGER     NOT NULL,
+  "label"            TEXT        NOT NULL,
+  "duration_minutes" INTEGER,
+  "when_text"        TEXT,
+  "where_text"       TEXT,
+  "created_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "cda_day_range_check" CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  CONSTRAINT "cda_position_check" CHECK (position >= 0),
+  CONSTRAINT "cda_label_not_blank_check" CHECK (btrim(label) <> ''),
+  CONSTRAINT "cda_duration_check"
+    CHECK (duration_minutes IS NULL OR duration_minutes > 0),
+  UNIQUE ("declaration_id", "day_of_week", "position"),
+  PRIMARY KEY ("id")
+);
 
 -- One reminder per coach, applying to every coachee they train. The hour is a
 -- wall clock time delivered by the athlete app in the athlete's own timezone,
@@ -626,4 +792,16 @@ CREATE INDEX "rep_datas_user_id_idx" ON "rep_datas"("user_id");
 CREATE INDEX "pinned_builtin_trainings_user_id_idx" ON "pinned_builtin_trainings"("user_id");
 CREATE INDEX "sensor_configs_user_id_idx" ON "sensor_configs"("user_id");
 CREATE INDEX "builtin_training_weights_user_id_idx" ON "builtin_training_weights"("user_id");
+-- Every read of the series is one athlete's, newest first, which is also how the
+-- latest value is found when a prescription is frozen.
+CREATE INDEX "user_bodyweights_user_id_measured_at_idx"
+  ON "user_bodyweights"("user_id", "measured_at" DESC);
 
+
+-- bodyweight_for_result(user_id, measured_at, as_of) lives in
+-- migrations/20260921120000_add_bodyweight_for_result.sql rather than here. It is
+-- the one definition of the weigh-in an assessment result is divided by, shared
+-- by the listing, the two date snapshot and the session detail. Atlas Community
+-- refuses a declarative schema that declares a function, so writing it here would
+-- break "just make_migration"; it ignores functions when inspecting a database,
+-- so "atlas migrate diff" still reports this file and migrations/ in sync.

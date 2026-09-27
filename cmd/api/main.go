@@ -83,7 +83,7 @@ func main() {
 	go pruneExpiredRefreshTokens(queries)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(queries)
+	authHandler := handler.NewAuthHandler(queries, pool)
 	adminHandler := handler.NewAdminHandler(queries)
 	sessionHandler := handler.NewSessionHandler(queries, pool)
 	assessmentHandler := handler.NewAssessmentHandler(queries)
@@ -97,7 +97,9 @@ func main() {
 	trainingHandler := handler.NewTrainingHandler(queries, pool)
 	programHandler := handler.NewProgramHandler(queries, pool)
 	availabilityHandler := handler.NewAvailabilityHandler(queries, pool)
+	bodyweightHandler := handler.NewBodyweightHandler(queries, pool)
 	coachTodoHandler := handler.NewCoachTodoHandler(queries, pool)
+	coachTrainingLoadHandler := handler.NewCoachTrainingLoadHandler(queries, pool)
 
 	// Create Fiber app
 	app := fiber.New()
@@ -108,7 +110,10 @@ func main() {
 		Format: "${time} | ${status} | ${latency} | ${ip} | ${method} ${path}\n",
 	}))
 	app.Use(recover.New())
-	app.Use(middleware.RequestContext())
+	// Response compression and the request context deadline. Both are shared
+	// with the app the tests build, so they live in one place rather than being
+	// registered here and copied there.
+	middleware.RegisterShared(app)
 	// Response bodies are deliberately not logged: handlers already log the
 	// cause of a failure, and bodies can carry user data.
 	app.Use(func(c fiber.Ctx) error {
@@ -126,9 +131,18 @@ func main() {
 
 	// CORS middleware - allow frontend to connect
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "https://crimpy.app", "https://*.crimpy.app"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowOrigins: []string{"http://localhost:5173", "https://crimpy.app", "https://*.crimpy.app"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		// A header a handler sets is invisible to a browser unless CORS says
+		// it may be read. Without this the web coach would get a truncated
+		// availability listing, or a library cut at the include=items cap, with
+		// no way to tell it was truncated, which is the one answer those
+		// endpoints must not give.
+		ExposeHeaders: []string{
+			handler.AvailabilityTruncatedHeader,
+			handler.TrainingsTruncatedHeader,
+		},
 		AllowCredentials: true,
 	}))
 
@@ -168,6 +182,8 @@ func main() {
 	app.Post("/auth/logout", authHandler.Logout)
 	app.Post("/auth/verify", authLimiter, authHandler.VerifyEmail)
 	app.Post("/auth/resend-verification", authLimiter, authHandler.ResendVerificationEmail)
+	app.Post("/auth/forgot-password", authLimiter, authHandler.ForgotPassword)
+	app.Post("/auth/reset-password", authLimiter, authHandler.ResetPassword)
 
 	// Protected routes - require authentication
 	api := app.Group("/api", middleware.AuthMiddleware())
@@ -179,6 +195,7 @@ func main() {
 	// Assessment routes
 	api.Post("/assessments", assessmentHandler.CreateAssessment)
 	api.Get("/assessments", assessmentHandler.GetAssessments)
+	api.Get("/assessments/at", assessmentHandler.GetMyAssessmentSnapshot)
 	api.Delete("/assessments/:id", assessmentHandler.DeleteAssessment)
 	api.Get("/assessment-definitions", assessmentDefinitionHandler.GetAssessmentDefinitions)
 	api.Post("/assessment-definitions", assessmentDefinitionHandler.CreateAssessmentDefinition)
@@ -231,6 +248,9 @@ func main() {
 	api.Get("/coach/clients/:user_id/sessions/:session_id", coachHandler.GetClientSession)
 	api.Put("/coach/clients/:user_id/sessions/:session_id/reply", coachHandler.SetClientSessionReply)
 	api.Get("/coach/clients/:user_id/assessments", coachHandler.GetClientAssessments)
+	api.Get("/coach/clients/:user_id/assessments/at", coachHandler.GetClientAssessmentSnapshot)
+	api.Get("/coach/clients/:user_id/bodyweights", bodyweightHandler.GetClientBodyweights)
+	api.Get("/coach/clients/:user_id/training-load", coachTrainingLoadHandler.GetClientTrainingLoad)
 
 	// Program routes (coach manages, coachee reads)
 	api.Post("/coach/clients/:user_id/programs", programHandler.CreateProgram)
@@ -250,11 +270,18 @@ func main() {
 
 	// Availability routes (coachee declares, coach reads)
 	api.Get("/user/availability", availabilityHandler.GetMyAvailability)
+	api.Get("/user/availability/declared-weeks", availabilityHandler.GetMyDeclaredWeeks)
 	api.Put("/user/availability/:week_start", availabilityHandler.UpsertMyWeekAvailability)
 	api.Get("/user/availability-reminder", availabilityHandler.GetMyAvailabilityReminder)
 	api.Get("/coach/clients/:user_id/availability", availabilityHandler.GetClientAvailability)
 	api.Get("/coach/availability-reminder", availabilityHandler.GetAvailabilityReminder)
 	api.Put("/coach/availability-reminder", availabilityHandler.SetAvailabilityReminder)
+
+	// Bodyweight, a dated series per athlete: their own to write, their coach's
+	// to read. The coach read sits with the other /coach/clients reads above.
+	api.Post("/user/bodyweights", bodyweightHandler.CreateMyBodyweight)
+	api.Get("/user/bodyweights", bodyweightHandler.GetMyBodyweights)
+	api.Delete("/user/bodyweights/:id", bodyweightHandler.DeleteMyBodyweight)
 
 	// Coach feed and TODO routes
 	api.Get("/coach/feed", coachTodoHandler.GetCoachFeed)

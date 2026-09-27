@@ -166,7 +166,7 @@ func (q *Queries) GetCoachProgramSessionOverrides(ctx context.Context, sessionID
 }
 
 const getCoachProgramWeek = `-- name: GetCoachProgramWeek :one
-SELECT id, program_id, week_number, notes, created_at, updated_at FROM coach_program_weeks
+SELECT id, program_id, week_number, name, notes, created_at, updated_at FROM coach_program_weeks
 WHERE program_id = $1 AND week_number = $2
 `
 
@@ -182,6 +182,7 @@ func (q *Queries) GetCoachProgramWeek(ctx context.Context, arg GetCoachProgramWe
 		&i.ID,
 		&i.ProgramID,
 		&i.WeekNumber,
+		&i.Name,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -325,7 +326,7 @@ func (q *Queries) GetCoachProgramWeekSessions(ctx context.Context, weekID pgtype
 }
 
 const getCoachProgramWeeks = `-- name: GetCoachProgramWeeks :many
-SELECT id, program_id, week_number, notes, created_at, updated_at FROM coach_program_weeks
+SELECT id, program_id, week_number, name, notes, created_at, updated_at FROM coach_program_weeks
 WHERE program_id = $1
 ORDER BY week_number
 `
@@ -343,10 +344,57 @@ func (q *Queries) GetCoachProgramWeeks(ctx context.Context, programID pgtype.UUI
 			&i.ID,
 			&i.ProgramID,
 			&i.WeekNumber,
+			&i.Name,
 			&i.Notes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMyProgramTrainingOverrides = `-- name: GetMyProgramTrainingOverrides :many
+SELECT o.item_id, o.overrides, p.coach_id
+FROM coach_program_session_overrides o
+JOIN coach_program_week_sessions s ON s.id = o.session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE p.id = $1 AND p.user_id = $2 AND s.training_id = $3
+`
+
+type GetMyProgramTrainingOverridesParams struct {
+	ProgramID  pgtype.UUID
+	UserID     pgtype.UUID
+	TrainingID pgtype.UUID
+}
+
+type GetMyProgramTrainingOverridesRow struct {
+	ItemID    pgtype.UUID
+	Overrides []byte
+	CoachID   pgtype.UUID
+}
+
+// Every override the weeks of one of my programs set on a session running this
+// training, with the coach the program belongs to so the assessments those
+// overrides reference are resolved against their owner. Scoped by the athlete
+// the program is assigned to, so it authorizes its own read rather than
+// trusting the caller to have checked.
+func (q *Queries) GetMyProgramTrainingOverrides(ctx context.Context, arg GetMyProgramTrainingOverridesParams) ([]GetMyProgramTrainingOverridesRow, error) {
+	rows, err := q.db.Query(ctx, getMyProgramTrainingOverrides, arg.ProgramID, arg.UserID, arg.TrainingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMyProgramTrainingOverridesRow
+	for rows.Next() {
+		var i GetMyProgramTrainingOverridesRow
+		if err := rows.Scan(&i.ItemID, &i.Overrides, &i.CoachID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -466,26 +514,33 @@ func (q *Queries) UpsertCoachProgramSessionOverride(ctx context.Context, arg Ups
 }
 
 const upsertCoachProgramWeek = `-- name: UpsertCoachProgramWeek :one
-INSERT INTO coach_program_weeks (program_id, week_number, notes)
-VALUES ($1, $2, $3)
+INSERT INTO coach_program_weeks (program_id, week_number, name, notes)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (program_id, week_number) DO UPDATE
-  SET notes = EXCLUDED.notes, updated_at = now()
-RETURNING id, program_id, week_number, notes, created_at, updated_at
+  SET name = EXCLUDED.name, notes = EXCLUDED.notes, updated_at = now()
+RETURNING id, program_id, week_number, name, notes, created_at, updated_at
 `
 
 type UpsertCoachProgramWeekParams struct {
 	ProgramID  pgtype.UUID
 	WeekNumber int32
+	Name       pgtype.Text
 	Notes      pgtype.Text
 }
 
 func (q *Queries) UpsertCoachProgramWeek(ctx context.Context, arg UpsertCoachProgramWeekParams) (CoachProgramWeek, error) {
-	row := q.db.QueryRow(ctx, upsertCoachProgramWeek, arg.ProgramID, arg.WeekNumber, arg.Notes)
+	row := q.db.QueryRow(ctx, upsertCoachProgramWeek,
+		arg.ProgramID,
+		arg.WeekNumber,
+		arg.Name,
+		arg.Notes,
+	)
 	var i CoachProgramWeek
 	err := row.Scan(
 		&i.ID,
 		&i.ProgramID,
 		&i.WeekNumber,
+		&i.Name,
 		&i.Notes,
 		&i.CreatedAt,
 		&i.UpdatedAt,

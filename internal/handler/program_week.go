@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -33,14 +35,85 @@ type WeekSessionRequest struct {
 }
 
 type UpsertWeekRequest struct {
+	Name     *string              `json:"name"`
 	Notes    *string              `json:"notes"`
 	Sessions []WeekSessionRequest `json:"sessions"`
 }
 
+// maxWeekNameLen caps the week name, which labels the training phase the week
+// belongs to ("capacity", "deload", "tests") rather than describing it. It is
+// short because a coach scans a column of them down the program page, and a
+// sentence there would be a note written in the wrong field. Refused rather
+// than cut, like the item comment and goal: a coach only finds out about a
+// silent truncation once the athlete reads half of it.
+const maxWeekNameLen = 60
+
+// validateWeekName refuses a name past maxWeekNameLen, and a name that is only
+// whitespace, which reads as a set name everywhere it is shown while holding
+// nothing. Absent and blank mean the same thing, so a blank one is stored as
+// absent instead of being refused.
+func validateWeekName(name *string) (*string, error) {
+	if name == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*name)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if utf8.RuneCountInString(trimmed) > maxWeekNameLen {
+		return nil, fmt.Errorf("name must be at most %d characters", maxWeekNameLen)
+	}
+	return &trimmed, nil
+}
+
+// SessionOverrideResponse carries a stored override back to the reader. The
+// coach read adds OverrideStale, computed rather than stored: the row itself is
+// never touched, because the editor sends the week back as it read it and
+// checkFrozenSession compares the two.
 type SessionOverrideResponse struct {
 	ID        string          `json:"id"`
 	ItemID    string          `json:"item_id"`
 	Overrides json.RawMessage `json:"overrides" swaggertype:"object"`
+	// OverrideStale marks an override the training item it targets no longer
+	// takes, so the athlete is handed the item without it. Only the coach reads
+	// compute it: the athlete reads leave such an override out entirely.
+	OverrideStale bool `json:"override_stale"`
+	// StaleFields attributes the refusal to the fields it is about, one entry
+	// per field per reason. The whole row is stored and the server refuses part
+	// of it, so a reader given only the reason cannot tell an edit of the
+	// refused field from an edit of another field of the same row: it reasons
+	// about the row as a whole, and any edit anywhere makes it drop a marking
+	// the refusal has not stopped applying to. Each field is spelled as
+	// contract/override-keys.json spells the key that replaces it.
+	//
+	// The list is in the order the validators ask, and the first entry is the
+	// reason a save of this same override is refused with, since the write
+	// paths answer with the first refusal alone.
+	//
+	// A named field may be absent from the override row, because attribution
+	// names what the check read and a check can read the item's side of a
+	// disagreement: an override resizing the grid is refused for the item's own
+	// arrays, which it never carried. A reader deciding whether a refusal still
+	// stands must therefore skip the named fields the row does not carry rather
+	// than count them as unchanged. That clause is the whole point and not a
+	// special case: an absent field is absent again after every edit, so
+	// counting it as unchanged would keep the marking up forever, including
+	// through the edit that actually clears the refusal. What is left after
+	// skipping is the fields the coach can act on, and the marking clears when
+	// one of them moves. When the row carries none of the named fields, the
+	// refusal is about the row as a whole, which is the same answer the empty
+	// field below stands for.
+	//
+	// A refusal nothing could attribute carries an empty field, which stands
+	// for the override as a whole. Absent unless OverrideStale.
+	StaleFields []StaleOverrideField `json:"stale_fields,omitempty"`
+}
+
+// StaleOverrideField is one reason a stale override is refused, attributed to
+// one of the fields that reason is about.
+type StaleOverrideField struct {
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
 }
 
 type WeekSessionResponse struct {
@@ -61,6 +134,7 @@ type WeekResponse struct {
 	ID         string                `json:"id"`
 	ProgramID  string                `json:"program_id"`
 	WeekNumber int32                 `json:"week_number"`
+	Name       *string               `json:"name,omitempty"`
 	Notes      *string               `json:"notes,omitempty"`
 	Sessions   []WeekSessionResponse `json:"sessions"`
 	CreatedAt  string                `json:"created_at"`
@@ -71,6 +145,7 @@ type WeekListItem struct {
 	ID         string  `json:"id"`
 	ProgramID  string  `json:"program_id"`
 	WeekNumber int32   `json:"week_number"`
+	Name       *string `json:"name,omitempty"`
 	Notes      *string `json:"notes,omitempty"`
 	CreatedAt  string  `json:"created_at"`
 	UpdatedAt  string  `json:"updated_at"`
@@ -138,16 +213,20 @@ func validateWeekSession(s WeekSessionRequest) error {
 // describe the prescription, so day, notes and position stay editable, but the
 // row itself must survive: dropping it would null the link the played session
 // holds.
-func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+//
+// It hands back the sessions it found locked, keyed by id, so the rest of the
+// write path reads the lock state off the rows this read already locked rather
+// than asking for it a second time.
+func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) (map[pgtype.UUID]db.GetCoachProgramWeekSessionsRow, error) {
 	// Lock the rows first: without this the athlete can play a session between
 	// this read and the delete below, and the delete then nulls the link the
 	// check would have refused.
 	if _, err := qtx.LockCoachProgramWeekSessions(ctx, weekID); err != nil {
-		return err
+		return nil, err
 	}
 	existing, err := qtx.GetCoachProgramWeekSessions(ctx, weekID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	frozen := make(map[pgtype.UUID]db.GetCoachProgramWeekSessionsRow)
 	for _, row := range existing {
@@ -156,12 +235,12 @@ func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUI
 		}
 	}
 	if len(frozen) == 0 {
-		return nil
+		return frozen, nil
 	}
 
 	weekOverrides, err := qtx.GetCoachProgramWeekOverrides(ctx, weekID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	prescribedOverrides := make(map[pgtype.UUID]map[pgtype.UUID][]byte, len(frozen))
 	for _, o := range weekOverrides {
@@ -185,15 +264,15 @@ func checkFrozenSessions(ctx context.Context, qtx *db.Queries, weekID pgtype.UUI
 			continue
 		}
 		if err := checkFrozenSession(i, sessions[i], row, prescribedOverrides[id]); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for id, row := range frozen {
 		if _, stillThere := kept[id]; !stillThere {
-			return invalidRequestf("session %s was played by the athlete and cannot be removed from the week", row.ID.String())
+			return nil, invalidRequestf("session %s was played by the athlete and cannot be removed from the week", row.ID.String())
 		}
 	}
-	return nil
+	return frozen, nil
 }
 
 func checkFrozenSession(index int, s WeekSessionRequest, row db.GetCoachProgramWeekSessionsRow, prescribed map[pgtype.UUID][]byte) error {
@@ -239,11 +318,22 @@ func sameJSON(a, b []byte) bool {
 	return reflect.DeepEqual(aValue, bValue)
 }
 
+// weekSyncScope names the two identities the week write path needs, which are
+// both UUIDs and mean opposite things: the coach whose assessments an override
+// may reference, and the athlete the week belongs to, who appears only in a log
+// line. Passed as one value so they cannot be transposed at a call site, which
+// would compile and then resolve every override against the wrong owner.
+type weekSyncScope struct {
+	coachID   pgtype.UUID
+	athleteID pgtype.UUID
+}
+
 // syncWeekSessions reconciles a week against the payload instead of recreating
 // it, so a session the client sends back by id keeps that id. Sessions played by
 // the athlete reference these ids, and recreating them nulls those references.
-func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, coachID, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
-	if err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs); err != nil {
+func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, scope weekSyncScope, weekID pgtype.UUID, sessions []WeekSessionRequest, sessionIDs []pgtype.UUID) error {
+	locked, err := checkFrozenSessions(ctx, qtx, weekID, sessions, sessionIDs)
+	if err != nil {
 		return err
 	}
 
@@ -262,11 +352,12 @@ func (h *ProgramHandler) syncWeekSessions(ctx context.Context, qtx *db.Queries, 
 	}
 
 	for i, s := range sessions {
-		session, err := h.upsertWeekSession(ctx, qtx, coachID, weekID, sessionIDs[i], i, s)
+		session, err := h.upsertWeekSession(ctx, qtx, scope.coachID, weekID, sessionIDs[i], i, s)
 		if err != nil {
 			return err
 		}
-		if err := h.syncSessionOverrides(ctx, qtx, coachID, session, i, s.Overrides); err != nil {
+		_, isLocked := locked[session.ID]
+		if err := h.syncSessionOverrides(ctx, qtx, scope, session, isLocked, i, s.Overrides); err != nil {
 			return err
 		}
 	}
@@ -336,8 +427,10 @@ func (h *ProgramHandler) upsertWeekSession(ctx context.Context, qtx *db.Queries,
 
 // syncSessionOverrides resolves every override against the session's own
 // training, so an item id belonging to another training, and therefore possibly
-// to another coach, is rejected rather than stored.
-func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, coachID pgtype.UUID, session db.CoachProgramWeekSession, index int, overrides []SessionOverrideRequest) error {
+// to another coach, is rejected rather than stored. On a locked session it
+// checks the item scoping but not the validity of the merge, for the reason
+// spelled out where it skips the refusal.
+func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queries, scope weekSyncScope, session db.CoachProgramWeekSession, locked bool, index int, overrides []SessionOverrideRequest) error {
 	itemIDs := make([]pgtype.UUID, len(overrides))
 	for i, o := range overrides {
 		if err := itemIDs[i].Scan(o.ItemID); err != nil {
@@ -371,14 +464,48 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 		raw[i] = o.Overrides
 	}
 
-	stale, err := staleOverrides(ctx, qtx, coachID, bases, raw)
+	stale, err := staleOverrides(ctx, qtx, scope.coachID, bases, raw)
 	if err != nil {
 		return err
 	}
 
 	for i, o := range overrides {
-		if reason, refused := stale[i]; refused {
-			return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, reason)
+		if reason, isStale := stale[i]; isStale {
+			// On a locked session the two guards would otherwise close on each
+			// other: checkFrozenSession has already refused this save unless
+			// every override came back exactly as stored, so the coach cannot
+			// drop or edit the offending one, and refusing it here leaves the
+			// whole week unsaveable. What makes the refusal pointless as well
+			// as trapping is that the row prescribes nothing: Krakoer/crimpy#84
+			// leaves it out of the prescription snapshot and out of the athlete
+			// week read, so it is not what the athlete played and no merged
+			// item they receive carries it.
+			//
+			// It is not invisible, mind, and the claim is only about what is
+			// prescribed. The program scoped training read still names the
+			// assessments a stored override references, which
+			// Krakoer/crimpy#92 chose deliberately on the grounds that an
+			// unused label costs less than an unnamed chip. And
+			// CountReferencesToAssessment matches the assessment id inside the
+			// override JSON, so the row still keeps that definition
+			// undeletable and its unit locked. Neither is a prescription, and
+			// neither is new: the row was never dropped before this either.
+			//
+			// Only a verbatim echo of a stored row gets this far, since a
+			// created or edited override on a locked session is refused by
+			// checkFrozenSession before this runs, and a session created in
+			// this same request cannot be locked. An unlocked session still
+			// refuses: there the 400 is the remediation the coach can act on.
+			if !locked {
+				return invalidRequestf("session %d override on item %s: %s", index, o.ItemID, reason)
+			}
+			slog.Warn("keeping an inert override the training item no longer takes on a played session",
+				"user_id", scope.athleteID.String(),
+				"program_session_id", session.ID.String(),
+				"week_id", session.WeekID.String(),
+				"training_id", session.TrainingID.String(),
+				"training_item_id", itemIDs[i].String(),
+				"reason", reason)
 		}
 		if _, err := qtx.UpsertCoachProgramSessionOverride(ctx, db.UpsertCoachProgramSessionOverrideParams{
 			SessionID: session.ID,
@@ -399,31 +526,7 @@ func (h *ProgramHandler) syncSessionOverrides(ctx context.Context, qtx *db.Queri
 // back as it read it, and checkFrozenSession refuses a locked session whose
 // overrides come back changed, so hiding one there would break that round trip.
 func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, athleteID, assessmentOwnerID pgtype.UUID, week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) ([]db.CoachProgramSessionOverride, error) {
-	trainingBySession := make(map[pgtype.UUID]pgtype.UUID, len(sessions))
-	for _, s := range sessions {
-		trainingBySession[s.ID] = s.TrainingID
-	}
-
-	itemsByID, err := h.weekTrainingItems(ctx, sessions)
-	if err != nil {
-		return nil, err
-	}
-
-	// Keyed by position: an item id is unique within a session, not within a week.
-	bases := make(map[int]TrainingItemRequest, len(overrides))
-	raw := make(map[int]json.RawMessage, len(overrides))
-	for i, o := range overrides {
-		item, held := itemsByID[o.ItemID]
-		if !held || item.TrainingID != trainingBySession[o.SessionID] {
-			// The item is gone from the training the session runs, so the override
-			// lands on nothing on either side of the merge and is left alone.
-			continue
-		}
-		bases[i] = itemToRequest(item)
-		raw[i] = json.RawMessage(o.Overrides)
-	}
-
-	stale, err := staleOverrides(ctx, h.queries, assessmentOwnerID, bases, raw)
+	stale, err := h.staleWeekOverrides(ctx, assessmentOwnerID, sessions, overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +534,7 @@ func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, athleteID, 
 		return overrides, nil
 	}
 
+	trainingBySession := weekTrainingBySession(sessions)
 	kept := make([]db.CoachProgramSessionOverride, 0, len(overrides))
 	for i, o := range overrides {
 		if reason, dropped := stale[i]; dropped {
@@ -448,38 +552,115 @@ func (h *ProgramHandler) dropStaleWeekOverrides(ctx context.Context, athleteID, 
 	return kept, nil
 }
 
-// weekTrainingItems reads the items of every training the week runs, one query
-// per distinct training rather than one per override, and flattens them by id so
-// an override finds the item it targets without a query of its own. Each item
-// carries the training it belongs to, so a caller can still tell an item the
-// session's own training holds from one that merely exists elsewhere.
+// staleWeekOverrides names, keyed by position in overrides, every stored
+// override the training item it targets no longer takes. It is the one question
+// the athlete read filters on and the coach read flags, asked through the shared
+// helper, so the two cannot answer it differently about the same row.
+//
+// An override whose item the training no longer holds is not named. It merges
+// onto nothing on either side, which is what the athlete read already decided,
+// and calling it stale would ask the coach to clear a row that changes nothing.
+func (h *ProgramHandler) staleWeekOverrides(ctx context.Context, assessmentOwnerID pgtype.UUID, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) (map[int]itemRefusals, error) {
+	if len(overrides) == 0 {
+		return nil, nil
+	}
+
+	trainingBySession := weekTrainingBySession(sessions)
+
+	itemsByID, err := h.weekTrainingItems(ctx, sessions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Keyed by position: an item id is unique within a session, not within a week.
+	bases := make(map[int]TrainingItemRequest, len(overrides))
+	raw := make(map[int]json.RawMessage, len(overrides))
+	for i, o := range overrides {
+		item, held := itemsByID[o.ItemID]
+		if !held || item.TrainingID != trainingBySession[o.SessionID] {
+			continue
+		}
+		bases[i] = itemToRequest(item)
+		raw[i] = json.RawMessage(o.Overrides)
+	}
+
+	return staleOverrides(ctx, h.queries, assessmentOwnerID, bases, raw)
+}
+
+func weekTrainingBySession(sessions []db.GetCoachProgramWeekSessionsRow) map[pgtype.UUID]pgtype.UUID {
+	bySession := make(map[pgtype.UUID]pgtype.UUID, len(sessions))
+	for _, s := range sessions {
+		bySession[s.ID] = s.TrainingID
+	}
+	return bySession
+}
+
+// weekTrainingItems reads the items of every training the week runs in one
+// query, and flattens them by id so an override finds the item it targets
+// without a query of its own. Each item carries the training it belongs to, so
+// a caller can still tell an item the session's own training holds from one
+// that merely exists elsewhere.
 func (h *ProgramHandler) weekTrainingItems(ctx context.Context, sessions []db.GetCoachProgramWeekSessionsRow) (map[pgtype.UUID]db.TrainingItem, error) {
-	itemsByID := make(map[pgtype.UUID]db.TrainingItem)
+	trainingIDs := make([]pgtype.UUID, 0, len(sessions))
 	read := make(map[pgtype.UUID]struct{}, len(sessions))
 	for _, s := range sessions {
 		if _, done := read[s.TrainingID]; done {
 			continue
 		}
 		read[s.TrainingID] = struct{}{}
-		rows, err := h.queries.GetTrainingItems(ctx, s.TrainingID)
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			itemsByID[row.ID] = trainingItemFromRow(row)
-		}
+		trainingIDs = append(trainingIDs, s.TrainingID)
+	}
+
+	itemsByID := make(map[pgtype.UUID]db.TrainingItem)
+	if len(trainingIDs) == 0 {
+		return itemsByID, nil
+	}
+
+	rows, err := h.queries.GetTrainingItems(ctx, trainingIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		itemsByID[row.ID] = trainingItemFromRow(row)
 	}
 	return itemsByID, nil
 }
 
-func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride) WeekResponse {
+// staleOverrideFields spreads every refusal across the fields it is about, one
+// entry each, so a reader answers its per field question by looking a field up
+// rather than by reading prose. A refusal about two fields is repeated under
+// both, since either of them is a field moving which clears it. What a reader
+// does with a name the override row does not carry is on StaleFields.
+func staleOverrideFields(refusals itemRefusals) []StaleOverrideField {
+	fields := make([]StaleOverrideField, 0, len(refusals))
+	for _, refusal := range refusals {
+		if len(refusal.fields) == 0 {
+			fields = append(fields, StaleOverrideField{Reason: refusal.Error()})
+			continue
+		}
+		for _, field := range refusal.fields {
+			fields = append(fields, StaleOverrideField{Field: field, Reason: refusal.Error()})
+		}
+	}
+	return fields
+}
+
+// buildWeekResponse renders a week. stale is keyed by position in overrides, as
+// staleWeekOverrides returns it, and is nil on a read that filters its overrides
+// rather than flagging them, since the positions would no longer line up.
+func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWeekSessionsRow, overrides []db.CoachProgramSessionOverride, stale map[int]itemRefusals) WeekResponse {
 	overridesBySession := make(map[pgtype.UUID][]SessionOverrideResponse, len(overrides))
-	for _, o := range overrides {
-		overridesBySession[o.SessionID] = append(overridesBySession[o.SessionID], SessionOverrideResponse{
+	for i, o := range overrides {
+		resp := SessionOverrideResponse{
 			ID:        o.ID.String(),
 			ItemID:    o.ItemID.String(),
 			Overrides: json.RawMessage(o.Overrides),
-		})
+		}
+		if refusals, isStale := stale[i]; isStale {
+			resp.OverrideStale = true
+			resp.StaleFields = staleOverrideFields(refusals)
+		}
+		overridesBySession[o.SessionID] = append(overridesBySession[o.SessionID], resp)
 	}
 
 	sessionResps := make([]WeekSessionResponse, 0, len(sessions))
@@ -522,6 +703,9 @@ func buildWeekResponse(week db.CoachProgramWeek, sessions []db.GetCoachProgramWe
 	if resp.Sessions == nil {
 		resp.Sessions = []WeekSessionResponse{}
 	}
+	if week.Name.Valid {
+		resp.Name = &week.Name.String
+	}
 	if week.Notes.Valid {
 		resp.Notes = &week.Notes.String
 	}
@@ -535,6 +719,9 @@ func weekToListItem(w db.CoachProgramWeek) WeekListItem {
 		WeekNumber: w.WeekNumber,
 		CreatedAt:  w.CreatedAt.Time.UTC().Format(time.RFC3339),
 		UpdatedAt:  w.UpdatedAt.Time.UTC().Format(time.RFC3339),
+	}
+	if w.Name.Valid {
+		item.Name = &w.Name.String
 	}
 	if w.Notes.Valid {
 		item.Notes = &w.Notes.String
@@ -564,7 +751,7 @@ func (h *ProgramHandler) loadWeekData(ctx context.Context, weekID pgtype.UUID) (
 
 // UpsertWeek godoc
 // @Summary Create or replace a program week
-// @Description Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored.
+// @Description Upsert a week's sessions and overrides. The week's name labels its training phase ("capacity", "deload") and must be at most 60 characters, refused rather than cut; a blank one is stored as no name. It is distinct from notes, which is a message about this particular week. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.
 // @Tags Programs
 // @Accept json
 // @Produce json
@@ -601,6 +788,10 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
+	weekName, err := validateWeekName(req.Name)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 	sessionIDs, err := validateWeekSessions(req.Sessions)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -619,6 +810,9 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		ProgramID:  programUUID,
 		WeekNumber: weekNum,
 	}
+	if weekName != nil {
+		upsertParams.Name = pgtype.Text{String: *weekName, Valid: true}
+	}
 	if req.Notes != nil {
 		upsertParams.Notes = pgtype.Text{String: *req.Notes, Valid: true}
 	}
@@ -628,7 +822,7 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upsert week"})
 	}
 
-	if err := h.syncWeekSessions(c.Context(), qtx, coachUUID, week.ID, req.Sessions, sessionIDs); err != nil {
+	if err := h.syncWeekSessions(c.Context(), qtx, weekSyncScope{coachID: coachUUID, athleteID: clientUUID}, week.ID, req.Sessions, sessionIDs); err != nil {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
@@ -648,12 +842,25 @@ func (h *ProgramHandler) UpsertWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides))
+	// A locked session keeps an override the training item no longer takes, so
+	// the echo has to answer the flag the same way a read of the same rows
+	// would: the coach sees the week they just saved, and the row that is not
+	// reaching the athlete has to still say so. Everything else written here was
+	// validated in the transaction just committed, and a training edited while
+	// the save was in flight is caught here too, since the validation read takes
+	// no row lock.
+	stale, err := h.staleWeekOverrides(c.Context(), coachUUID, sessions, overrides)
+	if err != nil {
+		slog.Error("failed to check the saved week overrides against their training items", "week_id", week.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, stale))
 }
 
 // GetWeeks godoc
 // @Summary List weeks of a program
-// @Description Get all explicitly defined weeks for a program (summary, no sessions).
+// @Description Get all explicitly defined weeks for a program (summary, no sessions). Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -692,7 +899,7 @@ func (h *ProgramHandler) GetWeeks(c fiber.Ctx) error {
 
 // GetWeek godoc
 // @Summary Get a program week
-// @Description Get a specific week with its sessions and per-item overrides.
+// @Description Get a specific week with its sessions and per-item overrides. The week carries its name, the label of the training phase it belongs to, absent when the week has none. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -740,7 +947,13 @@ func (h *ProgramHandler) GetWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides))
+	stale, err := h.staleWeekOverrides(c.Context(), coachUUID, sessions, overrides)
+	if err != nil {
+		slog.Error("failed to check the week overrides against their training items", "week_id", week.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, stale))
 }
 
 // DeleteWeek godoc
@@ -805,7 +1018,7 @@ func (h *ProgramHandler) DeleteWeek(c fiber.Ctx) error {
 
 // GetMyWeeks godoc
 // @Summary List weeks of one of my programs
-// @Description Get all defined weeks for a program assigned to the authenticated user.
+// @Description Get all defined weeks for a program assigned to the authenticated user. Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -853,7 +1066,7 @@ func (h *ProgramHandler) GetMyWeeks(c fiber.Ctx) error {
 
 // GetMyWeek godoc
 // @Summary Get a week from one of my programs
-// @Description Get a specific week with sessions and overrides for a program assigned to the authenticated user. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.
+// @Description Get a specific week with sessions and overrides for a program assigned to the authenticated user. The week carries its name, the label of the training phase it belongs to, absent when the week has none. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.
 // @Tags Programs
 // @Produce json
 // @Security BearerAuth
@@ -916,5 +1129,5 @@ func (h *ProgramHandler) GetMyWeek(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve week"})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides))
+	return c.Status(fiber.StatusOK).JSON(buildWeekResponse(week, sessions, overrides, nil))
 }

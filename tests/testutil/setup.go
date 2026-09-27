@@ -107,6 +107,9 @@ type HandlerConfig struct {
 		Login(fiber.Ctx) error
 		Refresh(fiber.Ctx) error
 		Logout(fiber.Ctx) error
+		ForgotPassword(fiber.Ctx) error
+		ResetPassword(fiber.Ctx) error
+		ResendVerificationEmail(fiber.Ctx) error
 		ChangePassword(fiber.Ctx) error
 		GetCurrentUser(fiber.Ctx) error
 	}
@@ -118,6 +121,7 @@ type HandlerConfig struct {
 	AssessmentHandler interface {
 		CreateAssessment(fiber.Ctx) error
 		GetAssessments(fiber.Ctx) error
+		GetMyAssessmentSnapshot(fiber.Ctx) error
 		DeleteAssessment(fiber.Ctx) error
 	}
 	AssessmentDefinitionHandler interface {
@@ -164,6 +168,7 @@ type HandlerConfig struct {
 		GetClientSession(fiber.Ctx) error
 		SetClientSessionReply(fiber.Ctx) error
 		GetClientAssessments(fiber.Ctx) error
+		GetClientAssessmentSnapshot(fiber.Ctx) error
 	}
 	ProgramHandler interface {
 		CreateProgram(fiber.Ctx) error
@@ -183,11 +188,21 @@ type HandlerConfig struct {
 	}
 	AvailabilityHandler interface {
 		GetMyAvailability(fiber.Ctx) error
+		GetMyDeclaredWeeks(fiber.Ctx) error
 		UpsertMyWeekAvailability(fiber.Ctx) error
 		GetMyAvailabilityReminder(fiber.Ctx) error
 		GetClientAvailability(fiber.Ctx) error
 		GetAvailabilityReminder(fiber.Ctx) error
 		SetAvailabilityReminder(fiber.Ctx) error
+	}
+	BodyweightHandler interface {
+		CreateMyBodyweight(fiber.Ctx) error
+		GetMyBodyweights(fiber.Ctx) error
+		DeleteMyBodyweight(fiber.Ctx) error
+		GetClientBodyweights(fiber.Ctx) error
+	}
+	CoachTrainingLoadHandler interface {
+		GetClientTrainingLoad(fiber.Ctx) error
 	}
 	CoachTodoHandler interface {
 		GetCoachFeed(fiber.Ctx) error
@@ -206,9 +221,10 @@ type HandlerConfig struct {
 func SetupFiberApp(config HandlerConfig) *fiber.App {
 	app := fiber.New()
 
-	// Mirror the production middleware stack so handlers get the same
-	// request-scoped context they get when served by cmd/api.
-	app.Use(middleware.RequestContext())
+	// The same registration cmd/api makes, so handlers get the same
+	// request-scoped context and the same response encoding they get when
+	// served for real.
+	middleware.RegisterShared(app)
 
 	// Public routes
 	if config.AuthHandler != nil {
@@ -216,6 +232,9 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		app.Post("/auth/login", config.AuthHandler.Login)
 		app.Post("/auth/refresh", config.AuthHandler.Refresh)
 		app.Post("/auth/logout", config.AuthHandler.Logout)
+		app.Post("/auth/forgot-password", config.AuthHandler.ForgotPassword)
+		app.Post("/auth/reset-password", config.AuthHandler.ResetPassword)
+		app.Post("/auth/resend-verification", config.AuthHandler.ResendVerificationEmail)
 	}
 
 	// Protected routes
@@ -229,6 +248,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 	if config.AssessmentHandler != nil {
 		api.Post("/assessments", config.AssessmentHandler.CreateAssessment)
 		api.Get("/assessments", config.AssessmentHandler.GetAssessments)
+		api.Get("/assessments/at", config.AssessmentHandler.GetMyAssessmentSnapshot)
 		api.Delete("/assessments/:id", config.AssessmentHandler.DeleteAssessment)
 	}
 
@@ -260,6 +280,7 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 		api.Get("/coach/clients/:user_id/sessions/:session_id", config.CoachHandler.GetClientSession)
 		api.Put("/coach/clients/:user_id/sessions/:session_id/reply", config.CoachHandler.SetClientSessionReply)
 		api.Get("/coach/clients/:user_id/assessments", config.CoachHandler.GetClientAssessments)
+		api.Get("/coach/clients/:user_id/assessments/at", config.CoachHandler.GetClientAssessmentSnapshot)
 	}
 
 	if config.ExerciseHandler != nil {
@@ -308,11 +329,23 @@ func SetupFiberApp(config HandlerConfig) *fiber.App {
 
 	if config.AvailabilityHandler != nil {
 		api.Get("/user/availability", config.AvailabilityHandler.GetMyAvailability)
+		api.Get("/user/availability/declared-weeks", config.AvailabilityHandler.GetMyDeclaredWeeks)
 		api.Put("/user/availability/:week_start", config.AvailabilityHandler.UpsertMyWeekAvailability)
 		api.Get("/user/availability-reminder", config.AvailabilityHandler.GetMyAvailabilityReminder)
 		api.Get("/coach/clients/:user_id/availability", config.AvailabilityHandler.GetClientAvailability)
 		api.Get("/coach/availability-reminder", config.AvailabilityHandler.GetAvailabilityReminder)
 		api.Put("/coach/availability-reminder", config.AvailabilityHandler.SetAvailabilityReminder)
+	}
+
+	if config.BodyweightHandler != nil {
+		api.Post("/user/bodyweights", config.BodyweightHandler.CreateMyBodyweight)
+		api.Get("/user/bodyweights", config.BodyweightHandler.GetMyBodyweights)
+		api.Delete("/user/bodyweights/:id", config.BodyweightHandler.DeleteMyBodyweight)
+		api.Get("/coach/clients/:user_id/bodyweights", config.BodyweightHandler.GetClientBodyweights)
+	}
+
+	if config.CoachTrainingLoadHandler != nil {
+		api.Get("/coach/clients/:user_id/training-load", config.CoachTrainingLoadHandler.GetClientTrainingLoad)
 	}
 
 	if config.CoachTodoHandler != nil {

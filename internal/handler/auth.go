@@ -5,13 +5,16 @@ import (
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
 	"crimpy/backend/internal/utils"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // minPasswordLength is the shortest password accepted at registration and on change.
@@ -25,12 +28,11 @@ func normalizeEmail(email string) string {
 
 type AuthHandler struct {
 	queries *db.Queries
+	pool    *pgxpool.Pool
 }
 
-func NewAuthHandler(queries *db.Queries) *AuthHandler {
-	return &AuthHandler{
-		queries: queries,
-	}
+func NewAuthHandler(queries *db.Queries, pool *pgxpool.Pool) *AuthHandler {
+	return &AuthHandler{queries: queries, pool: pool}
 }
 
 type RegisterRequest struct {
@@ -60,14 +62,13 @@ type UserResponse struct {
 
 // Register godoc
 // @Summary Register a new user
-// @Description Create a new user account with email and password
+// @Description Create a new user account with email and password. An address that already has an account gets the same answer as a new one, so the endpoint does not tell a caller which addresses are registered: its owner is emailed instead, with a fresh verification link if the account is still unverified, or a note that someone tried to register with it otherwise.
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body RegisterRequest true "Registration details"
 // @Success 201 {object} map[string]interface{} "User registered successfully"
 // @Failure 400 {object} map[string]string "Invalid request or validation error"
-// @Failure 409 {object} map[string]string "Email already registered"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /auth/register [post]
 func (h *AuthHandler) Register(c fiber.Ctx) error {
@@ -128,9 +129,8 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "Email already registered",
-			})
+			h.notifyOwnerOfTakenAddress(c.Context(), req.Email)
+			return registrationAccepted(c, req.IsCoach, takenAddressUserResponse(req))
 		}
 		slog.Error("failed to create user", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -146,91 +146,140 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 				"error": "Failed to verify email",
 			})
 		}
-
-		// Return simple success message for tests
-		message := "User registered successfully"
-		if req.IsCoach {
-			message = "Coach account created. Pending admin validation."
-		}
-
-		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-			"message": message,
-			"user": UserResponse{
-				ID:             user.ID.String(),
-				Email:          user.Email,
-				Firstname:      user.Firstname,
-				Lastname:       user.Lastname,
-				IsCoach:        user.IsCoach,
-				CoachValidated: user.CoachValidated,
-				IsAdmin:        user.IsAdmin,
-				EmailVerified:  true,
-				CreatedAt:      user.CreatedAt.Time.String(),
-			},
-		})
+		user.EmailVerified = true
+		return registrationAccepted(c, req.IsCoach, newUserResponse(user))
 	}
 
-	// Generate verification token and send email (production)
-	verificationToken, err := utils.GenerateVerificationToken()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to generate verification token",
-		})
-	}
-
-	// Set token expiration to 24 hours from now
-	expiresAt := pgtype.Timestamptz{}
-	expiresAt.Scan(time.Now().Add(24 * time.Hour))
-
-	err = h.queries.SetVerificationToken(c.Context(), db.SetVerificationTokenParams{
-		ID:                         user.ID,
-		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
-		VerificationTokenExpiresAt: expiresAt,
-	})
-	if err != nil {
-		slog.Error("failed to save verification token", "user_id", user.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to save verification token",
-		})
-	}
-
-	if err := utils.SendVerificationEmail(c.Context(), user.Email, user.Firstname, verificationToken, req.IsCoach); err != nil {
+	if _, err := h.sendVerificationEmail(c.Context(), user); err != nil {
 		slog.Error("failed to send verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 			"message": "User registered, but verification email failed to send. Please request a new verification email.",
-			"user": UserResponse{
-				ID:             user.ID.String(),
-				Email:          user.Email,
-				Firstname:      user.Firstname,
-				Lastname:       user.Lastname,
-				IsCoach:        user.IsCoach,
-				CoachValidated: user.CoachValidated,
-				IsAdmin:        user.IsAdmin,
-				EmailVerified:  user.EmailVerified,
-				CreatedAt:      user.CreatedAt.Time.String(),
-			},
+			"user":    newUserResponse(user),
 		})
 	}
 
-	// Return user response (without password)
+	return registrationAccepted(c, req.IsCoach, newUserResponse(user))
+}
+
+// registrationAccepted is the one answer a registration gets, whether it
+// created an account or found the address taken.
+func registrationAccepted(c fiber.Ctx, isCoach bool, user UserResponse) error {
 	message := "User registered successfully. Please check your email to verify your account."
-	if req.IsCoach {
+	if isCoach {
 		message = "Coach account created. Please verify your email to proceed with admin validation."
 	}
-
+	if utils.IsTestEnv() {
+		message = "User registered successfully"
+		if isCoach {
+			message = "Coach account created. Pending admin validation."
+		}
+	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": message,
-		"user": UserResponse{
-			ID:             user.ID.String(),
-			Email:          user.Email,
-			Firstname:      user.Firstname,
-			Lastname:       user.Lastname,
-			IsCoach:        user.IsCoach,
-			CoachValidated: user.CoachValidated,
-			IsAdmin:        user.IsAdmin,
-			EmailVerified:  user.EmailVerified,
-			CreatedAt:      user.CreatedAt.Time.String(),
-		},
+		"user":    user,
 	})
+}
+
+func newUserResponse(user db.User) UserResponse {
+	return UserResponse{
+		ID:             user.ID.String(),
+		Email:          user.Email,
+		Firstname:      user.Firstname,
+		Lastname:       user.Lastname,
+		IsCoach:        user.IsCoach,
+		CoachValidated: user.CoachValidated,
+		IsAdmin:        user.IsAdmin,
+		EmailVerified:  user.EmailVerified,
+		CreatedAt:      user.CreatedAt.Time.String(),
+	}
+}
+
+// takenAddressUserResponse is shaped like the user a new registration returns,
+// built from the request alone, so nothing in it tells a caller the address
+// already had an account. Truncating the clock drops its monotonic reading and
+// matches the precision Postgres stores, so created_at prints the same way.
+func takenAddressUserResponse(req RegisterRequest) UserResponse {
+	emailVerified := utils.IsTestEnv()
+	return UserResponse{
+		ID:            uuid.NewString(),
+		Email:         req.Email,
+		Firstname:     req.Firstname,
+		Lastname:      req.Lastname,
+		IsCoach:       req.IsCoach,
+		EmailVerified: emailVerified,
+		CreatedAt:     time.Now().Truncate(time.Microsecond).String(),
+	}
+}
+
+// notifyOwnerOfTakenAddress emails whoever owns an address someone just tried
+// to register: an unverified owner is most likely the one retrying, and gets a
+// fresh verification link unless one went out in the last cooldown; a verified
+// owner is told about the attempt and pointed at sign in. Failures are logged
+// and never surface, since the answer must not differ from a new registration.
+func (h *AuthHandler) notifyOwnerOfTakenAddress(ctx context.Context, email string) {
+	owner, err := h.queries.GetUserByEmail(ctx, email)
+	if err != nil {
+		slog.Error("failed to load the owner of a taken address", "error", err)
+		return
+	}
+
+	if owner.EmailVerified {
+		claimed, err := h.queries.ClaimAccountNotice(ctx, db.ClaimAccountNoticeParams{
+			ID:           owner.ID,
+			ResendCutoff: pgtype.Timestamptz{Time: time.Now().Add(-accountNoticeCooldown), Valid: true},
+		})
+		if err != nil {
+			slog.Error("failed to claim an account already registered notice", "user_id", owner.ID.String(), "error", err)
+			return
+		}
+		if claimed == 0 {
+			return
+		}
+		if err := utils.SendAccountAlreadyRegisteredEmail(ctx, owner.Email, owner.Firstname); err != nil {
+			slog.Error("failed to send account already registered email", "user_id", owner.ID.String(), "error", err)
+		}
+		return
+	}
+
+	if _, err := h.sendVerificationEmail(ctx, owner); err != nil {
+		slog.Error("failed to resend verification email for a taken address", "user_id", owner.ID.String(), "error", err)
+	}
+}
+
+// accountNoticeCooldown is how long after telling an owner about an attempt to
+// register with their address another attempt goes unmentioned. It is claimed
+// in the same update that checks it, so concurrent attempts send one email.
+const accountNoticeCooldown = 10 * time.Minute
+
+// verificationEmailCooldown is how long after a verification email another one
+// is held back for the same account.
+const verificationEmailCooldown = 10 * time.Minute
+
+// sendVerificationEmail stores a new verification token, valid 24 hours, and
+// emails the link, unless the account is verified or was sent one within the
+// cooldown. The write is what checks both, so concurrent requests send at most
+// one email. Reports whether it sent.
+func (h *AuthHandler) sendVerificationEmail(ctx context.Context, user db.User) (bool, error) {
+	verificationToken, err := utils.GenerateVerificationToken()
+	if err != nil {
+		return false, err
+	}
+
+	now := time.Now()
+	stored, err := h.queries.SetVerificationToken(ctx, db.SetVerificationTokenParams{
+		ID:                         user.ID,
+		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
+		VerificationTokenExpiresAt: pgtype.Timestamptz{Time: now.Add(24 * time.Hour), Valid: true},
+		ResendCutoff:               pgtype.Timestamptz{Time: now.Add(-verificationEmailCooldown), Valid: true},
+	})
+	if err != nil {
+		return false, err
+	}
+	if stored == 0 {
+		return false, nil
+	}
+
+	return true, utils.SendVerificationEmail(ctx, user.Email, user.Firstname, verificationToken, user.IsCoach)
 }
 
 // Login godoc
@@ -295,7 +344,7 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		})
 	}
 
-	refreshToken, err := h.issueRefreshToken(c.Context(), user.ID)
+	refreshToken, _, err := issueRefreshToken(c.Context(), h.queries, user.ID)
 	if err != nil {
 		slog.Error("failed to create refresh token", "user_id", user.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -321,24 +370,24 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 	})
 }
 
-func (h *AuthHandler) issueRefreshToken(ctx context.Context, userID pgtype.UUID) (string, error) {
+func issueRefreshToken(ctx context.Context, q *db.Queries, userID pgtype.UUID) (string, pgtype.UUID, error) {
 	raw, err := utils.GenerateRefreshToken()
 	if err != nil {
-		return "", err
+		return "", pgtype.UUID{}, err
 	}
 	expiresAt := pgtype.Timestamptz{}
 	if err := expiresAt.Scan(time.Now().Add(utils.RefreshTokenTTL)); err != nil {
-		return "", err
+		return "", pgtype.UUID{}, err
 	}
-	_, err = h.queries.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+	created, err := q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		UserID:    userID,
 		TokenHash: utils.HashToken(raw),
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		return "", err
+		return "", pgtype.UUID{}, err
 	}
-	return raw, nil
+	return raw, created.ID, nil
 }
 
 type RefreshRequest struct {
@@ -347,7 +396,7 @@ type RefreshRequest struct {
 
 // Refresh godoc
 // @Summary Refresh access token
-// @Description Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned.
+// @Description Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned. For one minute after a rotation the old token may be presented again, as long as its successor was never used and the session was not ended by sign out or a password change. That reissue revokes the undelivered successor.
 // @Tags Authentication
 // @Accept json
 // @Produce json
@@ -366,7 +415,25 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Refresh token is required"})
 	}
 
-	stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
+	tx, err := h.pool.Begin(c.Context())
+	if err != nil {
+		slog.Error("failed to begin transaction", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+	}
+	defer tx.Rollback(c.Context())
+
+	qtx := h.queries.WithTx(tx)
+
+	// Locked so two refreshes presenting the same token take turns, and the
+	// second one sees what the first did to it.
+	//
+	// Holding this lock, the successor insert below takes FOR KEY SHARE on the
+	// user row for its foreign key. An admin deleting that user at the same
+	// moment holds the row FOR UPDATE and cascades into this token, so one of
+	// the two is aborted as a deadlock: the refresh answers 500 for an account
+	// that is going away, or the admin retries the delete. Neither leaves a
+	// token behind, so it is accepted rather than locked around.
+	stored, err := qtx.LockRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
@@ -375,34 +442,84 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
 
-	if stored.Revoked || stored.ExpiresAt.Time.Before(time.Now()) {
+	if stored.ExpiresAt.Time.Before(time.Now()) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
+	if stored.Revoked {
+		allowed, err := reissuableWithinGrace(c.Context(), qtx, stored)
+		if err != nil {
+			slog.Error("failed to check refresh token grace", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+		}
+		if !allowed {
+			slog.Warn("auth rejected", "reason", "revoked refresh token presented", "user_id", stored.UserID.String(), "ip", c.IP())
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
+		}
+		// The client never got the successor, so it goes: one live token per
+		// chain, and the one about to be issued is it.
+		if err := qtx.RevokeRefreshToken(c.Context(), stored.ReplacedBy); err != nil {
+			slog.Error("failed to revoke undelivered refresh token", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
+		}
+	}
 
-	user, err := h.queries.GetUserByID(c.Context(), stored.UserID)
+	user, err := qtx.GetUserByID(c.Context(), stored.UserID)
 	if err != nil {
 		slog.Error("failed to load user for refresh", "user_id", stored.UserID.String(), "error", err)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid refresh token"})
 	}
 
-	if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
-		slog.Error("failed to revoke refresh token", "error", err)
+	accessToken, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
+	if err != nil {
+		slog.Error("failed to generate JWT", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+	newRefresh, newRefreshID, err := issueRefreshToken(c.Context(), qtx, user.ID)
+	if err != nil {
+		slog.Error("failed to create refresh token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+	if err := qtx.RotateRefreshToken(c.Context(), db.RotateRefreshTokenParams{
+		ID:         stored.ID,
+		ReplacedBy: newRefreshID,
+	}); err != nil {
+		slog.Error("failed to rotate refresh token", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
 
-	accessToken, err := utils.GenerateJWT(user.ID.String(), user.Email, user.IsAdmin, user.IsCoach)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
-	}
-	newRefresh, err := h.issueRefreshToken(c.Context(), user.ID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	// Nothing is revoked until the successor is stored with it, so a failure
+	// anywhere above leaves the presented token as good as it was.
+	if err := tx.Commit(c.Context()); err != nil {
+		slog.Error("failed to commit refresh token rotation", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to refresh token"})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"token":         accessToken,
 		"refresh_token": newRefresh,
 	})
+}
+
+// reissuableWithinGrace reports whether a revoked refresh token may be
+// exchanged again because the answer to its rotation never reached the client.
+// That holds only shortly after the rotation, and only while the successor is
+// untouched: a successor that was presented, revoked or expired proves the
+// client did get it, or that the chain was ended on purpose.
+func reissuableWithinGrace(ctx context.Context, q *db.Queries, stored db.RefreshToken) (bool, error) {
+	if !stored.ReplacedBy.Valid || !stored.RevokedAt.Valid {
+		return false, nil
+	}
+	if time.Since(stored.RevokedAt.Time) > utils.RefreshTokenReuseGrace {
+		return false, nil
+	}
+	successor, err := q.LockRefreshTokenByID(ctx, stored.ReplacedBy)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return !successor.Revoked && successor.ExpiresAt.Time.After(time.Now()), nil
 }
 
 // Logout godoc
@@ -420,14 +537,106 @@ func (h *AuthHandler) Logout(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 	}
 	if req.RefreshToken != "" {
-		stored, err := h.queries.GetRefreshTokenByHash(c.Context(), utils.HashToken(req.RefreshToken))
-		if err == nil {
-			if err := h.queries.RevokeRefreshToken(c.Context(), stored.ID); err != nil {
-				slog.Error("failed to revoke refresh token on logout", "error", err)
-			}
+		if err := h.revokeWithUndeliveredSuccessor(c.Context(), utils.HashToken(req.RefreshToken)); err != nil {
+			slog.Error("failed to revoke refresh token on logout", "error", err)
 		}
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
+}
+
+// revokeWithUndeliveredSuccessor revokes a refresh token, and the successor its
+// rotation minted if that was never used: a client signing out with a rotated
+// token is the one that never received it, and leaving it live would keep the
+// session open. Rows are locked token first, then successor, the order Refresh
+// takes them in.
+func (h *AuthHandler) revokeWithUndeliveredSuccessor(ctx context.Context, tokenHash string) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	stored, err := qtx.LockRefreshTokenByHash(ctx, tokenHash)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+	if stored.ReplacedBy.Valid {
+		successor, err := qtx.LockRefreshTokenByID(ctx, stored.ReplacedBy)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+		if err == nil && !successor.Revoked {
+			if err := qtx.RevokeRefreshToken(ctx, successor.ID); err != nil {
+				return err
+			}
+		}
+	}
+	if err := qtx.RevokeRefreshToken(ctx, stored.ID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// errUserGone reports a password change for an account deleted while the
+// request was being handled.
+var errUserGone = errors.New("user no longer exists")
+
+// updatePasswordAndRevokeSessions stores the new password and ends every
+// session established with the old one, or does neither: a password reported
+// as changed while those sessions live on is the failure this exists to rule
+// out.
+//
+// The user row is locked first, then the refresh tokens. A refresh holds a
+// token while its successor insert takes FOR KEY SHARE on the user row, and
+// that does not wait on the FOR NO KEY UPDATE this password update takes,
+// which is why the two orders cannot deadlock. An update that also wrote email
+// or id would take FOR UPDATE instead and deadlock with every refresh running
+// during a password change.
+//
+// The refresh token rows are locked in one statement and revoked in the next:
+// a refresh holding one of them commits its successor in between, and only a
+// statement started after that commit sees the successor to revoke it. That
+// covers the refresh already running when the revoke starts; a second one,
+// presenting that successor in the gap between the two statements, would need
+// a full client round trip to fit there.
+func (h *AuthHandler) updatePasswordAndRevokeSessions(ctx context.Context, userID pgtype.UUID, hashedPassword string) error {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	updated, err := qtx.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:       userID,
+		Password: hashedPassword,
+	})
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return errUserGone
+	}
+	if err := revokeAllSessions(ctx, qtx, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// revokeAllSessions revokes every refresh token of an account. It runs inside
+// a transaction that has already locked the user row by writing its password,
+// for the lock order described on updatePasswordAndRevokeSessions.
+func revokeAllSessions(ctx context.Context, qtx *db.Queries, userID pgtype.UUID) error {
+	if err := qtx.LockUserRefreshTokens(ctx, userID); err != nil {
+		return err
+	}
+	return qtx.RevokeUserRefreshTokens(ctx, userID)
 }
 
 type ChangePasswordRequest struct {
@@ -531,20 +740,16 @@ func (h *AuthHandler) ChangePassword(c fiber.Ctx) error {
 		})
 	}
 
-	err = h.queries.UpdateUserPassword(c.Context(), db.UpdateUserPasswordParams{
-		ID:       userUUID,
-		Password: hashedPassword,
-	})
-	if err != nil {
+	if err := h.updatePasswordAndRevokeSessions(c.Context(), userUUID, hashedPassword); err != nil {
+		if errors.Is(err, errUserGone) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "User not found",
+			})
+		}
 		slog.Error("failed to update password", "target_user_id", targetUserID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update password",
 		})
-	}
-
-	// Sessions established with the old password must not survive the change.
-	if err := h.queries.RevokeUserRefreshTokens(c.Context(), userUUID); err != nil {
-		slog.Error("failed to revoke refresh tokens after password change", "target_user_id", targetUserID, "error", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -668,17 +873,20 @@ type ResendVerificationRequest struct {
 	Email string `json:"email"`
 }
 
+// resendVerificationAnswer is the same for an unknown address, a verified one,
+// one inside its cooldown and one that was just sent a link, so the endpoint
+// does not tell a caller which addresses are registered or verified.
+const resendVerificationAnswer = "If this address has an account waiting for verification, a new verification link has been sent to it."
+
 // ResendVerificationEmail godoc
 // @Summary Resend verification email
-// @Description Resend verification email with a 10-minute cooldown per email
+// @Description Send a new verification link to an unverified account. The answer is the same whether or not the address has an account, is already verified, or asked less than 10 minutes ago, in which case nothing is sent.
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body ResendVerificationRequest true "Email address"
-// @Success 200 {object} map[string]string "Verification email sent"
-// @Failure 400 {object} map[string]string "Invalid request or email already verified"
-// @Failure 404 {object} map[string]string "User not found"
-// @Failure 429 {object} map[string]string "Too many requests - cooldown active"
+// @Success 200 {object} map[string]string "Verification email sent if the account needs one"
+// @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /auth/resend-verification [post]
 func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
@@ -700,9 +908,7 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 	user, err := h.queries.GetUserByEmail(c.Context(), req.Email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "User not found",
-			})
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": resendVerificationAnswer})
 		}
 		slog.Error("failed to retrieve user for resend verification", "email", req.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -710,56 +916,200 @@ func (h *AuthHandler) ResendVerificationEmail(c fiber.Ctx) error {
 		})
 	}
 
-	if user.EmailVerified {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Email is already verified",
-		})
-	}
-
-	// Check cooldown (10 minutes)
-	lastSent, err := h.queries.GetVerificationEmailSentAt(c.Context(), req.Email)
-	if err == nil && lastSent.Valid {
-		timeSinceLastSent := time.Since(lastSent.Time)
-		if timeSinceLastSent < 10*time.Minute {
-			remainingTime := 10*time.Minute - timeSinceLastSent
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": "Please wait before requesting another verification email. Try again in " + remainingTime.Round(time.Second).String(),
-			})
-		}
-	}
-
-	// Generate new verification token
-	verificationToken, err := utils.GenerateVerificationToken()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to generate verification token",
-		})
-	}
-
-	// Set token expiration to 24 hours from now
-	expiresAt := pgtype.Timestamptz{}
-	expiresAt.Scan(time.Now().Add(24 * time.Hour))
-
-	err = h.queries.SetVerificationToken(c.Context(), db.SetVerificationTokenParams{
-		ID:                         user.ID,
-		VerificationToken:          pgtype.Text{String: verificationToken, Valid: true},
-		VerificationTokenExpiresAt: expiresAt,
-	})
-	if err != nil {
-		slog.Error("failed to save resend verification token", "user_id", user.ID.String(), "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to save verification token",
-		})
-	}
-
-	if err := utils.SendVerificationEmail(c.Context(), user.Email, user.Firstname, verificationToken, user.IsCoach); err != nil {
+	if _, err := h.sendVerificationEmail(c.Context(), user); err != nil {
 		slog.Error("failed to resend verification email", "user_id", user.ID.String(), "email", user.Email, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to send verification email",
 		})
 	}
 
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": resendVerificationAnswer})
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// forgotPasswordAnswer is the same whether or not the address has an account,
+// and whether or not the cooldown held the email back. Only a failed send
+// answers otherwise, since that is a retry the caller has to know about.
+const forgotPasswordAnswer = "If an account exists for this email, a password reset link has been sent to it."
+
+// ForgotPassword godoc
+// @Summary Request a password reset email
+// @Description Email a password reset link, valid for one hour, to the account with this address. The answer is the same whether or not the account exists. A request made within a minute of the previous one for the same account sends nothing.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body ForgotPasswordRequest true "Email address"
+// @Success 200 {object} map[string]string "Reset email sent if the account exists"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/forgot-password [post]
+func (h *AuthHandler) ForgotPassword(c fiber.Ctx) error {
+	var req ForgotPasswordRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	req.Email = normalizeEmail(req.Email)
+
+	if req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email is required",
+		})
+	}
+
+	user, err := h.queries.GetUserByEmail(c.Context(), req.Email)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": forgotPasswordAnswer})
+		}
+		slog.Error("failed to retrieve user for password reset", "email", req.Email, "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to request password reset",
+		})
+	}
+
+	resetToken, err := utils.GenerateVerificationToken()
+	if err != nil {
+		slog.Error("failed to generate password reset token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to request password reset",
+		})
+	}
+
+	now := time.Now()
+	stored, err := h.queries.SetPasswordResetToken(c.Context(), db.SetPasswordResetTokenParams{
+		ID:           user.ID,
+		TokenHash:    pgtype.Text{String: utils.HashToken(resetToken), Valid: true},
+		RequestedAt:  pgtype.Timestamptz{Time: now, Valid: true},
+		ResendCutoff: pgtype.Timestamptz{Time: now.Add(-utils.PasswordResetResendCooldown), Valid: true},
+	})
+	if err != nil {
+		slog.Error("failed to save password reset token", "user_id", user.ID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to request password reset",
+		})
+	}
+	if stored == 0 {
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": forgotPasswordAnswer})
+	}
+
+	if err := utils.SendPasswordResetEmail(c.Context(), user.Email, user.Firstname, resetToken); err != nil {
+		slog.Error("failed to send password reset email", "user_id", user.ID.String(), "error", err)
+		// Dropped so the cooldown does not hold back a retry for an email that
+		// never went out. Detached from the request, whose deadline may be what
+		// failed the send.
+		clearCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Context()), 5*time.Second)
+		defer cancel()
+		if err := h.queries.ClearPasswordResetToken(clearCtx, user.ID); err != nil {
+			slog.Error("failed to clear unsent password reset token", "user_id", user.ID.String(), "error", err)
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send password reset email",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": forgotPasswordAnswer})
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+// errResetTokenInvalid reports a reset token that is unknown, already used,
+// superseded by a newer request, or older than PasswordResetTokenTTL.
+var errResetTokenInvalid = errors.New("invalid or expired password reset token")
+
+// resetPasswordAndRevokeSessions consumes a reset token, stores the new
+// password and ends every session of the account, or does none of it. The
+// token is matched and cleared by the same update, so two requests presenting
+// it cannot both succeed.
+func (h *AuthHandler) resetPasswordAndRevokeSessions(ctx context.Context, resetToken, hashedPassword string) (db.ResetPasswordWithTokenRow, error) {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return db.ResetPasswordWithTokenRow{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := h.queries.WithTx(tx)
+
+	user, err := qtx.ResetPasswordWithToken(ctx, db.ResetPasswordWithTokenParams{
+		Password:    hashedPassword,
+		TokenHash:   pgtype.Text{String: utils.HashToken(resetToken), Valid: true},
+		IssuedAfter: pgtype.Timestamptz{Time: time.Now().Add(-utils.PasswordResetTokenTTL), Valid: true},
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return db.ResetPasswordWithTokenRow{}, errResetTokenInvalid
+		}
+		return db.ResetPasswordWithTokenRow{}, err
+	}
+	if err := revokeAllSessions(ctx, qtx, user.ID); err != nil {
+		return db.ResetPasswordWithTokenRow{}, err
+	}
+	return user, tx.Commit(ctx)
+}
+
+// ResetPassword godoc
+// @Summary Reset password with an emailed token
+// @Description Set a new password using the token from a password reset email. The token is single use and valid for one hour. Every session of the account is signed out, and the email address is marked verified since the link reached it.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body ResetPasswordRequest true "Reset token and new password"
+// @Success 200 {object} map[string]interface{} "Password reset"
+// @Failure 400 {object} map[string]string "Invalid request or validation error"
+// @Failure 404 {object} map[string]string "Invalid or expired reset token"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/reset-password [post]
+func (h *AuthHandler) ResetPassword(c fiber.Ctx) error {
+	var req ResetPasswordRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if req.Token == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Token is required",
+		})
+	}
+
+	if len(req.NewPassword) < minPasswordLength {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "New password must be at least 6 characters",
+		})
+	}
+
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		slog.Error("failed to hash password during reset", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to process password",
+		})
+	}
+
+	user, err := h.resetPasswordAndRevokeSessions(c.Context(), req.Token, hashedPassword)
+	if err != nil {
+		if errors.Is(err, errResetTokenInvalid) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "This reset link is invalid or has expired. Please request a new one.",
+			})
+		}
+		slog.Error("failed to reset password", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to reset password",
+		})
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Verification email sent successfully. Please check your inbox.",
+		"message":  "Password reset successfully. You can now sign in with your new password.",
+		"is_coach": user.IsCoach,
 	})
 }

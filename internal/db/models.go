@@ -20,15 +20,16 @@ type Assessment struct {
 }
 
 type AssessmentDefinition struct {
-	ID         pgtype.UUID
-	UserID     pgtype.UUID
-	TrainingID pgtype.UUID
-	Label      string
-	Prompt     pgtype.Text
-	Unit       string
-	PerHand    bool
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	TrainingID         pgtype.UUID
+	Label              string
+	Prompt             pgtype.Text
+	Unit               string
+	PerHand            bool
+	BodyweightRelative bool
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
 }
 
 type BuiltinTrainingWeight struct {
@@ -82,6 +83,7 @@ type CoachProgramWeek struct {
 	ID         pgtype.UUID
 	ProgramID  pgtype.UUID
 	WeekNumber int32
+	Name       pgtype.Text
 	Notes      pgtype.Text
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
@@ -109,16 +111,24 @@ type CoachTodoSetting struct {
 	UpdatedAt          pgtype.Timestamptz
 }
 
-type CoacheeDayAvailability struct {
+type CoacheeDayActivity struct {
 	ID              pgtype.UUID
-	UserID          pgtype.UUID
-	WeekStart       pgtype.Date
+	DeclarationID   pgtype.UUID
 	DayOfWeek       int32
-	IsAvailable     bool
+	Position        int32
+	Label           string
 	DurationMinutes pgtype.Int4
-	Note            pgtype.Text
+	WhenText        pgtype.Text
+	WhereText       pgtype.Text
 	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+}
+
+type CoacheeWeekDeclaration struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	WeekStart pgtype.Date
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 type EnrollmentToken struct {
@@ -154,12 +164,14 @@ type PinnedBuiltinTraining struct {
 }
 
 type RefreshToken struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	TokenHash string
-	ExpiresAt pgtype.Timestamptz
-	Revoked   bool
-	CreatedAt pgtype.Timestamptz
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	TokenHash  string
+	ExpiresAt  pgtype.Timestamptz
+	Revoked    bool
+	RevokedAt  pgtype.Timestamptz
+	ReplacedBy pgtype.UUID
+	CreatedAt  pgtype.Timestamptz
 }
 
 type RepData struct {
@@ -174,7 +186,7 @@ type RepData struct {
 	Index            int32
 	GripPosition     int32
 	EdgeSizeMm       pgtype.Int4
-	TrainingItemID   pgtype.UUID
+	TrainingItemID   pgtype.Text
 	TargetUnmeasured bool
 	UpdatedAt        pgtype.Timestamptz
 }
@@ -206,18 +218,23 @@ type Session struct {
 	CoachReply       pgtype.Text
 	CoachReplyAt     pgtype.Timestamptz
 	CoachReplyReadAt pgtype.Timestamptz
+	Rpe              pgtype.Int4
+	RpeFailed        bool
 	UpdatedAt        pgtype.Timestamptz
 }
 
 type SessionItemResult struct {
-	ID             pgtype.UUID
-	SessionID      pgtype.UUID
-	UserID         pgtype.UUID
-	TrainingItemID pgtype.UUID
-	Occurrence     int32
-	Field          string
-	Value          int32
-	UpdatedAt      pgtype.Timestamptz
+	ID              pgtype.UUID
+	SessionID       pgtype.UUID
+	UserID          pgtype.UUID
+	TrainingItemID  string
+	Occurrence      int32
+	Reps            pgtype.Int4
+	Cycles          pgtype.Int4
+	LoadKg          pgtype.Float4
+	DurationSeconds pgtype.Int4
+	Note            pgtype.Text
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type Tag struct {
@@ -262,6 +279,8 @@ type TrainingItem struct {
 	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
+	Goal             pgtype.Text
+	Protocol         pgtype.Text
 	Loads            []byte
 	LeftLoads        []byte
 	HandPositions    []byte
@@ -286,6 +305,17 @@ type User struct {
 	VerificationToken          pgtype.Text
 	VerificationTokenExpiresAt pgtype.Timestamptz
 	VerificationEmailSentAt    pgtype.Timestamptz
+	PasswordResetTokenHash     pgtype.Text
+	PasswordResetRequestedAt   pgtype.Timestamptz
+	AccountNoticeSentAt        pgtype.Timestamptz
 	CreatedAt                  pgtype.Timestamptz
 	LastSeenAt                 pgtype.Timestamptz
+}
+
+type UserBodyweight struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	WeightKg   float32
+	MeasuredAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
 }

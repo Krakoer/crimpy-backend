@@ -12,13 +12,26 @@ SELECT id FROM trainings WHERE id = @id AND user_id = @user_id;
 -- name: GetTrainings :many
 -- @is_assessment is null for the whole library, true for the assessments alone
 -- and false for the trainings that are not one.
-SELECT t.*, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand
+--
+-- A null row_limit means every row, which is what the cheap list asks for and
+-- what this answered before the include=items ceiling existed. A caller that
+-- sends a number gets at most that many trainings, not that many join rows:
+-- assessment_definitions carries a unique index on training_id, so the LEFT
+-- JOIN cannot fan a training out into several.
+--
+-- The id breaks ties on title. Titles are not unique, and Postgres orders a tie
+-- by whatever the heap hands it, which moves the moment a row in the tie group
+-- is updated. Without the tiebreaker a limited read is not a stable prefix: a
+-- training could leave the answer and another take its place with nothing about
+-- the library having changed.
+SELECT t.*, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand, d.bodyweight_relative
 FROM trainings t
 LEFT JOIN assessment_definitions d ON d.training_id = t.id
 WHERE t.user_id = @user_id
   AND (sqlc.narg('is_assessment')::bool IS NULL
        OR (d.id IS NOT NULL) = sqlc.narg('is_assessment')::bool)
-ORDER BY t.title;
+ORDER BY t.title, t.id
+LIMIT sqlc.narg('row_limit')::int;
 
 -- name: UpdateTraining :one
 UPDATE trainings
@@ -37,7 +50,7 @@ INSERT INTO training_items (
   reps, reps_is_max, duration, rest_seconds,
   exercise_id,
   worktime_seconds, hand, granularity,
-  free_text, comment, load_is_max,
+  free_text, comment, goal, protocol, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
   variable_targets,
   group_title
@@ -47,19 +60,38 @@ INSERT INTO training_items (
   @reps, @reps_is_max, @duration, @rest_seconds,
   @exercise_id,
   @worktime_seconds, @hand, @granularity,
-  @free_text, @comment, @load_is_max,
+  @free_text, @comment, @goal, @protocol, @load_is_max,
   @loads, @left_loads, @hand_positions, @edge_sizes_mm,
   @variable_targets,
   @group_title
 )
 RETURNING *;
 
+-- The exercise columns travel with the item because the athlete cannot read the
+-- exercise itself: every /api/coach/exercises route is coach only, so a video
+-- the coach attached reaches them here or nowhere.
+--
+-- The join is closed on the training's owner as well as on the id. Writes are
+-- validated, so a legitimate reference always satisfies it; what this covers is
+-- a row stored before they were, which would otherwise hand any reader the
+-- name, notes and video of an exercise belonging to somebody else. An unowned
+-- reference resolves to no exercise, exactly like an item that names none.
+--
+-- Several trainings at a time, so a library read costs one query rather than
+-- one per training. A caller after a single training passes an array of one.
 -- name: GetTrainingItems :many
-SELECT training_items.*, exercises.name AS exercise_name
+SELECT training_items.*,
+       exercises.name AS exercise_name,
+       exercises.description AS exercise_description,
+       exercises.comment AS exercise_comment,
+       exercises.video_link AS exercise_video_link
 FROM training_items
-LEFT JOIN exercises ON exercises.id = training_items.exercise_id
-WHERE training_items.training_id = @training_id
-ORDER BY training_items.position;
+JOIN trainings ON trainings.id = training_items.training_id
+LEFT JOIN exercises
+  ON exercises.id = training_items.exercise_id
+ AND exercises.coach_id = trainings.user_id
+WHERE training_items.training_id = ANY(@training_ids::uuid[])
+ORDER BY training_items.training_id, training_items.position;
 
 -- name: GetTrainingItemInTraining :one
 SELECT * FROM training_items WHERE id = @id AND training_id = @training_id;
@@ -75,7 +107,9 @@ SET parent_id = @parent_id, type = @type, position = @position,
     rest_seconds = @rest_seconds,
     exercise_id = @exercise_id,
     worktime_seconds = @worktime_seconds, hand = @hand, granularity = @granularity,
-    free_text = @free_text, comment = @comment, load_is_max = @load_is_max,
+    free_text = @free_text, comment = @comment, goal = @goal,
+    protocol = @protocol,
+    load_is_max = @load_is_max,
     loads = @loads, left_loads = @left_loads, hand_positions = @hand_positions,
     edge_sizes_mm = @edge_sizes_mm,
     variable_targets = @variable_targets,

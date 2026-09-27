@@ -44,6 +44,33 @@ func SendCoachRejectedEmail(ctx context.Context, email, firstname string) error 
 	})
 }
 
+const (
+	emailCompanyName  = "Crimpy"
+	emailSupportEmail = "contact@crimpy.app"
+)
+
+func SendPasswordResetEmail(ctx context.Context, email, firstname, resetToken string) error {
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", os.Getenv("BASE_URL"), resetToken)
+
+	return sendTemplateEmail(ctx, email, "password-reset", map[string]interface{}{
+		"first_name":         firstname,
+		"company_name":       emailCompanyName,
+		"reset_password_url": resetLink,
+		"support_email":      emailSupportEmail,
+	})
+}
+
+// SendAccountAlreadyRegisteredEmail tells the owner of an address that someone
+// tried to register a new account with it.
+func SendAccountAlreadyRegisteredEmail(ctx context.Context, email, firstname string) error {
+	return sendTemplateEmail(ctx, email, "account-already-registered", map[string]interface{}{
+		"first_name":    firstname,
+		"company_name":  emailCompanyName,
+		"login_url":     os.Getenv("BASE_URL"),
+		"support_email": emailSupportEmail,
+	})
+}
+
 func sendTemplateEmail(ctx context.Context, email, templateID string, variables map[string]interface{}) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	emailFrom := os.Getenv("RESEND_EMAIL_FROM")

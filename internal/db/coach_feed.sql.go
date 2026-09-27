@@ -15,13 +15,20 @@ const countCoachPendingSessionFeedback = `-- name: CountCoachPendingSessionFeedb
 SELECT COUNT(*) FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 WHERE e.coach_id = $1
-  AND s.notes <> ''
+  AND (
+    s.notes <> ''
+    OR EXISTS (
+      SELECT 1 FROM session_item_results r
+      WHERE r.session_id = s.id AND r.note IS NOT NULL
+    )
+  )
   AND s.coach_reply IS NULL
 `
 
 // How many sessions are waiting on an answer in all. The list above is capped,
 // so without this the badge counting it would stop rising at the cap and read as
-// a total it is not.
+// a total it is not. Counts the same sessions the list holds, item notes
+// included, or the badge and the list would disagree about what is waiting.
 func (q *Queries) CountCoachPendingSessionFeedback(ctx context.Context, coachID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countCoachPendingSessionFeedback, coachID)
 	var count int64
@@ -44,8 +51,8 @@ type CountCoachSessionsInWindowParams struct {
 }
 
 // How many sessions the coach's athletes did in one window. The dashboard shows
-// it for the current week, whose bounds only the caller's timezone offset can
-// place, which is why the window arrives as two instants rather than a week.
+// it for the current week, whose bounds only the caller's own clock can place,
+// which is why the window arrives as two instants rather than a week.
 func (q *Queries) CountCoachSessionsInWindow(ctx context.Context, arg CountCoachSessionsInWindowParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCoachSessionsInWindow, arg.CoachID, arg.WindowStart, arg.WindowEnd)
 	var count int64
@@ -171,8 +178,8 @@ UNION ALL
 
 SELECT
   'availability_declared',
-  MAX(a.updated_at),
-  a.user_id,
+  d.updated_at,
+  d.user_id,
   u.firstname,
   u.lastname,
   NULL::uuid,
@@ -180,13 +187,12 @@ SELECT
   NULL::integer,
   NULL::text,
   NULL::text,
-  a.week_start
-FROM coachee_day_availabilities a
-JOIN coach_enrollments e ON e.user_id = a.user_id
-JOIN users u ON u.id = a.user_id
+  d.week_start
+FROM coachee_week_declarations d
+JOIN coach_enrollments e ON e.user_id = d.user_id
+JOIN users u ON u.id = d.user_id
 WHERE e.coach_id = $2
-GROUP BY a.user_id, a.week_start, u.firstname, u.lastname
-HAVING MAX(a.updated_at) < COALESCE($3::timestamptz, 'infinity')
+  AND d.updated_at < COALESCE($3::timestamptz, 'infinity')
 
 ORDER BY occurred_at DESC
 LIMIT $1
@@ -218,8 +224,9 @@ type GetCoachFeedRow struct {
 // optional before cursor walks the list backwards: pass the occurred_at of the
 // oldest row already held to get the page under it. The branch carrying a NULL
 // in every optional column comes first so the union reads as nullable there.
-// A declared week is written whole, so its seven rows are one event, dated by
-// the last of them to be touched.
+// A declared week is one event, dated by the declaration row rather than by
+// what is planned inside it: a week declared empty is still an answer the coach
+// wants to see go past.
 func (q *Queries) GetCoachFeed(ctx context.Context, arg GetCoachFeedParams) ([]GetCoachFeedRow, error) {
 	rows, err := q.db.Query(ctx, getCoachFeed, arg.RowLimit, arg.CoachID, arg.Before)
 	if err != nil {
@@ -261,12 +268,37 @@ SELECT
   s.name       AS session_name,
   s.date       AS session_date,
   s.activity   AS activity,
-  s.notes      AS notes
+  -- One of the lines the athlete wrote, lowest pass first, preferring the note
+  -- on the session itself when there is one. A session raised by an item note
+  -- alone carries an empty "notes", and the row is a preview the coach clicks
+  -- through, so handing them a blank line would list the session and say
+  -- nothing about why.
+  --
+  -- Which item's line surfaces is not the prescription order: that lives in the
+  -- frozen snapshot and not in a column, and every row of one batch shares an
+  -- "updated_at", so there is no better key to sort on. The key is unique
+  -- within a session, so the pick is at least stable between reads.
+  COALESCE(
+    NULLIF(s.notes, ''),
+    (
+      SELECT r.note FROM session_item_results r
+      WHERE r.session_id = s.id AND r.note IS NOT NULL
+      ORDER BY r.occurrence, r.training_item_id
+      LIMIT 1
+    ),
+    ''
+  )::text AS notes
 FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 JOIN users u ON u.id = s.user_id
 WHERE e.coach_id = $1
-  AND s.notes <> ''
+  AND (
+    s.notes <> ''
+    OR EXISTS (
+      SELECT 1 FROM session_item_results r
+      WHERE r.session_id = s.id AND r.note IS NOT NULL
+    )
+  )
   AND s.coach_reply IS NULL
 ORDER BY s.date DESC
 LIMIT $2
@@ -290,6 +322,13 @@ type GetCoachPendingSessionFeedbackRow struct {
 
 // The sessions whose notes the coach has not answered. The athlete wrote
 // something and is waiting, which is the first thing the TODO owes them.
+//
+// "Wrote something" is either of the two places they can write it: the note on
+// the session, and a note against one of the items they were prescribed. The
+// second is the line per exercise the whole coaching loop runs on, and an
+// athlete who annotates their sets and leaves the session box empty is the
+// ordinary case rather than a corner one, so a feed reading only the session
+// note would quietly never mention them.
 func (q *Queries) GetCoachPendingSessionFeedback(ctx context.Context, arg GetCoachPendingSessionFeedbackParams) ([]GetCoachPendingSessionFeedbackRow, error) {
 	rows, err := q.db.Query(ctx, getCoachPendingSessionFeedback, arg.CoachID, arg.RowLimit)
 	if err != nil {

@@ -2,6 +2,13 @@ basePath: /
 definitions:
   handler.AssessmentDefinitionResponse:
     properties:
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at,
+          (bodyweight + result) / bodyweight, rather than as an absolute load. A
+          display concern: the raw kilograms and the dated bodyweight are what is
+          stored, so the formula can be corrected without rewriting history.
+        type: boolean
       created_at:
         type: string
       id:
@@ -12,6 +19,13 @@ definitions:
         type: string
       per_hand:
         type: boolean
+      program_id:
+        description: |-
+          The program that reads the training backing this assessment, set only in
+          the recordable listing and only on a row the caller reaches through a
+          prescription. A coach's training is not readable on its own, so without
+          this id the assessment names a training the caller cannot run.
+        type: string
       prompt:
         description: |-
           Prompt and TrainingID are set on a coach written assessment and absent on
@@ -36,6 +50,12 @@ definitions:
     type: object
   handler.AssessmentDefinitionSnapshot:
     properties:
+      bodyweight_relative:
+        description: |-
+          Whether the result is drawn as a ratio to the bodyweight it was pulled at.
+          Display only, and read by nothing that resolves a percentage: a
+          prescription is resolved against the raw kilograms whatever this says.
+        type: boolean
       id:
         type: string
       label:
@@ -66,6 +86,31 @@ definitions:
     properties:
       assessment_id:
         type: string
+      bodyweight_kg:
+        description: |-
+          The weigh-in a bodyweight relative score is divided by: the last one taken
+          at or before the session that measured the result. It travels on the result
+          rather than being left to a client to pick out of a bodyweight series, so
+          every screen reads one result against one weight, the session detail
+          included.
+
+          Absent when no weigh-in qualifies, which is a ratio a reader declines rather
+          than invents. That is also what POST /api/assessments answers with when the
+          athlete has never weighed in, which is a state the clients already draw:
+          recording a result does not require a weigh-in to exist first.
+        type: number
+      bodyweight_measured_at:
+        description: |-
+          When that weigh-in was taken, which is how near the denominator is to the
+          result it divides, and what decides whether the ratio means anything at all.
+          Absent exactly when the weight is.
+        type: string
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at
+          rather than as an absolute load. Display only: the value beside it is the
+          raw measurement, and the denominator is the two fields below.
+        type: boolean
       grip_position:
         type: integer
       id:
@@ -112,6 +157,31 @@ definitions:
     properties:
       assessment_id:
         type: string
+      bodyweight_kg:
+        description: |-
+          The weigh-in a bodyweight relative score is divided by: the last one taken
+          at or before the session that measured the result. It travels on the result
+          rather than being left to a client to pick out of a bodyweight series, so
+          every screen reads one result against one weight, the session detail
+          included.
+
+          Absent when no weigh-in qualifies, which is a ratio a reader declines rather
+          than invents. That is also what POST /api/assessments answers with when the
+          athlete has never weighed in, which is a state the clients already draw:
+          recording a result does not require a weigh-in to exist first.
+        type: number
+      bodyweight_measured_at:
+        description: |-
+          When that weigh-in was taken, which is how near the denominator is to the
+          result it divides, and what decides whether the ratio means anything at all.
+          Absent exactly when the weight is.
+        type: string
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at
+          rather than as an absolute load. Display only: the value beside it is the
+          raw measurement, and the denominator is the two fields below.
+        type: boolean
       grip_position:
         type: integer
       id:
@@ -141,6 +211,77 @@ definitions:
       user_id:
         type: string
     type: object
+  handler.AssessmentSnapshotItem:
+    properties:
+      assessment_id:
+        type: string
+      bodyweight_relative:
+        description: |-
+          Whether the result reads as a ratio to the bodyweight it was pulled at
+          rather than as an absolute load. Display only, see the column comment.
+        type: boolean
+      grip_position:
+        type: integer
+      label:
+        type: string
+      left_bodyweight_kg:
+        description: |-
+          The weight the left hand was pulled at, chosen and absent by the same rule
+          as the right, and its own weigh-in: the two hands can come from sessions
+          months apart, so neither answers for the other.
+        type: number
+      left_bodyweight_measured_at:
+        description: |-
+          When that weigh-in was taken, read as RightBodyweightMeasuredAt is and
+          absent exactly when the weight beside it is.
+        type: string
+      left_measured_at:
+        type: string
+      left_value:
+        type: number
+      per_hand:
+        type: boolean
+      right_bodyweight_kg:
+        description: |-
+          The weight in effect when this hand was measured, which is the denominator
+          its ratio has to be read against. Not the snapshot's bodyweight_kg: a value
+          carried forward from an earlier session was pulled at the weight of that
+          day, and dividing it by a later one gives a number the athlete never
+          achieved. Absent when no weigh-in precedes the measurement.
+        type: number
+      right_bodyweight_measured_at:
+        description: |-
+          When that weigh-in was taken. A denominator is only worth dividing by while
+          it is near the result it divides, and a weight on its own cannot say how
+          near it was: the last weigh-in at or before a result can be the same
+          morning or months earlier. Absent exactly when the weight is.
+        type: string
+      right_measured_at:
+        type: string
+      right_value:
+        type: number
+      training_id:
+        description: The training the assessment is run from, absent on the ones Crimpy
+          ships.
+        type: string
+      unit:
+        enum:
+        - kilograms
+        - seconds
+        - repetitions
+        type: string
+    type: object
+  handler.AssessmentSnapshotResponse:
+    properties:
+      bodyweight_kg:
+        type: number
+      date:
+        type: string
+      results:
+        items:
+          $ref: '#/definitions/handler.AssessmentSnapshotItem'
+        type: array
+    type: object
   handler.AvailabilityReminderRequest:
     properties:
       day_of_week:
@@ -162,6 +303,19 @@ definitions:
         type: integer
       minute:
         type: integer
+    type: object
+  handler.BodyweightResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      measured_at:
+        type: string
+      user_id:
+        type: string
+      weight_kg:
+        type: number
     type: object
   handler.BuiltinTrainingWeightResponse:
     properties:
@@ -250,6 +404,11 @@ definitions:
     type: object
   handler.CreateAssessmentDefinitionRequest:
     properties:
+      bodyweight_relative:
+        description: |-
+          Display the result as a ratio to the bodyweight it was pulled at, which
+          only a result in kilograms can be.
+        type: boolean
       label:
         type: string
       per_hand:
@@ -277,6 +436,17 @@ definitions:
         type: number
       session_id:
         type: string
+    type: object
+  handler.CreateBodyweightRequest:
+    properties:
+      measured_at:
+        description: |-
+          When the athlete weighed themselves, RFC3339. Absent means now, which is
+          what a measurement taken in the app while online is. A device that was
+          offline sends the moment it actually happened.
+        type: string
+      weight_kg:
+        type: number
     type: object
   handler.CreateBuiltinTrainingWeightRequest:
     properties:
@@ -332,6 +502,15 @@ definitions:
         items:
           $ref: '#/definitions/handler.AssessmentRequest'
         type: array
+      bodyweight_kg:
+        description: |-
+          BodyweightKg is the weight the device resolved this run's percent_bw loads
+          against. Sent rather than looked up, because the device may hold a newer
+          measurement than the server has: a run does not need the network, so an
+          athlete can weigh themselves and train before either reaches us. Absent
+          falls back to the latest measurement on file, and absent from both is a
+          session whose percent_bw loads nothing can restate.
+        type: number
       date:
         type: string
       duration:
@@ -340,9 +519,10 @@ definitions:
         type: boolean
       item_results:
         description: |-
-          ItemResults are the counts the run resolved for items the prescription
-          left open: an AMRAP the athlete measured by doing it, and the rounds an
-          emom was carried through.
+          ItemResults is what the athlete reported about the items they were
+          prescribed: the count an AMRAP turned out to be, the rounds an emom was
+          carried through, and for any step at all the load, the duration and the
+          note that nothing else records.
         items:
           $ref: '#/definitions/handler.SessionItemResultRequest'
         type: array
@@ -352,12 +532,33 @@ definitions:
         type: string
       origin:
         type: string
+      prescription:
+        description: |-
+          Prescription is what the run was asked to do, sent by the client for a run
+          the server cannot describe: one played from a training Crimpy generates on
+          the device rather than from a stored one. The server freezes its own copy
+          whenever a training or a program slot names one, so sending this alongside
+          either is refused rather than ignored, and without one it is the only thing
+          the reps and the item reports have to name their steps against.
+        type: object
       program_session_id:
         type: string
       rep_datas:
         items:
           $ref: '#/definitions/handler.RepDataRequest'
         type: array
+      rpe:
+        description: |-
+          RPE is how much recovery the session cost, on the session RPE scale, as
+          the athlete reported it. Absent on a session they were not asked or
+          skipped the prompt on, which the update path lets them fill in later.
+        type: integer
+      rpe_failed:
+        description: |-
+          RPEFailed is the scale's ECHEC: a session the athlete could not carry
+          through. It replaces the number rather than grading it, so sending both is
+          refused.
+        type: boolean
       samples:
         allOf:
         - $ref: '#/definitions/handler.SessionSamplesRequest'
@@ -394,27 +595,49 @@ definitions:
       training_type:
         type: string
     type: object
-  handler.DayAvailabilityRequest:
+  handler.DayActivityRequest:
     properties:
-      day_of_week:
-        type: integer
       duration_minutes:
         type: integer
-      is_available:
-        type: boolean
-      note:
+      label:
         type: string
+      when:
+        type: string
+      where:
+        type: string
+    type: object
+  handler.DayActivityResponse:
+    properties:
+      duration_minutes:
+        type: integer
+      label:
+        type: string
+      when:
+        type: string
+      where:
+        type: string
+    type: object
+  handler.DayAvailabilityRequest:
+    properties:
+      activities:
+        description: Required on every day. Send an empty array for a day with nothing
+          planned.
+        items:
+          $ref: '#/definitions/handler.DayActivityRequest'
+        type: array
+      day_of_week:
+        type: integer
     type: object
   handler.DayAvailabilityResponse:
     properties:
+      activities:
+        description: Always present and never null. An empty list is a day with nothing
+          planned.
+        items:
+          $ref: '#/definitions/handler.DayActivityResponse'
+        type: array
       day_of_week:
         type: integer
-      duration_minutes:
-        type: integer
-      is_available:
-        type: boolean
-      note:
-        type: string
     type: object
   handler.EmptyProgramWeekResponse:
     properties:
@@ -547,6 +770,11 @@ definitions:
       user_lastname:
         type: string
       week_start:
+        type: string
+    type: object
+  handler.ForgotPasswordRequest:
+    properties:
+      email:
         type: string
     type: object
   handler.LoginRequest:
@@ -717,6 +945,13 @@ definitions:
       email:
         type: string
     type: object
+  handler.ResetPasswordRequest:
+    properties:
+      new_password:
+        type: string
+      token:
+        type: string
+    type: object
   handler.SessionCoachReplyRequest:
     properties:
       reply:
@@ -725,17 +960,21 @@ definitions:
   handler.SessionDetailResponse:
     properties:
       assessments:
+        description: Assessments is what the session measured, absent when that read
+          failed.
         items:
           $ref: '#/definitions/handler.AssessmentResponse'
         type: array
       item_results:
         description: |-
-          ItemResults are the counts the run recorded for the items the
-          prescription left open, empty for a session that had none.
+          ItemResults is what the athlete reported about the items they were
+          prescribed, empty for a session they reported nothing on and absent when
+          that read failed.
         items:
           $ref: '#/definitions/handler.SessionItemResultResponse'
         type: array
       rep_datas:
+        description: RepDatas is what the sensor measured, absent when that read failed.
         items:
           $ref: '#/definitions/handler.RepDataResponse'
         type: array
@@ -744,40 +983,55 @@ definitions:
     type: object
   handler.SessionItemResultRequest:
     properties:
-      field:
-        enum:
-        - reps
-        - cycles
+      cycles:
+        description: |-
+          Cycles is how many rounds of a block the pass was carried through before
+          the athlete dropped out, which an emom has no other record of.
+        type: integer
+      duration_seconds:
+        description: DurationSeconds is how long the pass actually held.
+        type: integer
+      load_kg:
+        description: LoadKg is the load the pass was actually worked at, in kilograms.
+        type: number
+      note:
+        description: Note is what the athlete wrote about the pass.
         type: string
       occurrence:
+        type: integer
+      reps:
+        description: |-
+          Reps is how many repetitions the pass did, which an AMRAP has no other
+          record of.
         type: integer
       training_item_id:
         type: string
-      value:
-        type: integer
     type: object
   handler.SessionItemResultResponse:
     properties:
-      field:
-        enum:
-        - reps
-        - cycles
-        type: string
+      cycles:
+        type: integer
+      duration_seconds:
+        type: integer
       id:
         type: string
+      load_kg:
+        type: number
+      note:
+        type: string
       occurrence:
+        type: integer
+      reps:
         type: integer
       session_id:
         type: string
       training_item_id:
         description: |-
           TrainingItemID keys into the session prescription items, the same way a
-          rep does, so the count can be shown against what was asked for.
+          rep does, so what was achieved can be shown against what was asked for.
         type: string
       updated_at:
         type: string
-      value:
-        type: integer
     type: object
   handler.SessionListItem:
     properties:
@@ -811,14 +1065,24 @@ definitions:
       prescription:
         description: |-
           Prescription is what the athlete was asked to do, frozen when the session
-          was created. Absent on a session run from nothing. The list endpoints
-          leave it out, since it is a whole training per row and only the detail
-          screen reads it.
+          was created: from the training or the program slot the session names, or
+          from the copy the client sent for a run of a training the server cannot
+          read. Absent only on a session that answers no prescription at all. The
+          list endpoints leave it out, since it is a whole training per row and only
+          the detail screen reads it.
         type: object
       program_session_id:
         type: string
       rep_count:
         type: integer
+      rpe:
+        description: |-
+          RPE is how much recovery the session cost on the session RPE scale, absent
+          while the athlete has not reported one. RPEFailed is the scale's ECHEC,
+          and never true beside a number.
+        type: integer
+      rpe_failed:
+        type: boolean
       samples:
         description: |-
           Samples is the force curve the sensor recorded, carried on an assessment
@@ -845,8 +1109,47 @@ definitions:
         type: string
       item_id:
         type: string
+      override_stale:
+        description: |-
+          OverrideStale marks an override the training item it targets no longer
+          takes, so the athlete is handed the item without it. Only the coach reads
+          compute it: the athlete reads leave such an override out entirely.
+        type: boolean
       overrides:
         type: object
+      stale_fields:
+        description: |-
+          StaleFields attributes the refusal to the fields it is about, one entry
+          per field per reason. The whole row is stored and the server refuses part
+          of it, so a reader given only the reason cannot tell an edit of the
+          refused field from an edit of another field of the same row: it reasons
+          about the row as a whole, and any edit anywhere makes it drop a marking
+          the refusal has not stopped applying to. Each field is spelled as
+          contract/override-keys.json spells the key that replaces it.
+
+          The list is in the order the validators ask, and the first entry is the
+          reason a save of this same override is refused with, since the write
+          paths answer with the first refusal alone.
+
+          A named field may be absent from the override row, because attribution
+          names what the check read and a check can read the item's side of a
+          disagreement: an override resizing the grid is refused for the item's own
+          arrays, which it never carried. A reader deciding whether a refusal still
+          stands must therefore skip the named fields the row does not carry rather
+          than count them as unchanged. That clause is the whole point and not a
+          special case: an absent field is absent again after every edit, so
+          counting it as unchanged would keep the marking up forever, including
+          through the edit that actually clears the refusal. What is left after
+          skipping is the fields the coach can act on, and the marking clears when
+          one of them moves. When the row carries none of the named fields, the
+          refusal is about the row as a whole, which is the same answer the empty
+          field below stands for.
+
+          A refusal nothing could attribute carries an empty field, which stands
+          for the override as a whole. Absent unless OverrideStale.
+        items:
+          $ref: '#/definitions/handler.StaleOverrideField'
+        type: array
     type: object
   handler.SessionResponse:
     properties:
@@ -880,12 +1183,22 @@ definitions:
       prescription:
         description: |-
           Prescription is what the athlete was asked to do, frozen when the session
-          was created. Absent on a session run from nothing. The list endpoints
-          leave it out, since it is a whole training per row and only the detail
-          screen reads it.
+          was created: from the training or the program slot the session names, or
+          from the copy the client sent for a run of a training the server cannot
+          read. Absent only on a session that answers no prescription at all. The
+          list endpoints leave it out, since it is a whole training per row and only
+          the detail screen reads it.
         type: object
       program_session_id:
         type: string
+      rpe:
+        description: |-
+          RPE is how much recovery the session cost on the session RPE scale, absent
+          while the athlete has not reported one. RPEFailed is the scale's ECHEC,
+          and never true beside a number.
+        type: integer
+      rpe_failed:
+        type: boolean
       samples:
         description: |-
           Samples is the force curve the sensor recorded, carried on an assessment
@@ -916,6 +1229,13 @@ definitions:
     properties:
       is_favorite:
         type: boolean
+    type: object
+  handler.StaleOverrideField:
+    properties:
+      field:
+        type: string
+      reason:
+        type: string
     type: object
   handler.TagResponse:
     properties:
@@ -959,6 +1279,8 @@ definitions:
         type: string
       free_text:
         type: string
+      goal:
+        type: string
       granularity:
         enum:
         - uniform
@@ -1000,6 +1322,8 @@ definitions:
         items:
           type: object
         type: array
+      protocol:
+        type: string
       reps:
         type: integer
       reps_is_max:
@@ -1027,11 +1351,24 @@ definitions:
         items:
           type: integer
         type: array
+      exercise_comment:
+        type: string
+      exercise_description:
+        description: |-
+          Joined from the exercise the item points at, not stored on the item.
+          ExerciseComment is the coach's execution notes on the movement, which is a
+          different field from the item's own Comment above: that one is what the
+          coach said about this step, this one is about the exercise everywhere.
+        type: string
       exercise_id:
         type: string
       exercise_name:
         type: string
+      exercise_video_link:
+        type: string
       free_text:
+        type: string
+      goal:
         type: string
       granularity:
         enum:
@@ -1073,6 +1410,8 @@ definitions:
         type: array
       position:
         type: integer
+      protocol:
+        type: string
       reps:
         type: integer
       reps_is_max:
@@ -1106,6 +1445,24 @@ definitions:
         type: string
       is_favorite:
         type: boolean
+      items:
+        description: |-
+          The item tree, present only for a caller that asked for it with
+          include=items and absent otherwise, so the cheap list keeps the exact
+          shape it has always answered with. A training that holds no items answers
+          with an empty array once they were asked for, which is what lets a reader
+          tell an empty training apart from a list it never asked to carry items.
+        items:
+          $ref: '#/definitions/handler.TrainingItemResponse'
+        type: array
+      referenced_assessments:
+        description: |-
+          The assessments the items reference, on the same terms as Items: a client
+          reading the library in one request needs them to name and unit check a
+          percentage, exactly as the detail endpoint hands them over.
+        items:
+          $ref: '#/definitions/handler.AssessmentDefinitionSnapshot'
+        type: array
       title:
         type: string
       training_type:
@@ -1114,6 +1471,13 @@ definitions:
         type: string
       user_id:
         type: string
+    type: object
+  handler.TrainingLoadResponse:
+    properties:
+      weeks:
+        items:
+          $ref: '#/definitions/handler.WeeklyTrainingLoadResponse'
+        type: array
     type: object
   handler.TrainingProgramUsage:
     properties:
@@ -1167,6 +1531,16 @@ definitions:
     type: object
   handler.UpdateAssessmentDefinitionRequest:
     properties:
+      bodyweight_relative:
+        description: |-
+          Free to toggle at any time, unlike the unit and the hands: see the freeze
+          rule in UpdateAssessmentDefinition.
+
+          A pointer so that omitting it keeps what is stored. Every other field here
+          is either refused when empty or frozen by results, so this is the one an
+          older client could silently clear by sending the payload it has always
+          sent, taking the ratio off a whole history with a 200 and no warning.
+        type: boolean
       label:
         type: string
       per_hand:
@@ -1225,14 +1599,35 @@ definitions:
       date:
         description: |-
           Only logged sessions send a date. Omitted, the stored one is kept, which is
-          what played sessions rely on since their date is fixed by the run.
+          what played sessions rely on since their date is fixed by the run. A
+          pointer like the fields above, so this struct spells "not sent" one way
+          rather than two.
         type: string
       duration:
+        description: |-
+          Sent, the duration replaces the stored one, in seconds, and may not be
+          negative. Only a logged session sends it: a played one is timed by its run.
         type: integer
       name:
+        description: |-
+          Sent, the name replaces the stored one, and it may not be empty, for the
+          reason the create path refuses an empty one.
         type: string
       notes:
         type: string
+      rpe:
+        description: |-
+          The athlete's RPE answer, which this path exists to let them give after
+          the fact: forgetting it at the end of a run is the normal case, and a
+          played session keeps it editable even though nothing else on it is.
+
+          The pair is one answer, so it is one field as far as keeping goes: sending
+          neither leaves the stored answer alone, and sending either replaces the
+          whole of it. That is how a rated session is taken back to unrated, with
+          "rpe_failed": false and no "rpe" beside it.
+        type: integer
+      rpe_failed:
+        type: boolean
     type: object
   handler.UpdateTagRequest:
     properties:
@@ -1262,6 +1657,8 @@ definitions:
     type: object
   handler.UpsertWeekRequest:
     properties:
+      name:
+        type: string
       notes:
         type: string
       sessions:
@@ -1320,6 +1717,8 @@ definitions:
   handler.WeekAvailabilityResponse:
     properties:
       days:
+        description: All seven days, Monday first, whether or not anything is planned
+          on them.
         items:
           $ref: '#/definitions/handler.DayAvailabilityResponse'
         type: array
@@ -1336,6 +1735,8 @@ definitions:
         type: string
       id:
         type: string
+      name:
+        type: string
       notes:
         type: string
       program_id:
@@ -1350,6 +1751,8 @@ definitions:
       created_at:
         type: string
       id:
+        type: string
+      name:
         type: string
       notes:
         type: string
@@ -1408,6 +1811,68 @@ definitions:
       training_title:
         type: string
       training_type:
+        type: string
+    type: object
+  handler.WeeklyTrainingLoadResponse:
+    properties:
+      acute_chronic_ratio:
+        description: |-
+          AcuteChronicRatio is acute over chronic, null when there is no chronic
+          baseline to divide by yet.
+        type: number
+      acute_load:
+        type: number
+      chronic_load:
+        description: |-
+          ChronicLoad averages the acute load of this week and the weeks before it,
+          ChronicWeeks of them in all, never more than three and never reaching
+          before the athlete's first recorded session.
+        type: number
+      chronic_weeks:
+        description: |-
+          ChronicWeeks is how many weeks the mean beside it actually rested on, so
+          it is not always a count of how much history exists. A week inside the
+          window whose own load is unknown is skipped rather than counted as zero,
+          the current week included, so a 2 can mean "only two weeks of history" or
+          "three weeks, one of them unrated". It is 0 exactly when ChronicLoad is
+          null, which is a week with no baseline at all rather than a baseline of
+          nothing.
+        type: integer
+      climbing_minutes:
+        type: integer
+      failed_sessions:
+        description: |-
+          FailedSessions counts the sessions marked ECHEC. They are deliberately
+          outside mean_rpe: see the note on the endpoint.
+        type: integer
+      load_change_percent:
+        description: |-
+          LoadChangePercent is this week's acute load as a percentage of last
+          week's, null when last week's is unknown or zero.
+        type: number
+      mean_rpe:
+        type: number
+      program_name:
+        type: string
+      rated_sessions:
+        description: |-
+          RatedSessions is how many of the week's sessions carry an RPE, so the
+          coach can see how much of the week the mean actually speaks for.
+        type: integer
+      session_count:
+        type: integer
+      strength_minutes:
+        type: integer
+      total_minutes:
+        type: integer
+      week_number:
+        description: |-
+          WeekNumber and ProgramName name the program week this calendar week is,
+          when a program of this coach covers it. Both null otherwise.
+        type: integer
+      week_start:
+        description: WeekStart is the Monday the week opens on, read on the caller's
+          clock.
         type: string
     type: object
 host: api.crimpy.app
@@ -1638,6 +2103,16 @@ paths:
   /api/assessment-definitions:
     get:
       description: The assessments Crimpy ships plus the caller's own, builtins first.
+        With recordable=true the set widens to the ones a result may be recorded against,
+        which adds a coach's assessment whose training a program prescribed to the
+        caller; each of those carries the program_id that reads the training, since
+        a coach's training is only readable under a program.
+      parameters:
+      - description: Serve the assessments a result may be recorded against rather
+          than the catalog the caller may reference
+        in: query
+        name: recordable
+        type: boolean
       produces:
       - application/json
       responses:
@@ -1647,6 +2122,12 @@ paths:
             items:
               $ref: '#/definitions/handler.AssessmentDefinitionResponse'
             type: array
+        "400":
+          description: Invalid recordable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
@@ -1799,7 +2280,9 @@ paths:
   /api/assessments:
     get:
       description: Retrieve all assessment results for the authenticated user, ordered
-        by session date descending
+        by session date descending. Each row carries the weigh-in a bodyweight relative
+        score is divided by, the last one taken at or before the session, with the
+        date it was taken so a reader can tell a fresh denominator from a stale one.
       produces:
       - application/json
       responses:
@@ -1830,7 +2313,9 @@ paths:
       consumes:
       - application/json
       description: Create a new assessment result for the authenticated user, linked
-        to an existing session they own
+        to an existing session they own. The response carries the weigh-in the result
+        is divided by, the last one taken at or before the session, absent when the
+        athlete has none on file, which is the state right after a first recording.
       parameters:
       - description: Assessment details
         in: body
@@ -1919,6 +2404,50 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete an assessment
+      tags:
+      - Assessment
+  /api/assessments/at:
+    get:
+      description: The last value measured for each assessment, grip and hand at or
+        before the given date. Each hand carries the date it was measured, the bodyweight
+        in effect then, which is the denominator a bodyweight relative score is read
+        against, and the date that weigh-in was taken, which says how stale the denominator
+        is; the snapshot's own bodyweight_kg is what the athlete weighed on the date
+        asked for. Reading two dates gives the two sides of a comparison.
+      parameters:
+      - description: The day to read the results as of, YYYY-MM-DD or RFC3339
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The results as of that date
+          schema:
+            $ref: '#/definitions/handler.AssessmentSnapshotResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My assessment results as of a date
       tags:
       - Assessment
   /api/auth/change-password:
@@ -2240,7 +2769,9 @@ paths:
   /api/coach/clients/{user_id}/assessments:
     get:
       description: Retrieve all assessments for a user enrolled with the authenticated
-        coach.
+        coach. Each row carries the weigh-in a bodyweight relative score is divided
+        by, the last one taken at or before the session, with the date it was taken
+        so a reader can tell a fresh denominator from a stale one.
       parameters:
       - description: Client user ID
         in: path
@@ -2267,27 +2798,96 @@ paths:
       summary: Get a client's assessments
       tags:
       - Coaching
-  /api/coach/clients/{user_id}/availability:
+  /api/coach/clients/{user_id}/assessments/at:
     get:
-      description: Retrieve every calendar week a user enrolled with the authenticated
-        coach has declared.
+      description: The last value measured for each assessment, grip and hand at or
+        before the given date for an athlete enrolled with the authenticated coach.
+        Each hand carries the date it was measured, the bodyweight in effect then,
+        which is the denominator a bodyweight relative score is read against, and
+        the date that weigh-in was taken, which says how stale the denominator is.
+        Two reads give the two sides of a comparison between blocks.
       parameters:
       - description: Client user ID
         in: path
         name: user_id
         required: true
         type: string
+      - description: The day to read the results as of, YYYY-MM-DD or RFC3339
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The results as of that date
+          schema:
+            $ref: '#/definitions/handler.AssessmentSnapshotResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a coach or user not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: A client's assessment results as of a date
+      tags:
+      - Coaching
+  /api/coach/clients/{user_id}/availability:
+    get:
+      description: 'Retrieve the calendar weeks a user enrolled with the authenticated
+        coach has declared, each carrying the seven days and the activities planned
+        on them. from and to bound the answer to a range of calendar weeks, both Mondays
+        and both inclusive. Either may be left out for an unbounded end, and leaving
+        both out returns every week ever declared. A program page should ask for the
+        weeks the program covers rather than the athlete''s whole history. At most
+        520 weeks come back whatever the window; when older weeks were dropped the
+        response carries X-Availability-Weeks-Truncated: true, and the weeks kept
+        are the most recent ones.'
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: First calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: Last calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: to
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: Declared weeks
+          headers:
+            X-Availability-Weeks-Truncated:
+              description: true when older weeks were dropped at the 520 week ceiling,
+                absent otherwise
+              type: string
           schema:
             items:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'
             type: array
         "400":
-          description: Invalid client ID
+          description: Invalid client ID or window
           schema:
             additionalProperties:
               type: string
@@ -2306,9 +2906,56 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Get a client's declared availability
+      summary: Get a client's declared weeks
       tags:
       - Availability
+  /api/coach/clients/{user_id}/bodyweights:
+    get:
+      description: The measurements of an athlete enrolled with the authenticated
+        coach, most recently measured first, so a strength number can be read as a
+        ratio to the bodyweight of the day rather than as an absolute.
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: How many measurements to return, 1 to 365, default 60
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The series, newest first
+          schema:
+            items:
+              $ref: '#/definitions/handler.BodyweightResponse'
+            type: array
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a client's bodyweight series
+      tags:
+      - Bodyweight
   /api/coach/clients/{user_id}/programs:
     get:
       description: Get all training programs created by this coach for a specific
@@ -2531,6 +3178,8 @@ paths:
   /api/coach/clients/{user_id}/programs/{program_id}/weeks:
     get:
       description: Get all explicitly defined weeks for a program (summary, no sessions).
+        Each carries the week's name, the label of the training phase it belongs to,
+        absent when the week has none.
       parameters:
       - description: Client user ID
         in: path
@@ -2622,7 +3271,23 @@ paths:
       tags:
       - Programs
     get:
-      description: Get a specific week with its sessions and per-item overrides.
+      description: 'Get a specific week with its sessions and per-item overrides.
+        The week carries its name, the label of the training phase it belongs to,
+        absent when the week has none. Each override carries override_stale, computed
+        against the training as it now stands: it marks an override the training item
+        no longer takes, which the athlete is therefore handed the item without, and
+        stale_fields attributes that refusal to the fields it is about, so a reader
+        can tell an edit of the refused field from an edit of another field of the
+        same override. stale_fields is in the order the validators ask, and its first
+        reason is the one a save of the same override is refused with. A named field
+        may be absent from the override row, since a check can read the item''s side
+        of a disagreement, so a reader deciding whether a refusal still stands skips
+        the named fields the row does not carry rather than counting them as unchanged:
+        an absent field is absent again after every edit, so counting it would keep
+        the marking up through the very edit that clears the refusal. When the row
+        carries none of the named fields, the refusal is about the row as a whole,
+        which is what an empty field stands for too. The stored row is never touched
+        and never hidden, so the week can be sent back unchanged.'
       parameters:
       - description: Client user ID
         in: path
@@ -2666,14 +3331,21 @@ paths:
     put:
       consumes:
       - application/json
-      description: 'Upsert a week''s sessions and overrides. A session sent back with
-        its id is updated in place and keeps that id, one sent without an id is created,
-        and any session of the week missing from the payload is deleted. A session
-        the athlete has already played (is_locked) is frozen: its training and overrides
-        must be sent back unchanged and it may not be dropped from the week. The order
-        of the sessions array is the order of the week: it sets the position stored
-        on each session, and every read hands them back sorted by it. Position is
-        response-only, sending one is ignored.'
+      description: 'Upsert a week''s sessions and overrides. The week''s name labels
+        its training phase ("capacity", "deload") and must be at most 60 characters,
+        refused rather than cut; a blank one is stored as no name. It is distinct
+        from notes, which is a message about this particular week. A session sent
+        back with its id is updated in place and keeps that id, one sent without an
+        id is created, and any session of the week missing from the payload is deleted.
+        A session the athlete has already played (is_locked) is frozen: its training
+        and overrides must be sent back unchanged and it may not be dropped from the
+        week. The order of the sessions array is the order of the week: it sets the
+        position stored on each session, and every read hands them back sorted by
+        it. Position is response-only, sending one is ignored. A save carrying an
+        override the training item no longer takes is refused, except on a frozen
+        session, whose overrides can only be sent back unchanged and which the athlete
+        no longer receives that override from anyway. This echo answers override_stale
+        against the training as it now stands, as GET does.'
       parameters:
       - description: Client user ID
         in: path
@@ -2758,9 +3430,18 @@ paths:
       - Coaching
   /api/coach/clients/{user_id}/sessions/{session_id}:
     get:
-      description: Retrieve a specific session with its rep data, assessments and
-        the counts the run recorded for the items the prescription left open, for
-        a user enrolled with the authenticated coach.
+      description: 'Retrieve a specific session with its rep data, assessments and
+        what the athlete reported about the items they were prescribed: the count
+        an AMRAP turned out to be, the rounds an emom was carried through, and for
+        any step at all the load, the duration and the note nothing else records,
+        for a user enrolled with the authenticated coach. Each assessment carries
+        the weigh-in a bodyweight relative score is divided by, the last one taken
+        at or before the session, with the date it was taken so a reader can tell
+        a fresh denominator from a stale one. Both are absent when no weigh-in qualifies.
+        Each of rep_datas, assessments and item_results is drawn by a read of its
+        own, and a read that fails leaves its collection out of the answer rather
+        than failing the whole detail: an absent collection could not be read, an
+        empty array is a session that holds none of it.'
       parameters:
       - description: Client user ID
         in: path
@@ -2776,7 +3457,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session details with rep_datas, assessments and item_results
+          description: Session details with rep_datas, assessments and item_results.
+            A collection whose read failed is absent from the object rather than sent
+            as an empty array, so [] means the session holds none of that collection
+            and absence means it could not be read
           schema:
             $ref: '#/definitions/handler.SessionDetailResponse'
         "400":
@@ -2860,6 +3544,83 @@ paths:
       security:
       - BearerAuth: []
       summary: Answer a client's session notes
+      tags:
+      - Coaching
+  /api/coach/clients/{user_id}/training-load:
+    get:
+      description: 'The weekly training load series for a coachee enrolled with the
+        authenticated coach, oldest week first and ending with the week being trained
+        now. Weeks are cut on Monday in the caller''s own time, and a week holding
+        no session is returned with zeros rather than skipped. Durations are reported
+        in minutes, summed from the seconds stored on each session. mean_rpe averages
+        only the sessions the athlete rated: an unrated session is left out rather
+        than counted as zero, and a session marked ECHEC is left out too and reported
+        separately as failed_sessions, because ECHEC is an outcome rather than a point
+        on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for
+        a week with no session at all and null for a week that holds sessions but
+        no rating or no recorded duration, since the effort is then simply not known.
+        chronic_load averages the acute load of this week and up to the two before
+        it, never reaching before the athlete''s first recorded session, skipping
+        any week whose own load is unknown, and chronic_weeks says how many weeks
+        it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and
+        load_change_percent are null wherever there is no baseline to divide by. The
+        minutes of each bucket are rounded from their own second totals, so the climbing
+        and strength figures can differ from the total by a minute on sub minute sessions.
+        The caller''s clock comes from timezone, an IANA zone name, which is what
+        makes a week boundary on the far side of a daylight saving change land where
+        the athlete lived it. tz_offset_minutes is the fallback for a client that
+        does not send a zone yet, and it cuts every week in the window with the one
+        offset, so such a window is an hour out on the far side of a change. The interpretation
+        bands the coach reads these against are guidance held by the portal, not a
+        judgement this endpoint makes.'
+      parameters:
+      - description: Client user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: How many weeks to return, 1 to 52, defaults to 12
+        in: query
+        name: weeks
+        type: integer
+      - description: Caller's IANA zone name, for example Europe/Paris. Preferred
+          over tz_offset_minutes
+        in: query
+        name: timezone
+        type: string
+      - description: Caller's offset east of UTC in minutes, defaults to 0. Used when
+          timezone is absent
+        in: query
+        name: tz_offset_minutes
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The weekly series
+          schema:
+            $ref: '#/definitions/handler.TrainingLoadResponse'
+        "400":
+          description: Invalid parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a validated coach, or client not enrolled
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a client's weekly training load
       tags:
       - Coaching
   /api/coach/enrollment-token:
@@ -2997,7 +3758,8 @@ paths:
       consumes:
       - application/json
       description: Create a new exercise in the coach's exercise library. Requires
-        a validated coach account.
+        a validated coach account. video_link must be an http or https address; one
+        written without a scheme is stored as https.
       parameters:
       - description: Exercise data
         in: body
@@ -3013,7 +3775,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ExerciseResponse'
         "400":
-          description: Invalid request body
+          description: Invalid request body or video link
           schema:
             additionalProperties:
               type: string
@@ -3212,7 +3974,8 @@ paths:
       consumes:
       - application/json
       description: Update an exercise in the coach's library. Only the owning coach
-        can update.
+        can update. video_link must be an http or https address; one written without
+        a scheme is stored as https.
       parameters:
       - description: Exercise ID
         in: path
@@ -3233,7 +3996,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ExerciseResponse'
         "400":
-          description: Invalid request
+          description: Invalid request or video link
           schema:
             additionalProperties:
               type: string
@@ -3532,15 +4295,26 @@ paths:
   /api/coach/todo:
     get:
       description: 'What the authenticated coach still owes their coachees: the sessions
-        whose notes have no answer yet, capped at 50 with pending_feedback_total carrying
-        the real count, and the programs whose current or next calendar week holds
-        no session, plus how many sessions their athletes did this week. Each empty
-        week carries a scope, current for the week being trained now and next for
-        the one starting on the coming Monday. The current ones are always listed;
-        the next ones only once the weekly moment the coach configured has passed
-        in their own week, which is why the caller sends its UTC offset.'
+        the athlete wrote something about and has had no answer to, whether they wrote
+        it on the session or against one of the items they were prescribed, capped
+        at 50 with pending_feedback_total carrying the real count, and the programs
+        whose current or next calendar week holds no session, plus how many sessions
+        their athletes did this week. Each empty week carries a scope, current for
+        the week being trained now and next for the one starting on the coming Monday.
+        The current ones are always listed; the next ones only once the weekly moment
+        the coach configured has passed in their own week, which is why the caller
+        sends its own clock. Send timezone, an IANA zone name, and the week is cut
+        on the caller''s real calendar even where a daylight saving change falls inside
+        it. tz_offset_minutes is the fallback for a client that does not send a zone
+        yet.'
       parameters:
-      - description: Caller's offset east of UTC in minutes, defaults to 0
+      - description: Caller's IANA zone name, for example Europe/Paris. Preferred
+          over tz_offset_minutes
+        in: query
+        name: timezone
+        type: string
+      - description: Caller's offset east of UTC in minutes, defaults to 0. Used when
+          timezone is absent
         in: query
         name: tz_offset_minutes
         type: integer
@@ -3552,7 +4326,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.CoachTodoResponse'
         "400":
-          description: Invalid timezone offset
+          description: Invalid timezone
           schema:
             additionalProperties:
               type: string
@@ -4063,17 +4837,31 @@ paths:
         paths refuse. When a program_session_id is sent, that row decides the training,
         and a training_id disagreeing with it is refused. A logged session may carry
         the link as well, so a coach slot with nothing to step through can be completed
-        by hand; only a played one locks the coach''s week. A rep may name the prescription
-        item it was played from through training_item_id, which must be one of the
-        items the session was prescribed. A rep whose step prescribed a load the run
-        failed to measure sends target_unmeasured, so a client can tell it from a
-        rep no target was ever expected for. That flag is what the clients grade on:
-        such a rep is recorded with no target, and one sent with both is stored as
-        it arrives and still read as unmeasured. A run may also send item_results,
-        the counts it resolved for items the prescription left open: the reps an AMRAP
-        turned out to be, and the rounds an emom was carried through. Each names one
-        of the prescribed items, an occurrence telling repeated passes apart, and
-        the field it answers.'
+        by hand; only a played one locks the coach''s week. A run of a training the
+        server cannot read, one Crimpy generates on the device, sends its own prescription
+        instead, and the reps and the item reports name its items the same way; sending
+        one alongside a training_id or a program_session_id is refused, since the
+        server freezes its own copy from those. Such a prescription is held to 256
+        KB, must prescribe at least one item, and must name every item it holds with
+        an id of at most 200 characters that no other item of it repeats. A rep may
+        name the prescription item it was played from through training_item_id, which
+        must be one of the items the session was prescribed. A rep whose step prescribed
+        a load the run failed to measure sends target_unmeasured, so a client can
+        tell it from a rep no target was ever expected for. That flag is what the
+        clients grade on: such a rep is recorded with no target, and one sent with
+        both is stored as it arrives and still read as unmeasured. A run may also
+        send item_results, what the athlete reported about the items they were prescribed:
+        the reps an AMRAP turned out to be, the rounds an emom was carried through,
+        and for any step at all the load, the duration and the note nothing else records.
+        Each names one of the prescribed items and an occurrence telling repeated
+        passes apart, then whichever of reps, cycles, load_kg, duration_seconds and
+        note it has something to say about; a field left out is stored as absent rather
+        than as a zero. One result answers one pass, so two naming the same pass are
+        refused, and one reporting nothing at all is dropped. A session may also carry
+        the athlete''s session RPE, how much recovery it cost: rpe is a value of the
+        scale, 5 to 10, and rpe_failed is that scale''s ECHEC, a session that could
+        not be carried through. They are exclusive, and both are optional, since the
+        value stays editable through the update endpoint long after the session.'
       parameters:
       - description: Session details
         in: body
@@ -4170,9 +4958,18 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve a specific session by ID with all related rep data, assessments
-        and the counts the run recorded for the items the prescription left open.
-        User must own the session unless they are an admin.
+      description: 'Retrieve a specific session by ID with its rep data, assessments
+        and what the athlete reported about the items they were prescribed: the count
+        an AMRAP turned out to be, the rounds an emom was carried through, and for
+        any step at all the load, the duration and the note nothing else records.
+        Each assessment carries the weigh-in a bodyweight relative score is divided
+        by, the last one taken at or before the session, with the date it was taken
+        so a reader can tell a fresh denominator from a stale one. Both are absent
+        when no weigh-in qualifies. Each of rep_datas, assessments and item_results
+        is drawn by a read of its own, and a read that fails leaves its collection
+        out of the answer rather than failing the whole detail: an absent collection
+        could not be read, an empty array is a session that holds none of it. User
+        must own the session unless they are an admin.'
       parameters:
       - description: Session ID (UUID)
         in: path
@@ -4183,7 +4980,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Session details with rep_datas, assessments and item_results
+          description: Session details with rep_datas, assessments and item_results.
+            A collection whose read failed is absent from the object rather than sent
+            as an empty array, so [] means the session holds none of that collection
+            and absence means it could not be read
           schema:
             $ref: '#/definitions/handler.SessionDetailResponse'
         "400":
@@ -4212,8 +5012,15 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update a session's name, notes, and duration. User must own the
-        session unless they are an admin.
+      description: 'Update a session''s name, notes, duration, date and RPE. Every
+        field is optional and every field left out keeps the value already stored,
+        so a request may carry only what it means to change. A name sent as an empty
+        string and a negative duration are refused rather than stored, the way the
+        create path refuses them; not sending them at all is a different statement
+        and keeps what is stored. The RPE pair counts as one field: sending neither
+        rpe nor rpe_failed keeps the stored answer, and sending either replaces the
+        whole answer, so rpe_failed false with no rpe beside it is how a rated session
+        is taken back to unrated. User must own the session unless they are an admin.'
       parameters:
       - description: Session ID (UUID)
         in: path
@@ -4311,23 +5118,50 @@ paths:
       - Session
   /api/trainings:
     get:
-      description: Get all training templates for the authenticated user (without
-        items).
+      description: Get all training templates for the authenticated user. The rows
+        carry no items unless include=items asks for them, in which case each one
+        also carries its item tree and the assessment definitions those items reference,
+        which is what lets a client read a whole library in one request. An include=items
+        listing answers at most 200 rows, ordered by title, and sets X-Trainings-Truncated
+        to true when it cut the library short. The cheap list is not capped.
       parameters:
       - description: Only the custom assessments when true, only the trainings that
           are not one when false, the whole library when omitted
         in: query
         name: is_assessment
         type: boolean
+      - description: Comma separated extras to put on each row. Only items is understood,
+          and anything else is refused. The row's own assessment snapshot still answers
+          unit_locked as false whatever the truth is, since computing it reads every
+          training item through; GET /api/assessment-definitions carries the real
+          flag
+        enum:
+        - items
+        in: query
+        name: include
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of trainings
+          description: 'List of trainings. Carries X-Trainings-Truncated: true when
+            include=items cut the library at 200 rows'
+          headers:
+            X-Trainings-Truncated:
+              description: Set to true only when an include=items listing was cut
+                at 200 rows. Absent otherwise, which is the caller's proof it read
+                the whole library
+              type: string
           schema:
             items:
               $ref: '#/definitions/handler.TrainingListItem'
             type: array
+        "400":
+          description: Invalid query parameter
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: List user's training templates
@@ -4336,7 +5170,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new training template with a structured item tree.
+      description: Create a new training template with a structured item tree. Each
+        item's comment must be at most 2000 characters, its goal at most 200 and its
+        protocol at most 2000.
       parameters:
       - description: Training data
         in: body
@@ -4461,7 +5297,8 @@ paths:
         update. An item sent back with the id it was read under keeps that id, so
         the rep data, results and program overrides pointing at it survive the edit;
         an item sent without one is added, and a stored item the payload no longer
-        carries is deleted.
+        carries is deleted. Each item's comment must be at most 2000 characters, its
+        goal at most 200 and its protocol at most 2000.
       parameters:
       - description: Training ID
         in: path
@@ -4495,6 +5332,12 @@ paths:
             type: object
         "404":
           description: Training not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
           schema:
             additionalProperties:
               type: string
@@ -4541,17 +5384,45 @@ paths:
       - Authentication
   /api/user/availability:
     get:
-      description: Retrieve every calendar week the authenticated user has declared
-        their availability for.
+      description: 'Retrieve the calendar weeks the authenticated user has declared,
+        each carrying the seven days and the activities planned on them. from and
+        to bound the answer to a range of calendar weeks, both Mondays and both inclusive.
+        Either may be left out for an unbounded end, and leaving both out returns
+        every week ever declared. A week carrying up to 140 activities makes the unbounded
+        answer large, so a screen showing one week at a time should ask for that week.
+        At most 520 weeks come back whatever the window; when older weeks were dropped
+        the response carries X-Availability-Weeks-Truncated: true, and the weeks kept
+        are the most recent ones. The set of declared weeks is not a window question:
+        read /api/user/availability/declared-weeks for that.'
+      parameters:
+      - description: First calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: Last calendar week to return, Monday, YYYY-MM-DD
+        in: query
+        name: to
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: Declared weeks
+          headers:
+            X-Availability-Weeks-Truncated:
+              description: true when older weeks were dropped at the 520 week ceiling,
+                absent otherwise
+              type: string
           schema:
             items:
               $ref: '#/definitions/handler.WeekAvailabilityResponse'
             type: array
+        "400":
+          description: Invalid window
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Invalid user ID
           schema:
@@ -4566,7 +5437,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Get my declared availability
+      summary: Get my declared weeks
       tags:
       - Availability
   /api/user/availability-reminder:
@@ -4608,9 +5479,11 @@ paths:
     put:
       consumes:
       - application/json
-      description: Replace the authenticated user's availability for one calendar
-        week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday.
-        A day declared unavailable keeps its note and drops its duration.
+      description: Replace the authenticated user's schedule for one calendar week.
+        The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday.
+        Every day must carry an activities array, empty when nothing is planned on
+        it; leaving the key out is refused. A day's activities come back in the order
+        they were sent. A week where every day is empty is still a declared week.
       parameters:
       - description: Monday of the week, YYYY-MM-DD
         in: path
@@ -4636,6 +5509,12 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "401":
+          description: Invalid user ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Server error
           schema:
@@ -4644,9 +5523,165 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Declare my availability for a calendar week
+      summary: Declare my schedule for a calendar week
       tags:
       - Availability
+  /api/user/availability/declared-weeks:
+    get:
+      description: 'Every calendar week the authenticated user has declared, as Mondays
+        in YYYY-MM-DD, oldest first, with no activities and no window. This is what
+        the athlete app plans its declaration reminders from: a nudge is dropped for
+        a week that was already answered, so the planner needs the whole set and not
+        the window a screen happens to be showing. Carrying no activities keeps it
+        small enough to answer in full.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Declared week starts
+          schema:
+            items:
+              type: string
+            type: array
+        "401":
+          description: Invalid user ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List the Mondays I have declared
+      tags:
+      - Availability
+  /api/user/bodyweights:
+    get:
+      description: The authenticated user's measurements, most recently measured first.
+      parameters:
+      - description: How many measurements to return, 1 to 365, default 60
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The series, newest first
+          schema:
+            items:
+              $ref: '#/definitions/handler.BodyweightResponse'
+            type: array
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my bodyweight series
+      tags:
+      - Bodyweight
+    post:
+      consumes:
+      - application/json
+      description: Append a dated measurement to the authenticated user's bodyweight
+        series. measured_at is when the athlete weighed themselves and defaults to
+        now, so a measurement taken while the device was offline keeps the day it
+        belongs to when it is sent. The series is what makes a strength number readable
+        as a ratio, and what a percent_bw prescription is frozen against.
+      parameters:
+      - description: The measurement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateBodyweightRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The recorded measurement
+          schema:
+            $ref: '#/definitions/handler.BodyweightResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Record my bodyweight
+      tags:
+      - Bodyweight
+  /api/user/bodyweights/{id}:
+    delete:
+      description: 'Delete a measurement from the authenticated user''s own series,
+        for a number typed wrong. A measurement a past session was frozen against
+        is unaffected: that value lives in the session''s own snapshot.'
+      parameters:
+      - description: Measurement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Access denied
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Measurement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove one of my measurements
+      tags:
+      - Bodyweight
   /api/user/enrollment:
     delete:
       description: Remove the authenticated user from their current coach enrollment.
@@ -4756,7 +5791,9 @@ paths:
     get:
       description: Get the full training tree for a training scheduled in a program
         assigned to the authenticated user. Authorized through program ownership rather
-        than training ownership.
+        than training ownership. referenced_assessments names the assessments the
+        training items read against plus the ones only a week override of this program
+        reads against, so a percentage prescribed on a single week can be labelled.
       parameters:
       - description: Program ID
         in: path
@@ -4801,7 +5838,8 @@ paths:
   /api/user/programs/{program_id}/weeks:
     get:
       description: Get all defined weeks for a program assigned to the authenticated
-        user.
+        user. Each carries the week's name, the label of the training phase it belongs
+        to, absent when the week has none.
       parameters:
       - description: Program ID
         in: path
@@ -4837,9 +5875,11 @@ paths:
   /api/user/programs/{program_id}/weeks/{week_number}:
     get:
       description: Get a specific week with sessions and overrides for a program assigned
-        to the authenticated user. An override the training item no longer takes,
-        because the training was edited after the week was prescribed, is left out,
-        so what the client merges is what the session run from it will freeze.
+        to the authenticated user. The week carries its name, the label of the training
+        phase it belongs to, absent when the week has none. An override the training
+        item no longer takes, because the training was edited after the week was prescribed,
+        is left out, so what the client merges is what the session run from it will
+        freeze.
       parameters:
       - description: Program ID
         in: path
@@ -4875,6 +5915,45 @@ paths:
       summary: Get a week from one of my programs
       tags:
       - Programs
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Email a password reset link, valid for one hour, to the account
+        with this address. The answer is the same whether or not the account exists.
+        A request made within a minute of the previous one for the same account sends
+        nothing.
+      parameters:
+      - description: Email address
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reset email sent if the account exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Request a password reset email
+      tags:
+      - Authentication
   /auth/login:
     post:
       consumes:
@@ -4946,7 +6025,10 @@ paths:
       consumes:
       - application/json
       description: 'Exchange a valid refresh token for a new access token. The refresh
-        token is rotated: the old one is revoked and a new one is returned.'
+        token is rotated: the old one is revoked and a new one is returned. For one
+        minute after a rotation the old token may be presented again, as long as its
+        successor was never used and the session was not ended by sign out or a password
+        change. That reissue revokes the undelivered successor.'
       parameters:
       - description: Refresh token
         in: body
@@ -4988,7 +6070,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new user account with email and password
+      description: 'Create a new user account with email and password. An address
+        that already has an account gets the same answer as a new one, so the endpoint
+        does not tell a caller which addresses are registered: its owner is emailed
+        instead, with a fresh verification link if the account is still unverified,
+        or a note that someone tried to register with it otherwise.'
       parameters:
       - description: Registration details
         in: body
@@ -5010,12 +6096,6 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "409":
-          description: Email already registered
-          schema:
-            additionalProperties:
-              type: string
-            type: object
         "500":
           description: Internal server error
           schema:
@@ -5029,7 +6109,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Resend verification email with a 10-minute cooldown per email
+      description: Send a new verification link to an unverified account. The answer
+        is the same whether or not the address has an account, is already verified,
+        or asked less than 10 minutes ago, in which case nothing is sent.
       parameters:
       - description: Email address
         in: body
@@ -5041,25 +6123,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: Verification email sent
+          description: Verification email sent if the account needs one
           schema:
             additionalProperties:
               type: string
             type: object
         "400":
-          description: Invalid request or email already verified
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: User not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "429":
-          description: Too many requests - cooldown active
+          description: Invalid request
           schema:
             additionalProperties:
               type: string
@@ -5071,6 +6141,50 @@ paths:
               type: string
             type: object
       summary: Resend verification email
+      tags:
+      - Authentication
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Set a new password using the token from a password reset email.
+        The token is single use and valid for one hour. Every session of the account
+        is signed out, and the email address is marked verified since the link reached
+        it.
+      parameters:
+      - description: Reset token and new password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request or validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Invalid or expired reset token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password with an emailed token
       tags:
       - Authentication
   /auth/verify:

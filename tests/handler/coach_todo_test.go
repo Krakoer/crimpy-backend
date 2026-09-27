@@ -29,15 +29,57 @@ func insertSession(t *testing.T, pool *pgxpool.Pool, userID, name, notes string,
 	return id
 }
 
+// Writes a note against one item of a session, the way the review pass does.
+// The item id points into the session's frozen prescription and is deliberately
+// not a foreign key, so any uuid stands in here.
+func insertItemNote(t *testing.T, pool *pgxpool.Pool, userID, sessionID, note string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO session_item_results (session_id, user_id, training_item_id, occurrence, note)
+		 VALUES ($1, $2, gen_random_uuid(), 0, $3)`,
+		sessionID, userID, note)
+	if err != nil {
+		t.Fatalf("Failed to insert an item note: %v", err)
+	}
+}
+
+// Writes a count against one item and no note at all.
+func insertItemCount(t *testing.T, pool *pgxpool.Pool, userID, sessionID string, reps int32) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO session_item_results (session_id, user_id, training_item_id, occurrence, reps)
+		 VALUES ($1, $2, gen_random_uuid(), 0, $3)`,
+		sessionID, userID, reps)
+	if err != nil {
+		t.Fatalf("Failed to insert an item count: %v", err)
+	}
+}
+
+// A week the coachee answered with nothing planned in it. The declaration row
+// is the whole record, which is what the feed now reads.
+func insertEmptyDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) string {
+	t.Helper()
+	var declarationID string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO coachee_week_declarations (user_id, week_start)
+		 VALUES ($1, $2) RETURNING id`,
+		userID, weekStart).Scan(&declarationID)
+	if err != nil {
+		t.Fatalf("Failed to declare availability: %v", err)
+	}
+	return declarationID
+}
+
 func insertDeclaredWeek(t *testing.T, pool *pgxpool.Pool, userID, weekStart string) {
 	t.Helper()
-	for day := 0; day < 7; day++ {
+	declarationID := insertEmptyDeclaredWeek(t, pool, userID, weekStart)
+	for day := 0; day < 7; day += 2 {
 		_, err := pool.Exec(context.Background(),
-			`INSERT INTO coachee_day_availabilities (user_id, week_start, day_of_week, is_available)
-			 VALUES ($1, $2, $3, $4)`,
-			userID, weekStart, day, day%2 == 0)
+			`INSERT INTO coachee_day_activities (declaration_id, day_of_week, position, label)
+			 VALUES ($1, $2, 0, $3)`,
+			declarationID, day, "Climbing")
 		if err != nil {
-			t.Fatalf("Failed to declare availability: %v", err)
+			t.Fatalf("Failed to plan an activity: %v", err)
 		}
 	}
 }
@@ -222,6 +264,54 @@ func TestCoachFeed_ReportsWhatCoacheesDid(t *testing.T) {
 	}
 }
 
+// The feed reads the declaration row rather than grouping the day rows under it,
+// which is the only behaviour change in the query. A week declared with nothing
+// planned has no day rows at all, so under the previous shape it could not
+// produce an event, and an athlete answering "nothing on next week" was silent
+// to their coach.
+func TestCoachFeed_ReportsAWeekDeclaredWithNothingOnIt(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "feedemptycoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "feedemptyathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	weekStart := mondayOfTestWeek(now, 1)
+	insertEmptyDeclaredWeek(t, pool, userID, weekStart)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/feed", nil, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Failed to get the feed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200 getting the feed, got %d", resp.StatusCode)
+	}
+
+	var events []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&events)
+
+	for _, event := range events {
+		if event["kind"] == "availability_declared" {
+			if event["week_start"] != weekStart {
+				t.Errorf("Expected the declared week on the event, got %v", event["week_start"])
+			}
+			if event["user_id"] != userID {
+				t.Errorf("Expected the event to name the coachee, got %v", event)
+			}
+			return
+		}
+	}
+	t.Fatalf("Expected an availability_declared event for an empty week, got %v", events)
+}
+
 func TestCoachFeed_HonoursLimitAndBefore(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-key")
 	pool, queries := testutil.SetupTestDB(t)
@@ -363,6 +453,82 @@ func TestCoachTodo_ListsOnlyUnansweredFeedback(t *testing.T) {
 	}
 	if item["user_id"] != userID {
 		t.Errorf("Expected the item to name the coachee, got %v", item["user_id"])
+	}
+}
+
+// An athlete who annotates their sets and leaves the session box empty is the
+// ordinary case once the review pass exists, and it is the line per exercise the
+// coaching loop runs on. A feed reading only the session note would never
+// mention them, so the coach would answer the loud sessions and silently miss
+// the ones written where the feature asks for them.
+func TestCoachTodo_ListsASessionAnnotatedOnlyOnItsItems(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "itemnotecoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "itemnoteathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	annotated := insertSession(t, pool, userID, "Annotated per exercise", "", now, nil)
+	insertSession(t, pool, userID, "Nothing to say at all", "", now, nil)
+	insertItemNote(t, pool, userID, annotated, "failed at 8 reps on the last set but no pain")
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	todo := getTodo(t, app, coachToken)
+	pending := todo["pending_feedback"].([]interface{})
+	if len(pending) != 1 {
+		t.Fatalf("Expected the session annotated on its items alone, got %v", pending)
+	}
+	item := pending[0].(map[string]interface{})
+	if item["session_name"] != "Annotated per exercise" {
+		t.Errorf("Expected the annotated session, got %v", item)
+	}
+	// The row is a preview the coach clicks through, so it carries the line the
+	// athlete wrote even though they wrote it against an item rather than the
+	// session. Without this the entry lists a session and says nothing.
+	if item["notes"] != "failed at 8 reps on the last set but no pain" {
+		t.Errorf("Expected the item note to stand in as the preview, got %v", item["notes"])
+	}
+	// The badge counts what the list holds, or the two disagree about what is
+	// waiting.
+	if todo["pending_feedback_total"].(float64) != 1 {
+		t.Errorf("Expected the annotated session counted in all, got %v", todo["pending_feedback_total"])
+	}
+}
+
+// A report carrying numbers and no note is not the athlete asking for an
+// answer, so it does not raise the TODO the way a written line does.
+func TestCoachTodo_LeavesOutASessionReportingOnlyNumbers(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "numonlycoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "numonlyathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+
+	now := time.Now().UTC()
+	counted := insertSession(t, pool, userID, "Counted, not written about", "", now, nil)
+	insertItemCount(t, pool, userID, counted, 23)
+
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	todo := getTodo(t, app, coachToken)
+	if pending := todo["pending_feedback"].([]interface{}); len(pending) != 0 {
+		t.Fatalf("Expected a session with numbers and no note to wait on nothing, got %v", pending)
+	}
+	// Asserted on the badge too: the list and the count run off two predicates
+	// written out separately, and widening one without the other is exactly the
+	// drift that would otherwise pass the suite.
+	if todo["pending_feedback_total"].(float64) != 0 {
+		t.Errorf("Expected the badge to agree with the empty list, got %v", todo["pending_feedback_total"])
 	}
 }
 
@@ -677,6 +843,74 @@ func TestCoachTodo_RejectsAnImpossibleTimezoneOffset(t *testing.T) {
 	resp, _ := app.Test(req)
 	if resp.StatusCode != fiber.StatusBadRequest {
 		t.Errorf("Expected 400 for an offset no timezone has, got %d", resp.StatusCode)
+	}
+}
+
+func TestCoachTodo_RejectsAnUnusableTimezone(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	_, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "todotznamecoach@test.com")
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	for _, timezone := range []string{"Europe/Nowhere", "Local", "CEST"} {
+		req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/todo?timezone="+url.QueryEscape(timezone), nil, coachToken)
+		resp, _ := app.Test(req)
+		if resp.StatusCode != fiber.StatusBadRequest {
+			t.Errorf("Expected 400 for timezone %q, got %d", timezone, resp.StatusCode)
+		}
+	}
+}
+
+// The zone is what the coach's week is cut on when they send one, and it wins
+// over the offset beside it. Sent an offset that belongs to nobody's clock
+// right now, the week must still be the one Paris is really in.
+func TestCoachTodo_PrefersTheZoneOverTheOffset(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "todotzprefcoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "todotzprefathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	paris, err := time.LoadLocation("Europe/Paris")
+	if err != nil {
+		t.Fatalf("Failed to load Europe/Paris: %v", err)
+	}
+	local := time.Now().In(paris)
+	daysSinceMonday := (int(local.Weekday()) + 6) % 7
+	day := local.AddDate(0, 0, -daysSinceMonday)
+	thisMonday := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, paris)
+
+	// Half an hour into the coach's week, which a caller twelve hours west of
+	// them would not count as this week at all.
+	insertSession(t, pool, userID, "Opening the week", "", thisMonday.Add(30*time.Minute), nil)
+
+	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/todo?tz_offset_minutes=-720&timezone=Europe%2FParis", nil, coachToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
+	}
+	var todo map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&todo); err != nil {
+		t.Fatalf("Failed to decode: %v", err)
+	}
+	if got := todo["sessions_this_week"].(float64); got != 1 {
+		t.Fatalf("Expected the session inside the coach's own week, got %v", got)
+	}
+	check := todo["empty_week_check"].(map[string]interface{})
+	if got := check["week_start"]; got != thisMonday.AddDate(0, 0, 7).Format(time.DateOnly) {
+		t.Fatalf("Expected the coming Monday in Paris, got %v", got)
 	}
 }
 

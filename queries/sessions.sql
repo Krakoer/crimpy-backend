@@ -1,9 +1,9 @@
 -- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, samples, duration, date
+  program_session_id, prescription, samples, duration, date, rpe, rpe_failed
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 ) RETURNING *;
 
 -- name: GetSession :one
@@ -30,6 +30,8 @@ SELECT
   sessions.coach_reply,
   sessions.coach_reply_at,
   sessions.coach_reply_read_at,
+  sessions.rpe,
+  sessions.rpe_failed,
   sessions.updated_at,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
@@ -39,8 +41,23 @@ GROUP BY sessions.id
 ORDER BY sessions.date DESC;
 
 -- name: UpdateSession :one
+-- Every field a request leaves out is kept, so a client that sends only what it
+-- means to change cannot blank the rest of the session. That is one rule rather
+-- than a rule per column: the RPE pair had it from the start, and the name, the
+-- notes and the duration used to be written unconditionally, which turned
+-- "record the RPE" into "record the RPE and wipe the notes".
+--
+-- Decided here rather than in the handler against a row it read first: that
+-- read and this write are not one statement, so a note saved in the window
+-- between them would write back the answer as it read before, erasing a rating
+-- stored in between.
 UPDATE sessions
-SET name = $2, notes = $3, duration = $4, date = COALESCE(sqlc.narg('date'), date),
+SET name = COALESCE(sqlc.narg('name'), name),
+    notes = COALESCE(sqlc.narg('notes'), notes),
+    duration = COALESCE(sqlc.narg('duration'), duration),
+    date = COALESCE(sqlc.narg('date'), date),
+    rpe = CASE WHEN sqlc.arg('rpe_given')::boolean THEN sqlc.narg('rpe')::integer ELSE rpe END,
+    rpe_failed = CASE WHEN sqlc.arg('rpe_given')::boolean THEN sqlc.arg('rpe_failed')::boolean ELSE rpe_failed END,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

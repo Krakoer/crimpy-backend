@@ -352,7 +352,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "The assessments Crimpy ships plus the caller's own, builtins first.",
+                "description": "The assessments Crimpy ships plus the caller's own, builtins first. With recordable=true the set widens to the ones a result may be recorded against, which adds a coach's assessment whose training a program prescribed to the caller; each of those carries the program_id that reads the training, since a coach's training is only readable under a program.",
                 "produces": [
                     "application/json"
                 ],
@@ -360,6 +360,14 @@ const docTemplate = `{
                     "Assessments"
                 ],
                 "summary": "List the assessments the caller may reference",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Serve the assessments a result may be recorded against rather than the catalog the caller may reference",
+                        "name": "recordable",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Assessments",
@@ -367,6 +375,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.AssessmentDefinitionResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid recordable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -597,7 +614,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all assessment results for the authenticated user, ordered by session date descending",
+                "description": "Retrieve all assessment results for the authenticated user, ordered by session date descending. Each row carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one.",
                 "produces": [
                     "application/json"
                 ],
@@ -641,7 +658,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new assessment result for the authenticated user, linked to an existing session they own",
+                "description": "Create a new assessment result for the authenticated user, linked to an existing session they own. The response carries the weigh-in the result is divided by, the last one taken at or before the session, absent when the athlete has none on file, which is the state right after a first recording.",
                 "consumes": [
                     "application/json"
                 ],
@@ -699,6 +716,67 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/assessments/at": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The last value measured for each assessment, grip and hand at or before the given date. Each hand carries the date it was measured, the bodyweight in effect then, which is the denominator a bodyweight relative score is read against, and the date that weigh-in was taken, which says how stale the denominator is; the snapshot's own bodyweight_kg is what the athlete weighed on the date asked for. Reading two dates gives the two sides of a comparison.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "My assessment results as of a date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The day to read the results as of, YYYY-MM-DD or RFC3339",
+                        "name": "date",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The results as of that date",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AssessmentSnapshotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1270,7 +1348,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all assessments for a user enrolled with the authenticated coach.",
+                "description": "Retrieve all assessments for a user enrolled with the authenticated coach. Each row carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one.",
                 "produces": [
                     "application/json"
                 ],
@@ -1309,21 +1387,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/coach/clients/{user_id}/availability": {
+        "/api/coach/clients/{user_id}/assessments/at": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve every calendar week a user enrolled with the authenticated coach has declared.",
+                "description": "The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach. Each hand carries the date it was measured, the bodyweight in effect then, which is the denominator a bodyweight relative score is read against, and the date that weigh-in was taken, which says how stale the denominator is. Two reads give the two sides of a comparison between blocks.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Availability"
+                    "Coaching"
                 ],
-                "summary": "Get a client's declared availability",
+                "summary": "A client's assessment results as of a date",
                 "parameters": [
                     {
                         "type": "string",
@@ -1331,6 +1409,86 @@ const docTemplate = `{
                         "name": "user_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "The day to read the results as of, YYYY-MM-DD or RFC3339",
+                        "name": "date",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The results as of that date",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AssessmentSnapshotResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a coach or user not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/clients/{user_id}/availability": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve the calendar weeks a user enrolled with the authenticated coach has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A program page should ask for the weeks the program covers rather than the athlete's whole history. At most 520 weeks come back whatever the window; when older weeks were dropped the response carries X-Availability-Weeks-Truncated: true, and the weeks kept are the most recent ones.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Availability"
+                ],
+                "summary": "Get a client's declared weeks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "First calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1341,10 +1499,16 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/handler.WeekAvailabilityResponse"
                             }
+                        },
+                        "headers": {
+                            "X-Availability-Weeks-Truncated": {
+                                "type": "string",
+                                "description": "true when older weeks were dropped at the 520 week ceiling, absent otherwise"
+                            }
                         }
                     },
                     "400": {
-                        "description": "Invalid client ID",
+                        "description": "Invalid client ID or window",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1354,6 +1518,76 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Not a validated coach or client not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/clients/{user_id}/bodyweights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The measurements of an athlete enrolled with the authenticated coach, most recently measured first, so a strength number can be read as a ratio to the bodyweight of the day rather than as an absolute.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "List a client's bodyweight series",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many measurements to return, 1 to 365, default 60",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The series, newest first",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.BodyweightResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1712,7 +1946,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all explicitly defined weeks for a program (summary, no sessions).",
+                "description": "Get all explicitly defined weeks for a program (summary, no sessions). Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.",
                 "produces": [
                     "application/json"
                 ],
@@ -1774,7 +2008,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a specific week with its sessions and per-item overrides.",
+                "description": "Get a specific week with its sessions and per-item overrides. The week carries its name, the label of the training phase it belongs to, absent when the week has none. Each override carries override_stale, computed against the training as it now stands: it marks an override the training item no longer takes, which the athlete is therefore handed the item without, and stale_fields attributes that refusal to the fields it is about, so a reader can tell an edit of the refused field from an edit of another field of the same override. stale_fields is in the order the validators ask, and its first reason is the one a save of the same override is refused with. A named field may be absent from the override row, since a check can read the item's side of a disagreement, so a reader deciding whether a refusal still stands skips the named fields the row does not carry rather than counting them as unchanged: an absent field is absent again after every edit, so counting it would keep the marking up through the very edit that clears the refusal. When the row carries none of the named fields, the refusal is about the row as a whole, which is what an empty field stands for too. The stored row is never touched and never hidden, so the week can be sent back unchanged.",
                 "produces": [
                     "application/json"
                 ],
@@ -1838,7 +2072,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upsert a week's sessions and overrides. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored.",
+                "description": "Upsert a week's sessions and overrides. The week's name labels its training phase (\"capacity\", \"deload\") and must be at most 60 characters, refused rather than cut; a blank one is stored as no name. It is distinct from notes, which is a message about this particular week. A session sent back with its id is updated in place and keeps that id, one sent without an id is created, and any session of the week missing from the payload is deleted. A session the athlete has already played (is_locked) is frozen: its training and overrides must be sent back unchanged and it may not be dropped from the week. The order of the sessions array is the order of the week: it sets the position stored on each session, and every read hands them back sorted by it. Position is response-only, sending one is ignored. A save carrying an override the training item no longer takes is refused, except on a frozen session, whose overrides can only be sent back unchanged and which the athlete no longer receives that override from anyway. This echo answers override_stale against the training as it now stands, as GET does.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2047,7 +2281,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.",
+                "description": "Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it.",
                 "produces": [
                     "application/json"
                 ],
@@ -2073,7 +2307,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session details with rep_datas, assessments and item_results",
+                        "description": "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read",
                         "schema": {
                             "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
@@ -2187,6 +2421,85 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/coach/clients/{user_id}/training-load": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating or no recorded duration, since the effort is then simply not known. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, skipping any week whose own load is unknown, and chronic_weeks says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The minutes of each bucket are rounded from their own second totals, so the climbing and strength figures can differ from the total by a minute on sub minute sessions. The caller's clock comes from timezone, an IANA zone name, which is what makes a week boundary on the far side of a daylight saving change land where the athlete lived it. tz_offset_minutes is the fallback for a client that does not send a zone yet, and it cuts every week in the window with the one offset, so such a window is an hour out on the far side of a change. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Coaching"
+                ],
+                "summary": "Get a client's weekly training load",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many weeks to return, 1 to 52, defaults to 12",
+                        "name": "weeks",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller's IANA zone name, for example Europe/Paris. Preferred over tz_offset_minutes",
+                        "name": "timezone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Caller's offset east of UTC in minutes, defaults to 0. Used when timezone is absent",
+                        "name": "tz_offset_minutes",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The weekly series",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TrainingLoadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a validated coach, or client not enrolled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2406,7 +2719,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new exercise in the coach's exercise library. Requires a validated coach account.",
+                "description": "Create a new exercise in the coach's exercise library. Requires a validated coach account. video_link must be an http or https address; one written without a scheme is stored as https.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2436,7 +2749,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request body",
+                        "description": "Invalid request body or video link",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2708,7 +3021,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update an exercise in the coach's library. Only the owning coach can update.",
+                "description": "Update an exercise in the coach's library. Only the owning coach can update. video_link must be an http or https address; one written without a scheme is stored as https.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2745,7 +3058,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request",
+                        "description": "Invalid request or video link",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3221,7 +3534,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "What the authenticated coach still owes their coachees: the sessions whose notes have no answer yet, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its UTC offset.",
+                "description": "What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its own clock. Send timezone, an IANA zone name, and the week is cut on the caller's real calendar even where a daylight saving change falls inside it. tz_offset_minutes is the fallback for a client that does not send a zone yet.",
                 "produces": [
                     "application/json"
                 ],
@@ -3231,8 +3544,14 @@ const docTemplate = `{
                 "summary": "Get my coaching TODO list",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "Caller's IANA zone name, for example Europe/Paris. Preferred over tz_offset_minutes",
+                        "name": "timezone",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
-                        "description": "Caller's offset east of UTC in minutes, defaults to 0",
+                        "description": "Caller's offset east of UTC in minutes, defaults to 0. Used when timezone is absent",
                         "name": "tz_offset_minutes",
                         "in": "query"
                     }
@@ -3245,7 +3564,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid timezone offset",
+                        "description": "Invalid timezone",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4011,7 +4330,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, the counts it resolved for items the prescription left open: the reps an AMRAP turned out to be, and the rounds an emom was carried through. Each names one of the prescribed items, an occurrence telling repeated passes apart, and the field it answers.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped. A session may also carry the athlete's session RPE, how much recovery it cost: rpe is a value of the scale, 5 to 10, and rpe_failed is that scale's ECHEC, a session that could not be carried through. They are exclusive, and both are optional, since the value stays editable through the update endpoint long after the session.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4086,7 +4405,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a specific session by ID with all related rep data, assessments and the counts the run recorded for the items the prescription left open. User must own the session unless they are an admin.",
+                "description": "Retrieve a specific session by ID with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4108,7 +4427,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Session details with rep_datas, assessments and item_results",
+                        "description": "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read",
                         "schema": {
                             "$ref": "#/definitions/handler.SessionDetailResponse"
                         }
@@ -4148,7 +4467,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update a session's name, notes, and duration. User must own the session unless they are an admin.",
+                "description": "Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4374,7 +4693,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all training templates for the authenticated user (without items).",
+                "description": "Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request. An include=items listing answers at most 200 rows, ordered by title, and sets X-Trainings-Truncated to true when it cut the library short. The cheap list is not capped.",
                 "produces": [
                     "application/json"
                 ],
@@ -4388,15 +4707,39 @@ const docTemplate = `{
                         "description": "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted",
                         "name": "is_assessment",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "items"
+                        ],
+                        "type": "string",
+                        "description": "Comma separated extras to put on each row. Only items is understood, and anything else is refused. The row's own assessment snapshot still answers unit_locked as false whatever the truth is, since computing it reads every training item through; GET /api/assessment-definitions carries the real flag",
+                        "name": "include",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of trainings",
+                        "description": "List of trainings. Carries X-Trainings-Truncated: true when include=items cut the library at 200 rows",
                         "schema": {
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.TrainingListItem"
+                            }
+                        },
+                        "headers": {
+                            "X-Trainings-Truncated": {
+                                "type": "string",
+                                "description": "Set to true only when an include=items listing was cut at 200 rows. Absent otherwise, which is the caller's proof it read the whole library"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameter",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     }
@@ -4408,7 +4751,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training template with a structured item tree.",
+                "description": "Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4524,7 +4867,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted.",
+                "description": "Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4580,6 +4923,15 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Training not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4720,14 +5072,28 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve every calendar week the authenticated user has declared their availability for.",
+                "description": "Retrieve the calendar weeks the authenticated user has declared, each carrying the seven days and the activities planned on them. from and to bound the answer to a range of calendar weeks, both Mondays and both inclusive. Either may be left out for an unbounded end, and leaving both out returns every week ever declared. A week carrying up to 140 activities makes the unbounded answer large, so a screen showing one week at a time should ask for that week. At most 520 weeks come back whatever the window; when older weeks were dropped the response carries X-Availability-Weeks-Truncated: true, and the weeks kept are the most recent ones. The set of declared weeks is not a window question: read /api/user/availability/declared-weeks for that.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Availability"
                 ],
-                "summary": "Get my declared availability",
+                "summary": "Get my declared weeks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "First calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last calendar week to return, Monday, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Declared weeks",
@@ -4735,6 +5101,21 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.WeekAvailabilityResponse"
+                            }
+                        },
+                        "headers": {
+                            "X-Availability-Weeks-Truncated": {
+                                "type": "string",
+                                "description": "true when older weeks were dropped at the 520 week ceiling, absent otherwise"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid window",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -4811,6 +5192,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/user/availability/declared-weeks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Every calendar week the authenticated user has declared, as Mondays in YYYY-MM-DD, oldest first, with no activities and no window. This is what the athlete app plans its declaration reminders from: a nudge is dropped for a week that was already answered, so the planner needs the whole set and not the window a screen happens to be showing. Carrying no activities keeps it small enough to answer in full.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Availability"
+                ],
+                "summary": "List the Mondays I have declared",
+                "responses": {
+                    "200": {
+                        "description": "Declared week starts",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid user ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/user/availability/{week_start}": {
             "put": {
                 "security": [
@@ -4818,7 +5245,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the authenticated user's availability for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. A day declared unavailable keeps its note and drops its duration.",
+                "description": "Replace the authenticated user's schedule for one calendar week. The body must carry all seven days, day_of_week 0 = Monday to 6 = Sunday. Every day must carry an activities array, empty when nothing is planned on it; leaving the key out is refused. A day's activities come back in the order they were sent. A week where every day is empty is still a declared week.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4828,7 +5255,7 @@ const docTemplate = `{
                 "tags": [
                     "Availability"
                 ],
-                "summary": "Declare my availability for a calendar week",
+                "summary": "Declare my schedule for a calendar week",
                 "parameters": [
                     {
                         "type": "string",
@@ -4856,6 +5283,197 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid user ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/bodyweights": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The authenticated user's measurements, most recently measured first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "List my bodyweight series",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "How many measurements to return, 1 to 365, default 60",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The series, newest first",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.BodyweightResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Append a dated measurement to the authenticated user's bodyweight series. measured_at is when the athlete weighed themselves and defaults to now, so a measurement taken while the device was offline keeps the day it belongs to when it is sent. The series is what makes a strength number readable as a ratio, and what a percent_bw prescription is frozen against.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "Record my bodyweight",
+                "parameters": [
+                    {
+                        "description": "The measurement",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateBodyweightRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "The recorded measurement",
+                        "schema": {
+                            "$ref": "#/definitions/handler.BodyweightResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/bodyweights/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a measurement from the authenticated user's own series, for a number typed wrong. A measurement a past session was frozen against is unaffected: that value lives in the session's own snapshot.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Bodyweight"
+                ],
+                "summary": "Remove one of my measurements",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Measurement ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Measurement not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5049,7 +5667,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership.",
+                "description": "Get the full training tree for a training scheduled in a program assigned to the authenticated user. Authorized through program ownership rather than training ownership. referenced_assessments names the assessments the training items read against plus the ones only a week override of this program reads against, so a percentage prescribed on a single week can be labelled.",
                 "produces": [
                     "application/json"
                 ],
@@ -5117,7 +5735,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all defined weeks for a program assigned to the authenticated user.",
+                "description": "Get all defined weeks for a program assigned to the authenticated user. Each carries the week's name, the label of the training phase it belongs to, absent when the week has none.",
                 "produces": [
                     "application/json"
                 ],
@@ -5172,7 +5790,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get a specific week with sessions and overrides for a program assigned to the authenticated user. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.",
+                "description": "Get a specific week with sessions and overrides for a program assigned to the authenticated user. The week carries its name, the label of the training phase it belongs to, absent when the week has none. An override the training item no longer takes, because the training was edited after the week was prescribed, is left out, so what the client merges is what the session run from it will freeze.",
                 "produces": [
                     "application/json"
                 ],
@@ -5214,6 +5832,61 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Program or week not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/forgot-password": {
+            "post": {
+                "description": "Email a password reset link, valid for one hour, to the account with this address. The answer is the same whether or not the account exists. A request made within a minute of the previous one for the same account sends nothing.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Request a password reset email",
+                "parameters": [
+                    {
+                        "description": "Email address",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ForgotPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reset email sent if the account exists",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5325,7 +5998,7 @@ const docTemplate = `{
         },
         "/auth/refresh": {
             "post": {
-                "description": "Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned.",
+                "description": "Exchange a valid refresh token for a new access token. The refresh token is rotated: the old one is revoked and a new one is returned. For one minute after a rotation the old token may be presented again, as long as its successor was never used and the session was not ended by sign out or a password change. That reissue revokes the undelivered successor.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5389,7 +6062,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "Create a new user account with email and password",
+                "description": "Create a new user account with email and password. An address that already has an account gets the same answer as a new one, so the endpoint does not tell a caller which addresses are registered: its owner is emailed instead, with a fresh verification link if the account is still unverified, or a note that someone tried to register with it otherwise.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5428,15 +6101,6 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "409": {
-                        "description": "Email already registered",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
@@ -5451,7 +6115,7 @@ const docTemplate = `{
         },
         "/auth/resend-verification": {
             "post": {
-                "description": "Resend verification email with a 10-minute cooldown per email",
+                "description": "Send a new verification link to an unverified account. The answer is the same whether or not the address has an account, is already verified, or asked less than 10 minutes ago, in which case nothing is sent.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5475,7 +6139,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Verification email sent",
+                        "description": "Verification email sent if the account needs one",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5484,7 +6148,60 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request or email already verified",
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/reset-password": {
+            "post": {
+                "description": "Set a new password using the token from a password reset email. The token is single use and valid for one hour. Every session of the account is signed out, and the email address is marked verified since the link reached it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Reset password with an emailed token",
+                "parameters": [
+                    {
+                        "description": "Reset token and new password",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ResetPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Password reset",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or validation error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5493,16 +6210,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "User not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "429": {
-                        "description": "Too many requests - cooldown active",
+                        "description": "Invalid or expired reset token",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5591,6 +6299,10 @@ const docTemplate = `{
         "handler.AssessmentDefinitionResponse": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at,\n(bodyweight + result) / bodyweight, rather than as an absolute load. A\ndisplay concern: the raw kilograms and the dated bodyweight are what is\nstored, so the formula can be corrected without rewriting history.",
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -5605,6 +6317,10 @@ const docTemplate = `{
                 },
                 "per_hand": {
                     "type": "boolean"
+                },
+                "program_id": {
+                    "description": "The program that reads the training backing this assessment, set only in\nthe recordable listing and only on a row the caller reaches through a\nprescription. A coach's training is not readable on its own, so without\nthis id the assessment names a training the caller cannot run.",
+                    "type": "string"
                 },
                 "prompt": {
                     "description": "Prompt and TrainingID are set on a coach written assessment and absent on\nthe ones Crimpy ships, which the app runs from a sensor protocol instead of\na training ending on a question.",
@@ -5633,6 +6349,10 @@ const docTemplate = `{
         "handler.AssessmentDefinitionSnapshot": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Whether the result is drawn as a ratio to the bodyweight it was pulled at.\nDisplay only, and read by nothing that resolves a percentage: a\nprescription is resolved against the raw kilograms whatever this says.",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -5668,6 +6388,18 @@ const docTemplate = `{
             "properties": {
                 "assessment_id": {
                     "type": "string"
+                },
+                "bodyweight_kg": {
+                    "description": "The weigh-in a bodyweight relative score is divided by: the last one taken\nat or before the session that measured the result. It travels on the result\nrather than being left to a client to pick out of a bodyweight series, so\nevery screen reads one result against one weight, the session detail\nincluded.\n\nAbsent when no weigh-in qualifies, which is a ratio a reader declines rather\nthan invents. That is also what POST /api/assessments answers with when the\nathlete has never weighed in, which is a state the clients already draw:\nrecording a result does not require a weigh-in to exist first.",
+                    "type": "number"
+                },
+                "bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken, which is how near the denominator is to the\nresult it divides, and what decides whether the ratio means anything at all.\nAbsent exactly when the weight is.",
+                    "type": "string"
+                },
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the denominator is the two fields below.",
+                    "type": "boolean"
                 },
                 "grip_position": {
                     "type": "integer"
@@ -5736,6 +6468,18 @@ const docTemplate = `{
                 "assessment_id": {
                     "type": "string"
                 },
+                "bodyweight_kg": {
+                    "description": "The weigh-in a bodyweight relative score is divided by: the last one taken\nat or before the session that measured the result. It travels on the result\nrather than being left to a client to pick out of a bodyweight series, so\nevery screen reads one result against one weight, the session detail\nincluded.\n\nAbsent when no weigh-in qualifies, which is a ratio a reader declines rather\nthan invents. That is also what POST /api/assessments answers with when the\nathlete has never weighed in, which is a state the clients already draw:\nrecording a result does not require a weigh-in to exist first.",
+                    "type": "number"
+                },
+                "bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken, which is how near the denominator is to the\nresult it divides, and what decides whether the ratio means anything at all.\nAbsent exactly when the weight is.",
+                    "type": "string"
+                },
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the denominator is the two fields below.",
+                    "type": "boolean"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -5777,6 +6521,84 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.AssessmentSnapshotItem": {
+            "type": "object",
+            "properties": {
+                "assessment_id": {
+                    "type": "string"
+                },
+                "bodyweight_relative": {
+                    "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only, see the column comment.",
+                    "type": "boolean"
+                },
+                "grip_position": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "left_bodyweight_kg": {
+                    "description": "The weight the left hand was pulled at, chosen and absent by the same rule\nas the right, and its own weigh-in: the two hands can come from sessions\nmonths apart, so neither answers for the other.",
+                    "type": "number"
+                },
+                "left_bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken, read as RightBodyweightMeasuredAt is and\nabsent exactly when the weight beside it is.",
+                    "type": "string"
+                },
+                "left_measured_at": {
+                    "type": "string"
+                },
+                "left_value": {
+                    "type": "number"
+                },
+                "per_hand": {
+                    "type": "boolean"
+                },
+                "right_bodyweight_kg": {
+                    "description": "The weight in effect when this hand was measured, which is the denominator\nits ratio has to be read against. Not the snapshot's bodyweight_kg: a value\ncarried forward from an earlier session was pulled at the weight of that\nday, and dividing it by a later one gives a number the athlete never\nachieved. Absent when no weigh-in precedes the measurement.",
+                    "type": "number"
+                },
+                "right_bodyweight_measured_at": {
+                    "description": "When that weigh-in was taken. A denominator is only worth dividing by while\nit is near the result it divides, and a weight on its own cannot say how\nnear it was: the last weigh-in at or before a result can be the same\nmorning or months earlier. Absent exactly when the weight is.",
+                    "type": "string"
+                },
+                "right_measured_at": {
+                    "type": "string"
+                },
+                "right_value": {
+                    "type": "number"
+                },
+                "training_id": {
+                    "description": "The training the assessment is run from, absent on the ones Crimpy ships.",
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "kilograms",
+                        "seconds",
+                        "repetitions"
+                    ]
+                }
+            }
+        },
+        "handler.AssessmentSnapshotResponse": {
+            "type": "object",
+            "properties": {
+                "bodyweight_kg": {
+                    "type": "number"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentSnapshotItem"
+                    }
+                }
+            }
+        },
         "handler.AvailabilityReminderRequest": {
             "type": "object",
             "properties": {
@@ -5808,6 +6630,26 @@ const docTemplate = `{
                 },
                 "minute": {
                     "type": "integer"
+                }
+            }
+        },
+        "handler.BodyweightResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "measured_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "weight_kg": {
+                    "type": "number"
                 }
             }
         },
@@ -5936,6 +6778,10 @@ const docTemplate = `{
         "handler.CreateAssessmentDefinitionRequest": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Display the result as a ratio to the bodyweight it was pulled at, which\nonly a result in kilograms can be.",
+                    "type": "boolean"
+                },
                 "label": {
                     "type": "string"
                 },
@@ -5975,6 +6821,18 @@ const docTemplate = `{
                 },
                 "session_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.CreateBodyweightRequest": {
+            "type": "object",
+            "properties": {
+                "measured_at": {
+                    "description": "When the athlete weighed themselves, RFC3339. Absent means now, which is\nwhat a measurement taken in the app while online is. A device that was\noffline sends the moment it actually happened.",
+                    "type": "string"
+                },
+                "weight_kg": {
+                    "type": "number"
                 }
             }
         },
@@ -6061,6 +6919,10 @@ const docTemplate = `{
                         "$ref": "#/definitions/handler.AssessmentRequest"
                     }
                 },
+                "bodyweight_kg": {
+                    "description": "BodyweightKg is the weight the device resolved this run's percent_bw loads\nagainst. Sent rather than looked up, because the device may hold a newer\nmeasurement than the server has: a run does not need the network, so an\nathlete can weigh themselves and train before either reaches us. Absent\nfalls back to the latest measurement on file, and absent from both is a\nsession whose percent_bw loads nothing can restate.",
+                    "type": "number"
+                },
                 "date": {
                     "type": "string"
                 },
@@ -6071,7 +6933,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "item_results": {
-                    "description": "ItemResults are the counts the run resolved for items the prescription\nleft open: an AMRAP the athlete measured by doing it, and the rounds an\nemom was carried through.",
+                    "description": "ItemResults is what the athlete reported about the items they were\nprescribed: the count an AMRAP turned out to be, the rounds an emom was\ncarried through, and for any step at all the load, the duration and the\nnote that nothing else records.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.SessionItemResultRequest"
@@ -6086,6 +6948,10 @@ const docTemplate = `{
                 "origin": {
                     "type": "string"
                 },
+                "prescription": {
+                    "description": "Prescription is what the run was asked to do, sent by the client for a run\nthe server cannot describe: one played from a training Crimpy generates on\nthe device rather than from a stored one. The server freezes its own copy\nwhenever a training or a program slot names one, so sending this alongside\neither is refused rather than ignored, and without one it is the only thing\nthe reps and the item reports have to name their steps against.",
+                    "type": "object"
+                },
                 "program_session_id": {
                     "type": "string"
                 },
@@ -6094,6 +6960,14 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/handler.RepDataRequest"
                     }
+                },
+                "rpe": {
+                    "description": "RPE is how much recovery the session cost, on the session RPE scale, as\nthe athlete reported it. Absent on a session they were not asked or\nskipped the prompt on, which the update path lets them fill in later.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "description": "RPEFailed is the scale's ECHEC: a session the athlete could not carry\nthrough. It replaces the number rather than grading it, so sending both is\nrefused.",
+                    "type": "boolean"
                 },
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded. Accepted on an assessment\nonly: it is what a critical force or an MVC result means, and on any other\nsession it would be bulk nothing reads.",
@@ -6148,37 +7022,67 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.DayAvailabilityRequest": {
+        "handler.DayActivityRequest": {
             "type": "object",
             "properties": {
-                "day_of_week": {
-                    "type": "integer"
-                },
                 "duration_minutes": {
                     "type": "integer"
                 },
-                "is_available": {
-                    "type": "boolean"
-                },
-                "note": {
+                "label": {
                     "type": "string"
+                },
+                "when": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.DayActivityResponse": {
+            "type": "object",
+            "properties": {
+                "duration_minutes": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "when": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.DayAvailabilityRequest": {
+            "type": "object",
+            "properties": {
+                "activities": {
+                    "description": "Required on every day. Send an empty array for a day with nothing planned.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.DayActivityRequest"
+                    }
+                },
+                "day_of_week": {
+                    "type": "integer"
                 }
             }
         },
         "handler.DayAvailabilityResponse": {
             "type": "object",
             "properties": {
+                "activities": {
+                    "description": "Always present and never null. An empty list is a day with nothing planned.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.DayActivityResponse"
+                    }
+                },
                 "day_of_week": {
                     "type": "integer"
-                },
-                "duration_minutes": {
-                    "type": "integer"
-                },
-                "is_available": {
-                    "type": "boolean"
-                },
-                "note": {
-                    "type": "string"
                 }
             }
         },
@@ -6378,6 +7282,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "week_start": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.ForgotPasswordRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
                     "type": "string"
                 }
             }
@@ -6615,6 +7527,17 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.ResetPasswordRequest": {
+            "type": "object",
+            "properties": {
+                "new_password": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.SessionCoachReplyRequest": {
             "type": "object",
             "properties": {
@@ -6627,19 +7550,21 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "assessments": {
+                    "description": "Assessments is what the session measured, absent when that read failed.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.AssessmentResponse"
                     }
                 },
                 "item_results": {
-                    "description": "ItemResults are the counts the run recorded for the items the\nprescription left open, empty for a session that had none.",
+                    "description": "ItemResults is what the athlete reported about the items they were\nprescribed, empty for a session they reported nothing on and absent when\nthat read failed.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.SessionItemResultResponse"
                     }
                 },
                 "rep_datas": {
+                    "description": "RepDatas is what the sensor measured, absent when that read failed.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.RepDataResponse"
@@ -6653,52 +7578,67 @@ const docTemplate = `{
         "handler.SessionItemResultRequest": {
             "type": "object",
             "properties": {
-                "field": {
-                    "type": "string",
-                    "enum": [
-                        "reps",
-                        "cycles"
-                    ]
+                "cycles": {
+                    "description": "Cycles is how many rounds of a block the pass was carried through before\nthe athlete dropped out, which an emom has no other record of.",
+                    "type": "integer"
+                },
+                "duration_seconds": {
+                    "description": "DurationSeconds is how long the pass actually held.",
+                    "type": "integer"
+                },
+                "load_kg": {
+                    "description": "LoadKg is the load the pass was actually worked at, in kilograms.",
+                    "type": "number"
+                },
+                "note": {
+                    "description": "Note is what the athlete wrote about the pass.",
+                    "type": "string"
                 },
                 "occurrence": {
                     "type": "integer"
                 },
+                "reps": {
+                    "description": "Reps is how many repetitions the pass did, which an AMRAP has no other\nrecord of.",
+                    "type": "integer"
+                },
                 "training_item_id": {
                     "type": "string"
-                },
-                "value": {
-                    "type": "integer"
                 }
             }
         },
         "handler.SessionItemResultResponse": {
             "type": "object",
             "properties": {
-                "field": {
-                    "type": "string",
-                    "enum": [
-                        "reps",
-                        "cycles"
-                    ]
+                "cycles": {
+                    "type": "integer"
+                },
+                "duration_seconds": {
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
                 },
+                "load_kg": {
+                    "type": "number"
+                },
+                "note": {
+                    "type": "string"
+                },
                 "occurrence": {
+                    "type": "integer"
+                },
+                "reps": {
                     "type": "integer"
                 },
                 "session_id": {
                     "type": "string"
                 },
                 "training_item_id": {
-                    "description": "TrainingItemID keys into the session prescription items, the same way a\nrep does, so the count can be shown against what was asked for.",
+                    "description": "TrainingItemID keys into the session prescription items, the same way a\nrep does, so what was achieved can be shown against what was asked for.",
                     "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
-                },
-                "value": {
-                    "type": "integer"
                 }
             }
         },
@@ -6740,7 +7680,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prescription": {
-                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created: from the training or the program slot the session names, or\nfrom the copy the client sent for a run of a training the server cannot\nread. Absent only on a session that answers no prescription at all. The\nlist endpoints leave it out, since it is a whole training per row and only\nthe detail screen reads it.",
                     "type": "object"
                 },
                 "program_session_id": {
@@ -6748,6 +7688,13 @@ const docTemplate = `{
                 },
                 "rep_count": {
                     "type": "integer"
+                },
+                "rpe": {
+                    "description": "RPE is how much recovery the session cost on the session RPE scale, absent\nwhile the athlete has not reported one. RPEFailed is the scale's ECHEC,\nand never true beside a number.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "type": "boolean"
                 },
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
@@ -6784,8 +7731,19 @@ const docTemplate = `{
                 "item_id": {
                     "type": "string"
                 },
+                "override_stale": {
+                    "description": "OverrideStale marks an override the training item it targets no longer\ntakes, so the athlete is handed the item without it. Only the coach reads\ncompute it: the athlete reads leave such an override out entirely.",
+                    "type": "boolean"
+                },
                 "overrides": {
                     "type": "object"
+                },
+                "stale_fields": {
+                    "description": "StaleFields attributes the refusal to the fields it is about, one entry\nper field per reason. The whole row is stored and the server refuses part\nof it, so a reader given only the reason cannot tell an edit of the\nrefused field from an edit of another field of the same row: it reasons\nabout the row as a whole, and any edit anywhere makes it drop a marking\nthe refusal has not stopped applying to. Each field is spelled as\ncontract/override-keys.json spells the key that replaces it.\n\nThe list is in the order the validators ask, and the first entry is the\nreason a save of this same override is refused with, since the write\npaths answer with the first refusal alone.\n\nA named field may be absent from the override row, because attribution\nnames what the check read and a check can read the item's side of a\ndisagreement: an override resizing the grid is refused for the item's own\narrays, which it never carried. A reader deciding whether a refusal still\nstands must therefore skip the named fields the row does not carry rather\nthan count them as unchanged. That clause is the whole point and not a\nspecial case: an absent field is absent again after every edit, so\ncounting it as unchanged would keep the marking up forever, including\nthrough the edit that actually clears the refusal. What is left after\nskipping is the fields the coach can act on, and the marking clears when\none of them moves. When the row carries none of the named fields, the\nrefusal is about the row as a whole, which is the same answer the empty\nfield below stands for.\n\nA refusal nothing could attribute carries an empty field, which stands\nfor the override as a whole. Absent unless OverrideStale.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.StaleOverrideField"
+                    }
                 }
             }
         },
@@ -6827,11 +7785,18 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prescription": {
-                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created. Absent on a session run from nothing. The list endpoints\nleave it out, since it is a whole training per row and only the detail\nscreen reads it.",
+                    "description": "Prescription is what the athlete was asked to do, frozen when the session\nwas created: from the training or the program slot the session names, or\nfrom the copy the client sent for a run of a training the server cannot\nread. Absent only on a session that answers no prescription at all. The\nlist endpoints leave it out, since it is a whole training per row and only\nthe detail screen reads it.",
                     "type": "object"
                 },
                 "program_session_id": {
                     "type": "string"
+                },
+                "rpe": {
+                    "description": "RPE is how much recovery the session cost on the session RPE scale, absent\nwhile the athlete has not reported one. RPEFailed is the scale's ECHEC,\nand never true beside a number.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "type": "boolean"
                 },
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
@@ -6873,6 +7838,17 @@ const docTemplate = `{
             "properties": {
                 "is_favorite": {
                     "type": "boolean"
+                }
+            }
+        },
+        "handler.StaleOverrideField": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },
@@ -6940,6 +7916,9 @@ const docTemplate = `{
                 "free_text": {
                     "type": "string"
                 },
+                "goal": {
+                    "type": "string"
+                },
                 "granularity": {
                     "type": "string",
                     "enum": [
@@ -6995,6 +7974,9 @@ const docTemplate = `{
                         "type": "object"
                     }
                 },
+                "protocol": {
+                    "type": "string"
+                },
                 "reps": {
                     "type": "integer"
                 },
@@ -7036,13 +8018,26 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "exercise_comment": {
+                    "type": "string"
+                },
+                "exercise_description": {
+                    "description": "Joined from the exercise the item points at, not stored on the item.\nExerciseComment is the coach's execution notes on the movement, which is a\ndifferent field from the item's own Comment above: that one is what the\ncoach said about this step, this one is about the exercise everywhere.",
+                    "type": "string"
+                },
                 "exercise_id": {
                     "type": "string"
                 },
                 "exercise_name": {
                     "type": "string"
                 },
+                "exercise_video_link": {
+                    "type": "string"
+                },
                 "free_text": {
+                    "type": "string"
+                },
+                "goal": {
                     "type": "string"
                 },
                 "granularity": {
@@ -7102,6 +8097,9 @@ const docTemplate = `{
                 "position": {
                     "type": "integer"
                 },
+                "protocol": {
+                    "type": "string"
+                },
                 "reps": {
                     "type": "integer"
                 },
@@ -7151,6 +8149,20 @@ const docTemplate = `{
                 "is_favorite": {
                     "type": "boolean"
                 },
+                "items": {
+                    "description": "The item tree, present only for a caller that asked for it with\ninclude=items and absent otherwise, so the cheap list keeps the exact\nshape it has always answered with. A training that holds no items answers\nwith an empty array once they were asked for, which is what lets a reader\ntell an empty training apart from a list it never asked to carry items.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TrainingItemResponse"
+                    }
+                },
+                "referenced_assessments": {
+                    "description": "The assessments the items reference, on the same terms as Items: a client\nreading the library in one request needs them to name and unit check a\npercentage, exactly as the detail endpoint hands them over.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.AssessmentDefinitionSnapshot"
+                    }
+                },
                 "title": {
                     "type": "string"
                 },
@@ -7162,6 +8174,17 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handler.TrainingLoadResponse": {
+            "type": "object",
+            "properties": {
+                "weeks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.WeeklyTrainingLoadResponse"
+                    }
                 }
             }
         },
@@ -7238,6 +8261,10 @@ const docTemplate = `{
         "handler.UpdateAssessmentDefinitionRequest": {
             "type": "object",
             "properties": {
+                "bodyweight_relative": {
+                    "description": "Free to toggle at any time, unlike the unit and the hands: see the freeze\nrule in UpdateAssessmentDefinition.\n\nA pointer so that omitting it keeps what is stored. Every other field here\nis either refused when empty or frozen by results, so this is the one an\nolder client could silently clear by sending the payload it has always\nsent, taking the ratio off a whole history with a 200 and no warning.",
+                    "type": "boolean"
+                },
                 "label": {
                     "type": "string"
                 },
@@ -7323,17 +8350,26 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "date": {
-                    "description": "Only logged sessions send a date. Omitted, the stored one is kept, which is\nwhat played sessions rely on since their date is fixed by the run.",
+                    "description": "Only logged sessions send a date. Omitted, the stored one is kept, which is\nwhat played sessions rely on since their date is fixed by the run. A\npointer like the fields above, so this struct spells \"not sent\" one way\nrather than two.",
                     "type": "string"
                 },
                 "duration": {
+                    "description": "Sent, the duration replaces the stored one, in seconds, and may not be\nnegative. Only a logged session sends it: a played one is timed by its run.",
                     "type": "integer"
                 },
                 "name": {
+                    "description": "Sent, the name replaces the stored one, and it may not be empty, for the\nreason the create path refuses an empty one.",
                     "type": "string"
                 },
                 "notes": {
                     "type": "string"
+                },
+                "rpe": {
+                    "description": "The athlete's RPE answer, which this path exists to let them give after\nthe fact: forgetting it at the end of a run is the normal case, and a\nplayed session keeps it editable even though nothing else on it is.\n\nThe pair is one answer, so it is one field as far as keeping goes: sending\nneither leaves the stored answer alone, and sending either replaces the\nwhole of it. That is how a rated session is taken back to unrated, with\n\"rpe_failed\": false and no \"rpe\" beside it.",
+                    "type": "integer"
+                },
+                "rpe_failed": {
+                    "type": "boolean"
                 }
             }
         },
@@ -7380,6 +8416,9 @@ const docTemplate = `{
         "handler.UpsertWeekRequest": {
             "type": "object",
             "properties": {
+                "name": {
+                    "type": "string"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -7469,6 +8508,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "days": {
+                    "description": "All seven days, Monday first, whether or not anything is planned on them.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handler.DayAvailabilityResponse"
@@ -7494,6 +8534,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -7515,6 +8558,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 },
                 "notes": {
@@ -7603,6 +8649,64 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "training_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.WeeklyTrainingLoadResponse": {
+            "type": "object",
+            "properties": {
+                "acute_chronic_ratio": {
+                    "description": "AcuteChronicRatio is acute over chronic, null when there is no chronic\nbaseline to divide by yet.",
+                    "type": "number"
+                },
+                "acute_load": {
+                    "type": "number"
+                },
+                "chronic_load": {
+                    "description": "ChronicLoad averages the acute load of this week and the weeks before it,\nChronicWeeks of them in all, never more than three and never reaching\nbefore the athlete's first recorded session.",
+                    "type": "number"
+                },
+                "chronic_weeks": {
+                    "description": "ChronicWeeks is how many weeks the mean beside it actually rested on, so\nit is not always a count of how much history exists. A week inside the\nwindow whose own load is unknown is skipped rather than counted as zero,\nthe current week included, so a 2 can mean \"only two weeks of history\" or\n\"three weeks, one of them unrated\". It is 0 exactly when ChronicLoad is\nnull, which is a week with no baseline at all rather than a baseline of\nnothing.",
+                    "type": "integer"
+                },
+                "climbing_minutes": {
+                    "type": "integer"
+                },
+                "failed_sessions": {
+                    "description": "FailedSessions counts the sessions marked ECHEC. They are deliberately\noutside mean_rpe: see the note on the endpoint.",
+                    "type": "integer"
+                },
+                "load_change_percent": {
+                    "description": "LoadChangePercent is this week's acute load as a percentage of last\nweek's, null when last week's is unknown or zero.",
+                    "type": "number"
+                },
+                "mean_rpe": {
+                    "type": "number"
+                },
+                "program_name": {
+                    "type": "string"
+                },
+                "rated_sessions": {
+                    "description": "RatedSessions is how many of the week's sessions carry an RPE, so the\ncoach can see how much of the week the mean actually speaks for.",
+                    "type": "integer"
+                },
+                "session_count": {
+                    "type": "integer"
+                },
+                "strength_minutes": {
+                    "type": "integer"
+                },
+                "total_minutes": {
+                    "type": "integer"
+                },
+                "week_number": {
+                    "description": "WeekNumber and ProgramName name the program week this calendar week is,\nwhen a program of this coach covers it. Both null otherwise.",
+                    "type": "integer"
+                },
+                "week_start": {
+                    "description": "WeekStart is the Monday the week opens on, read on the caller's clock.",
                     "type": "string"
                 }
             }

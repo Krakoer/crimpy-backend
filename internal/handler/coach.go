@@ -471,13 +471,13 @@ func (h *CoachHandler) GetClientSessions(c fiber.Ctx) error {
 
 // GetClientSession godoc
 // @Summary Get a client's session details
-// @Description Retrieve a specific session with its rep data, assessments and the counts the run recorded for the items the prescription left open, for a user enrolled with the authenticated coach.
+// @Description Retrieve a specific session with its rep data, assessments and what the athlete reported about the items they were prescribed: the count an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records, for a user enrolled with the authenticated coach. Each assessment carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one. Both are absent when no weigh-in qualifies. Each of rep_datas, assessments and item_results is drawn by a read of its own, and a read that fails leaves its collection out of the answer rather than failing the whole detail: an absent collection could not be read, an empty array is a session that holds none of it.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
 // @Param user_id path string true "Client user ID"
 // @Param session_id path string true "Session ID"
-// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results"
+// @Success 200 {object} SessionDetailResponse "Session details with rep_datas, assessments and item_results. A collection whose read failed is absent from the object rather than sent as an empty array, so [] means the session holds none of that collection and absence means it could not be read"
 // @Failure 400 {object} map[string]string "Invalid session ID"
 // @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
 // @Failure 404 {object} map[string]string "Session not found or does not belong to client"
@@ -502,23 +502,11 @@ func (h *CoachHandler) GetClientSession(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Session not found"})
 	}
 
-	repDatas, _ := h.queries.GetSessionRepDatas(c.Context(), session.ID)
-	assessments, _ := h.queries.GetSessionAssessments(c.Context(), session.ID)
-	itemResults, _ := h.queries.GetSessionItemResults(c.Context(), session.ID)
+	collections := sessionDetailReads(c, h.queries, session.ID)
 
-	if repDatas == nil {
-		repDatas = []db.RepData{}
-	}
-	if assessments == nil {
-		assessments = []db.GetSessionAssessmentsRow{}
-	}
-
-	return c.Status(fiber.StatusOK).JSON(SessionDetailResponse{
-		Session:     sessionToResponse(session),
-		RepDatas:    repDatasToResponses(repDatas),
-		Assessments: assessmentsToResponses(assessments),
-		ItemResults: sessionItemResultsToResponses(itemResults),
-	})
+	return c.Status(fiber.StatusOK).JSON(
+		collections.response(sessionToResponse(session)),
+	)
 }
 
 // SetClientSessionReply godoc
@@ -593,7 +581,7 @@ func (h *CoachHandler) SetClientSessionReply(c fiber.Ctx) error {
 
 // GetClientAssessments godoc
 // @Summary Get a client's assessments
-// @Description Retrieve all assessments for a user enrolled with the authenticated coach.
+// @Description Retrieve all assessments for a user enrolled with the authenticated coach. Each row carries the weigh-in a bodyweight relative score is divided by, the last one taken at or before the session, with the date it was taken so a reader can tell a fresh denominator from a stale one.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -617,4 +605,25 @@ func (h *CoachHandler) GetClientAssessments(c fiber.Ctx) error {
 		assessments = []db.GetUserAssessmentsRow{}
 	}
 	return c.Status(fiber.StatusOK).JSON(assessmentRowsToListItems(assessments))
+}
+
+// GetClientAssessmentSnapshot godoc
+// @Summary A client's assessment results as of a date
+// @Description The last value measured for each assessment, grip and hand at or before the given date for an athlete enrolled with the authenticated coach. Each hand carries the date it was measured, the bodyweight in effect then, which is the denominator a bodyweight relative score is read against, and the date that weigh-in was taken, which says how stale the denominator is. Two reads give the two sides of a comparison between blocks.
+// @Tags Coaching
+// @Produce json
+// @Security BearerAuth
+// @Param user_id path string true "Client user ID"
+// @Param date query string true "The day to read the results as of, YYYY-MM-DD or RFC3339"
+// @Success 200 {object} AssessmentSnapshotResponse "The results as of that date"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 403 {object} map[string]string "Not a coach or user not enrolled"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /api/coach/clients/{user_id}/assessments/at [get]
+func (h *CoachHandler) GetClientAssessmentSnapshot(c fiber.Ctx) error {
+	clientUUID, ok := h.verifyCoachClientRelationship(c, c.Params("user_id"))
+	if !ok {
+		return nil
+	}
+	return assessmentSnapshotAt(c, h.queries, clientUUID)
 }

@@ -1,8 +1,8 @@
 -- name: UpsertCoachProgramWeek :one
-INSERT INTO coach_program_weeks (program_id, week_number, notes)
-VALUES (@program_id, @week_number, @notes)
+INSERT INTO coach_program_weeks (program_id, week_number, name, notes)
+VALUES (@program_id, @week_number, @name, @notes)
 ON CONFLICT (program_id, week_number) DO UPDATE
-  SET notes = EXCLUDED.notes, updated_at = now()
+  SET name = EXCLUDED.name, notes = EXCLUDED.notes, updated_at = now()
 RETURNING *;
 
 -- name: GetCoachProgramWeek :one
@@ -112,3 +112,16 @@ SELECT * FROM coach_program_week_sessions WHERE id = @id;
 -- name: GetCoachProgramSessionOverrides :many
 SELECT * FROM coach_program_session_overrides
 WHERE session_id = @session_id;
+
+-- name: GetMyProgramTrainingOverrides :many
+-- Every override the weeks of one of my programs set on a session running this
+-- training, with the coach the program belongs to so the assessments those
+-- overrides reference are resolved against their owner. Scoped by the athlete
+-- the program is assigned to, so it authorizes its own read rather than
+-- trusting the caller to have checked.
+SELECT o.item_id, o.overrides, p.coach_id
+FROM coach_program_session_overrides o
+JOIN coach_program_week_sessions s ON s.id = o.session_id
+JOIN coach_program_weeks w ON w.id = s.week_id
+JOIN coach_programs p ON p.id = w.program_id
+WHERE p.id = @program_id AND p.user_id = @user_id AND s.training_id = @training_id;

@@ -26,9 +26,8 @@ settings:
 
 docs:
   content: |-
-    Answers 429 in a full run. Registering already sent a verification email,
-    and a resend is refused for 10 minutes after the last one, so the address
-    Register just created is always inside its own cooldown. Point
-    registeredEmail at an unverified address whose last email is older than that
-    to see the 200.
+    Always answers 200 with the same message, whether the address is unknown,
+    already verified, inside its 10 minute cooldown, or was just sent a new link,
+    so it cannot be used to find out which addresses have an account. In a full
+    run Register has just sent a link, so this one sends nothing.
   type: text/markdown

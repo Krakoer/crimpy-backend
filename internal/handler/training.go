@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5"
@@ -19,11 +20,40 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// maxItemCommentLen caps the per-item coach comment length, matching the client input limit.
-const maxItemCommentLen = 200
-
 // maxItemDepth caps how deeply items may nest, bounding recursion on untrusted input.
 const maxItemDepth = 10
+
+// maxItemCommentLen caps the per-item coach comment, the execution note shown
+// to the athlete. It applies to every item type: the column is type agnostic,
+// and the coach comment matters most on the types that repeat, not only on
+// exercise. Comment is not an override key (contract/override-keys.json), so
+// this belongs here rather than in validateItemConfiguration, which also runs
+// on merged session overrides: a refusal from there has to name a field the
+// override row carries, and comment never can.
+const maxItemCommentLen = 2000
+
+// maxItemGoalLen caps the per-item goal, which names what the block trains
+// ("resi doigts", "explo jambes") rather than explaining it. It is far shorter
+// than the comment because it is a label an athlete reads beside the numbers,
+// and a paragraph there would be a comment written in the wrong field.
+//
+// Like the comment, the goal is not an override key
+// (contract/override-keys.json): a week that retunes a block still trains the
+// same thing, and a week that does not is a different block. So this check
+// belongs here rather than in validateItemConfiguration, which also runs on
+// merged session overrides and may only refuse fields the override row carries.
+const maxItemGoalLen = 200
+
+// maxItemProtocolLen caps the per-item protocol, the rule the athlete resolves
+// while performing the block. It gets the comment's 2000 rather than the goal's
+// 200 because it is prose with a condition in it ("to failure or 40s; past 40s
+// add 5kg, short of it put your feet on the ground"), not a label.
+//
+// Like the comment and the goal, the protocol is not an override key
+// (contract/override-keys.json), so this check belongs here rather than in
+// validateItemConfiguration, which also runs on merged session overrides and
+// may only refuse fields the override row carries.
+const maxItemProtocolLen = 2000
 
 // validItemTypes is the set of accepted training item discriminators.
 var validItemTypes = map[string]bool{
@@ -120,21 +150,23 @@ func (t variableTarget) validate(field string, want assessmentUnit, units assess
 
 // validateVariableTargets rejects unknown fields and malformed references so a
 // client cannot store a target the app would silently drop when resolving it.
+// Every refusal here is about variable_targets, whichever item field the target
+// inside it drives, since that is the one key an override replaces it through.
 func validateVariableTargets(raw json.RawMessage, units assessmentUnits) error {
 	if !hasJSONValue(raw) {
 		return nil
 	}
 	var targets map[string]variableTarget
 	if err := json.Unmarshal(raw, &targets); err != nil {
-		return fmt.Errorf("invalid variable_targets: %w", err)
+		return refusedFields(fmt.Errorf("invalid variable_targets: %w", err), "variable_targets")
 	}
 	for field, target := range targets {
 		want, ok := variableTargetFields[field]
 		if !ok {
-			return fmt.Errorf("invalid variable target field %q", field)
+			return refusedFields(fmt.Errorf("invalid variable target field %q", field), "variable_targets")
 		}
 		if err := target.validate(field, want, units); err != nil {
-			return err
+			return refusedFields(err, "variable_targets")
 		}
 	}
 	return nil
@@ -148,28 +180,30 @@ type loadWithTarget struct {
 }
 
 // validateLoads checks the assessment reference of every percent_assessment
-// load. Each hand carries its own flat array, one entry per row.
-func validateLoads(raw json.RawMessage, units assessmentUnits) error {
+// load. Each hand carries its own flat array, one entry per row. field is which
+// of the two arrays is being read, which the wording deliberately does not say
+// and a refusal has to be attributed to.
+func validateLoads(field string, raw json.RawMessage, units assessmentUnits) error {
 	if !hasJSONValue(raw) {
 		return nil
 	}
 	var entries []json.RawMessage
 	if err := json.Unmarshal(raw, &entries); err != nil {
-		return fmt.Errorf("invalid loads: %w", err)
+		return refusedFields(fmt.Errorf("invalid loads: %w", err), field)
 	}
 	for _, entry := range entries {
 		var load loadWithTarget
 		if err := json.Unmarshal(entry, &load); err != nil {
-			return fmt.Errorf("invalid loads: %w", err)
+			return refusedFields(fmt.Errorf("invalid loads: %w", err), field)
 		}
 		if load.Unit != percentAssessmentUnit {
 			continue
 		}
 		if err := load.checkAssessment("load", unitKilograms, units); err != nil {
-			return err
+			return refusedFields(err, field)
 		}
 		if load.Fallback == nil || *load.Fallback < 0 {
-			return fmt.Errorf("load: fallback must be zero or more")
+			return refusedFields(fmt.Errorf("load: fallback must be zero or more"), field)
 		}
 	}
 	return nil
@@ -239,6 +273,21 @@ func collectAssessmentRefs(sources []assessmentRefSource) []string {
 	return sortedKeys(seen)
 }
 
+// assessmentRefIDs is the id of every assessment the sources reference. A
+// reference that is not a uuid names no definition and is left out, so the
+// validators refuse it as unknown and a read simply does not name it.
+func assessmentRefIDs(sources []assessmentRefSource) []pgtype.UUID {
+	refs := collectAssessmentRefs(sources)
+	ids := make([]pgtype.UUID, 0, len(refs))
+	for _, ref := range refs {
+		var id pgtype.UUID
+		if err := id.Scan(ref); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func addAssessmentRef(seen map[string]bool, id *string) {
 	if id != nil && *id != "" {
 		seen[*id] = true
@@ -259,16 +308,7 @@ func sortedKeys(set map[string]bool) []string {
 // stays absent from the map, so the validators refuse it as unknown whether it
 // does not exist or belongs to somebody else.
 func resolveAssessmentUnits(ctx context.Context, q *db.Queries, ownerID pgtype.UUID, items []TrainingItemRequest) (assessmentUnits, error) {
-	refs := collectAssessmentRefs(requestRefSources(items))
-	ids := make([]pgtype.UUID, 0, len(refs))
-	for _, ref := range refs {
-		var id pgtype.UUID
-		// Not a uuid, so it names no definition. Left out of the map and refused
-		// as unknown, with the field named, by the validators.
-		if err := id.Scan(ref); err == nil {
-			ids = append(ids, id)
-		}
-	}
+	ids := assessmentRefIDs(requestRefSources(items))
 	if len(ids) == 0 {
 		return assessmentUnits{}, nil
 	}
@@ -284,6 +324,77 @@ func resolveAssessmentUnits(ctx context.Context, q *db.Queries, ownerID pgtype.U
 		units[row.ID.String()] = assessmentUnit(row.Unit)
 	}
 	return units, nil
+}
+
+// errUnknownExercise is answered for an exercise that does not exist as well as
+// for one belonging to somebody else: telling them apart would say whether an id
+// the caller guessed is real. It is an invalidRequest, so the caller sees a 400
+// while a database failure on the same path stays a logged 500.
+func errUnknownExercise() error {
+	return invalidRequestf("an exercise referenced by this training does not exist")
+}
+
+// requestExerciseIDs collects every exercise the items reference, parsed and
+// deduplicated. A reference that is not a uuid is an error rather than a value
+// to drop: silently storing the item without it would leave a coach looking at
+// an exercise row that never took.
+func requestExerciseIDs(items []TrainingItemRequest) ([]pgtype.UUID, error) {
+	seen := make(map[pgtype.UUID]bool)
+	ids := make([]pgtype.UUID, 0)
+
+	var walk func(items []TrainingItemRequest) error
+	walk = func(items []TrainingItemRequest) error {
+		for _, item := range items {
+			// An absent reference and an empty one both mean "no exercise",
+			// which is what every item that is not an exercise carries.
+			if item.ExerciseID != nil && *item.ExerciseID != "" {
+				var id pgtype.UUID
+				if err := id.Scan(*item.ExerciseID); err != nil {
+					return invalidRequestf("exercise_id %q is not a valid id", *item.ExerciseID)
+				}
+				if !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+			if err := walk(item.Items); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(items); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// validateExerciseRefs refuses a tree that names an exercise the owner does not
+// hold. Without it any authenticated user could store a reference to another
+// coach's exercise and read its name, notes and video back off their own
+// training.
+func validateExerciseRefs(ctx context.Context, q *db.Queries, ownerID pgtype.UUID, items []TrainingItemRequest) error {
+	ids, err := requestExerciseIDs(items)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	owned, err := q.CountExercisesOwnedBy(ctx, db.CountExercisesOwnedByParams{
+		Ids:     ids,
+		CoachID: ownerID,
+	})
+	if err != nil {
+		return err
+	}
+	// One count for the whole tree rather than a lookup per item: the caller
+	// only needs to know whether any reference is not theirs, and naming which
+	// one would confirm an id they are not allowed to ask about.
+	if int(owned) != len(ids) {
+		return errUnknownExercise()
+	}
+	return nil
 }
 
 // hasJSONValue reports whether raw holds something other than an absent or null
@@ -313,6 +424,24 @@ func normalizeTrainingType(trainingType string) (string, error) {
 	return trainingType, nil
 }
 
+// validateItemText rejects free text past its cap rather than truncating it: a
+// coach whose prose gets cut silently only finds out when the athlete reads
+// half of it. The caps and why each one is the size it is live on the constants
+// above; [field] names the one being checked so the refusal says which of the
+// three the coach has to shorten.
+//
+// Counted in runes, so a line written in the accented French the coaching
+// spreadsheet uses gets the same number of characters as one written in ASCII.
+func validateItemText(field string, text *string, max int) error {
+	if text == nil {
+		return nil
+	}
+	if utf8.RuneCountInString(*text) > max {
+		return fmt.Errorf("%s must be at most %d characters", field, max)
+	}
+	return nil
+}
+
 // validateTrainingItems rejects unknown item types, over-deep trees, rep counts
 // on a type that does not repeat and malformed configuration arrays before any
 // row is written.
@@ -333,6 +462,15 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 		if err := validateRepsIsMax(item); err != nil {
 			return err
 		}
+		if err := validateItemText("comment", item.Comment, maxItemCommentLen); err != nil {
+			return err
+		}
+		if err := validateItemText("goal", item.Goal, maxItemGoalLen); err != nil {
+			return err
+		}
+		if err := validateItemText("protocol", item.Protocol, maxItemProtocolLen); err != nil {
+			return err
+		}
 		if err := validateItemConfiguration(item, units); err != nil {
 			return err
 		}
@@ -341,15 +479,6 @@ func validateTrainingItems(items []TrainingItemRequest, depth int, units assessm
 		}
 	}
 	return nil
-}
-
-// truncateRunes shortens s to at most n runes, preserving multi-byte characters.
-func truncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n])
 }
 
 type TrainingHandler struct {
@@ -389,6 +518,8 @@ type TrainingItemRequest struct {
 	Granularity      *string               `json:"granularity" enums:"uniform,rep,set"`
 	FreeText         *string               `json:"free_text"`
 	Comment          *string               `json:"comment"`
+	Goal             *string               `json:"goal"`
+	Protocol         *string               `json:"protocol"`
 	LoadIsMax        bool                  `json:"load_is_max"`
 	Loads            json.RawMessage       `json:"loads"           swaggertype:"array,object"`
 	LeftLoads        json.RawMessage       `json:"left_loads"      swaggertype:"array,object"`
@@ -421,31 +552,40 @@ type UpdateTrainingRequest struct {
 
 // TrainingItemResponse mirrors TrainingItemRequest with added server-assigned fields.
 type TrainingItemResponse struct {
-	ID               string                 `json:"id"`
-	Type             string                 `json:"type"`
-	Position         int32                  `json:"position"`
-	Cycles           *int32                 `json:"cycles,omitempty"`
-	CycleRestSeconds *int32                 `json:"cycle_rest_seconds,omitempty"`
-	IntervalSeconds  *int32                 `json:"interval_seconds,omitempty"`
-	Reps             *int32                 `json:"reps,omitempty"`
-	RepsIsMax        bool                   `json:"reps_is_max"`
-	Duration         *int32                 `json:"duration,omitempty"`
-	RestSeconds      *int32                 `json:"rest_seconds,omitempty"`
-	ExerciseID       *string                `json:"exercise_id,omitempty"`
-	ExerciseName     *string                `json:"exercise_name,omitempty"`
-	WorktimeSeconds  *int32                 `json:"worktime_seconds,omitempty"`
-	Hand             *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
-	Granularity      *string                `json:"granularity,omitempty" enums:"uniform,rep,set"`
-	FreeText         *string                `json:"free_text,omitempty"`
-	Comment          *string                `json:"comment,omitempty"`
-	LoadIsMax        bool                   `json:"load_is_max"`
-	Loads            json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
-	LeftLoads        json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
-	HandPositions    json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
-	EdgeSizesMm      json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
-	VariableTargets  json.RawMessage        `json:"variable_targets,omitempty" swaggertype:"object"`
-	GroupTitle       *string                `json:"group_title,omitempty"`
-	Items            []TrainingItemResponse `json:"items,omitempty"`
+	ID               string  `json:"id"`
+	Type             string  `json:"type"`
+	Position         int32   `json:"position"`
+	Cycles           *int32  `json:"cycles,omitempty"`
+	CycleRestSeconds *int32  `json:"cycle_rest_seconds,omitempty"`
+	IntervalSeconds  *int32  `json:"interval_seconds,omitempty"`
+	Reps             *int32  `json:"reps,omitempty"`
+	RepsIsMax        bool    `json:"reps_is_max"`
+	Duration         *int32  `json:"duration,omitempty"`
+	RestSeconds      *int32  `json:"rest_seconds,omitempty"`
+	ExerciseID       *string `json:"exercise_id,omitempty"`
+	ExerciseName     *string `json:"exercise_name,omitempty"`
+	// Joined from the exercise the item points at, not stored on the item.
+	// ExerciseComment is the coach's execution notes on the movement, which is a
+	// different field from the item's own Comment above: that one is what the
+	// coach said about this step, this one is about the exercise everywhere.
+	ExerciseDescription *string                `json:"exercise_description,omitempty"`
+	ExerciseComment     *string                `json:"exercise_comment,omitempty"`
+	ExerciseVideoLink   *string                `json:"exercise_video_link,omitempty"`
+	WorktimeSeconds     *int32                 `json:"worktime_seconds,omitempty"`
+	Hand                *string                `json:"hand,omitempty"        enums:"both,alternate,split,left,right"`
+	Granularity         *string                `json:"granularity,omitempty" enums:"uniform,rep,set"`
+	FreeText            *string                `json:"free_text,omitempty"`
+	Comment             *string                `json:"comment,omitempty"`
+	Goal                *string                `json:"goal,omitempty"`
+	Protocol            *string                `json:"protocol,omitempty"`
+	LoadIsMax           bool                   `json:"load_is_max"`
+	Loads               json.RawMessage        `json:"loads,omitempty"           swaggertype:"array,object"`
+	LeftLoads           json.RawMessage        `json:"left_loads,omitempty"      swaggertype:"array,object"`
+	HandPositions       json.RawMessage        `json:"hand_positions,omitempty"  swaggertype:"array,object"`
+	EdgeSizesMm         json.RawMessage        `json:"edge_sizes_mm,omitempty"   swaggertype:"array,integer"`
+	VariableTargets     json.RawMessage        `json:"variable_targets,omitempty" swaggertype:"object"`
+	GroupTitle          *string                `json:"group_title,omitempty"`
+	Items               []TrainingItemResponse `json:"items,omitempty"`
 }
 
 type TrainingResponse struct {
@@ -483,6 +623,16 @@ type TrainingListItem struct {
 	Assessment *AssessmentDefinitionSnapshot `json:"assessment,omitempty"`
 	CreatedAt  string                        `json:"created_at"`
 	UpdatedAt  string                        `json:"updated_at"`
+	// The item tree, present only for a caller that asked for it with
+	// include=items and absent otherwise, so the cheap list keeps the exact
+	// shape it has always answered with. A training that holds no items answers
+	// with an empty array once they were asked for, which is what lets a reader
+	// tell an empty training apart from a list it never asked to carry items.
+	Items *[]TrainingItemResponse `json:"items,omitempty"`
+	// The assessments the items reference, on the same terms as Items: a client
+	// reading the library in one request needs them to name and unit check a
+	// percentage, exactly as the detail endpoint hands them over.
+	ReferencedAssessments []AssessmentDefinitionSnapshot `json:"referenced_assessments,omitempty"`
 }
 
 func trainingToListItem(s db.Training) TrainingListItem {
@@ -522,10 +672,11 @@ func trainingRowToListItem(r db.GetTrainingsRow) TrainingListItem {
 	})
 	if r.AssessmentID.Valid {
 		item.Assessment = &AssessmentDefinitionSnapshot{
-			ID:      r.AssessmentID.String(),
-			Label:   r.Label.String,
-			Unit:    r.Unit.String,
-			PerHand: r.PerHand.Bool,
+			ID:                 r.AssessmentID.String(),
+			Label:              r.Label.String,
+			Unit:               r.Unit.String,
+			PerHand:            r.PerHand.Bool,
+			BodyweightRelative: r.BodyweightRelative.Bool,
 		}
 		if r.Prompt.Valid {
 			item.Assessment.Prompt = &r.Prompt.String
@@ -583,7 +734,13 @@ func trainingItemParams(trainingID, parentID pgtype.UUID, position int32, req Tr
 		params.FreeText = pgtype.Text{String: *req.FreeText, Valid: true}
 	}
 	if req.Comment != nil {
-		params.Comment = pgtype.Text{String: truncateRunes(*req.Comment, maxItemCommentLen), Valid: true}
+		params.Comment = pgtype.Text{String: *req.Comment, Valid: true}
+	}
+	if req.Goal != nil {
+		params.Goal = pgtype.Text{String: *req.Goal, Valid: true}
+	}
+	if req.Protocol != nil {
+		params.Protocol = pgtype.Text{String: *req.Protocol, Valid: true}
 	}
 	params.LoadIsMax = req.LoadIsMax
 	if hasJSONValue(req.Loads) {
@@ -628,6 +785,8 @@ func updateTrainingItemParams(id pgtype.UUID, p db.CreateTrainingItemParams) db.
 		Granularity:      p.Granularity,
 		FreeText:         p.FreeText,
 		Comment:          p.Comment,
+		Goal:             p.Goal,
+		Protocol:         p.Protocol,
 		LoadIsMax:        p.LoadIsMax,
 		Loads:            p.Loads,
 		LeftLoads:        p.LeftLoads,
@@ -811,6 +970,12 @@ func dbTrainingItemToResponse(r db.TrainingItem) TrainingItemResponse {
 	if r.Comment.Valid {
 		resp.Comment = &r.Comment.String
 	}
+	if r.Goal.Valid {
+		resp.Goal = &r.Goal.String
+	}
+	if r.Protocol.Valid {
+		resp.Protocol = &r.Protocol.String
+	}
 	resp.LoadIsMax = r.LoadIsMax
 	if len(r.Loads) > 0 {
 		resp.Loads = json.RawMessage(r.Loads)
@@ -843,6 +1008,18 @@ func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) 
 			if row.ExerciseName.Valid {
 				resp.ExerciseName = &row.ExerciseName.String
 			}
+			// Tested for emptiness rather than for NULL: the exercise write
+			// paths store a cleared field as "", and a key present but empty
+			// would hand the app a link affordance that opens nothing.
+			if row.ExerciseDescription.String != "" {
+				resp.ExerciseDescription = &row.ExerciseDescription.String
+			}
+			if row.ExerciseComment.String != "" {
+				resp.ExerciseComment = &row.ExerciseComment.String
+			}
+			if row.ExerciseVideoLink.String != "" {
+				resp.ExerciseVideoLink = &row.ExerciseVideoLink.String
+			}
 			resp.Items = buildTrainingItemTree(rows, row.ID)
 			result = append(result, resp)
 		}
@@ -850,8 +1027,8 @@ func buildTrainingItemTree(rows []db.GetTrainingItemsRow, parentID pgtype.UUID) 
 	return result
 }
 
-// trainingItemFromRow drops the joined exercise_name so the shared response
-// mapper can be reused.
+// trainingItemFromRow drops the joined exercise columns so the shared response
+// mapper can be reused. buildTrainingItemTree puts them back on the response.
 func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 	return db.TrainingItem{
 		ID:               r.ID,
@@ -872,6 +1049,8 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 		Granularity:      r.Granularity,
 		FreeText:         r.FreeText,
 		Comment:          r.Comment,
+		Goal:             r.Goal,
+		Protocol:         r.Protocol,
 		Loads:            r.Loads,
 		LeftLoads:        r.LeftLoads,
 		HandPositions:    r.HandPositions,
@@ -886,7 +1065,7 @@ func trainingItemFromRow(r db.GetTrainingItemsRow) db.TrainingItem {
 
 // CreateCoachTraining godoc
 // @Summary Create a training template
-// @Description Create a new training template with a structured item tree.
+// @Description Create a new training template with a structured item tree. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.
 // @Tags Trainings
 // @Accept json
 // @Produce json
@@ -920,6 +1099,20 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 
 	if err := validateTrainingItems(req.Items, 1, units); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if err := validateExerciseRefs(c.Context(), h.queries, userUUID, req.Items); err != nil {
+		var bad invalidRequest
+		if errors.As(err, &bad) {
+			// The same branch answers a malformed id, so the reason is carried
+			// rather than asserted: an audit for cross-tenant attempts should
+			// not have to read a typo as one.
+			slog.Warn("refused a training payload's exercise reference",
+				"user_id", userUUID.String(), "reason", bad.Error())
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
+		}
+		slog.Error("failed to validate exercise references", "user_id", userUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training"})
 	}
 
 	trainingType, err := normalizeTrainingType(req.TrainingType)
@@ -961,6 +1154,12 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	var zeroParent pgtype.UUID
 	items, err := insertTrainingItemsRecursive(c.Context(), qtx, training.ID, zeroParent, req.Items)
 	if err != nil {
+		// The per-item arrays are stored as the client wrote them, so a body Go
+		// parses and jsonb will not take is the client's to correct.
+		if storeRejectedInput(err) {
+			slog.Warn("refusing training items the store cannot keep", "user_id", userUUID.String(), "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item holds something the store cannot keep"})
+		}
 		slog.Error("failed to insert training items", "training_id", training.ID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create training items"})
 	}
@@ -979,14 +1178,72 @@ func (h *TrainingHandler) CreateTraining(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(detail)
 }
 
+// trainingItemsInclude is the only extra GET /api/trainings knows how to add to
+// its rows.
+const trainingItemsInclude = "items"
+
+const (
+	// MaxTrainingsWithItems is how many rows an include=items listing answers
+	// with at most. It bounds the only unbounded thing about this endpoint:
+	// every row it answers is materialised in Go, with its whole item tree and
+	// the assessment definitions those items reference, and marshalled to JSON
+	// in memory before a byte leaves the process. Compression bounds the wire
+	// and nothing else, and it holds the compressed copy beside the plain one
+	// while it works, so the ceiling here is the only ceiling this endpoint has,
+	// on the server and on the client both.
+	//
+	// The cap counts trainings rather than items. A training count bounds the
+	// response only loosely, since libraries vary in items per training by an
+	// order of magnitude, but it cuts at a row boundary the caller can name and
+	// at a stable point: GetTrainings orders by title and then by id, so the
+	// same library cut twice answers the same rows even where titles repeat. An
+	// item budget would bound the bytes tighter and move the cut every time a
+	// training in the middle gained a set.
+	//
+	// The cheap list is not capped. It carries no items, which is the cost this
+	// ceiling is about, and capping it would shrink an answer clients already
+	// read whole for no gain.
+	MaxTrainingsWithItems = 200
+	// What a truncated listing says so the caller is not left guessing. The
+	// answer is a bare JSON array that clients already parse, so the fact
+	// cannot ride in the body without breaking them, and a short library reads
+	// exactly like a coach who owns fewer trainings.
+	//
+	// Exported because the CORS middleware has to expose exactly this header
+	// for a browser to be allowed to read it, and a second spelling of it over
+	// there would drift without anything failing.
+	TrainingsTruncatedHeader = "X-Trainings-Truncated"
+)
+
+// parseTrainingInclude reads the include parameter, a comma separated list of
+// the extras the caller wants on every row. It answers whether the items were
+// asked for, and whether the parameter was readable at all. An unknown name is
+// refused rather than ignored: a client that misspells it would otherwise be
+// handed the cheap list and read it as a library of empty trainings.
+func parseTrainingInclude(raw string) (includeItems bool, ok bool) {
+	for _, name := range strings.Split(raw, ",") {
+		switch strings.TrimSpace(name) {
+		case "":
+		case trainingItemsInclude:
+			includeItems = true
+		default:
+			return false, false
+		}
+	}
+	return includeItems, true
+}
+
 // GetCoachTrainings godoc
 // @Summary List user's training templates
-// @Description Get all training templates for the authenticated user (without items).
+// @Description Get all training templates for the authenticated user. The rows carry no items unless include=items asks for them, in which case each one also carries its item tree and the assessment definitions those items reference, which is what lets a client read a whole library in one request. An include=items listing answers at most 200 rows, ordered by title, and sets X-Trainings-Truncated to true when it cut the library short. The cheap list is not capped.
 // @Tags Trainings
 // @Produce json
 // @Security BearerAuth
 // @Param is_assessment query bool false "Only the custom assessments when true, only the trainings that are not one when false, the whole library when omitted"
-// @Success 200 {array} TrainingListItem "List of trainings"
+// @Param include query string false "Comma separated extras to put on each row. Only items is understood, and anything else is refused. The row's own assessment snapshot still answers unit_locked as false whatever the truth is, since computing it reads every training item through; GET /api/assessment-definitions carries the real flag" Enums(items)
+// @Success 200 {array} TrainingListItem "List of trainings. Carries X-Trainings-Truncated: true when include=items cut the library at 200 rows"
+// @Header 200 {string} X-Trainings-Truncated "Set to true only when an include=items listing was cut at 200 rows. Absent otherwise, which is the caller's proof it read the whole library"
+// @Failure 400 {object} map[string]string "Invalid query parameter"
 // @Router /api/trainings [get]
 func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 	userIDStr := middleware.GetUserID(c)
@@ -1004,9 +1261,26 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		isAssessment = pgtype.Bool{Bool: wanted, Valid: true}
 	}
 
+	includeItems, ok := parseTrainingInclude(c.Query("include"))
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid include"})
+	}
+
+	// The ceiling is pushed down to the query rather than applied to whatever
+	// it hands back, so the rows past it are never sent over the wire, decoded
+	// or built into response structs. Postgres still reads and sorts the whole
+	// matching set to answer an ORDER BY with a LIMIT, so the sort is not what
+	// this saves. It asks for one row past the ceiling, which is what tells a
+	// whole answer from a cut one without paying for a second counting query.
+	// The cheap list sends no limit and stays uncapped.
+	var rowLimit pgtype.Int4
+	if includeItems {
+		rowLimit = pgtype.Int4{Int32: MaxTrainingsWithItems + 1, Valid: true}
+	}
 	trainings, err := h.queries.GetTrainings(c.Context(), db.GetTrainingsParams{
 		UserID:       userUUID,
 		IsAssessment: isAssessment,
+		RowLimit:     rowLimit,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve trainings", "user_id", userUUID.String(), "error", err)
@@ -1018,7 +1292,154 @@ func (h *TrainingHandler) GetTrainings(c fiber.Ctx) error {
 		result = append(result, trainingRowToListItem(s))
 	}
 
+	truncated := false
+	if includeItems {
+		// Cut before the trees are read, not after. Attaching items to rows
+		// that are about to be dropped would pay the whole cost the cap exists
+		// to avoid and then throw the result away.
+		truncated = len(result) > MaxTrainingsWithItems
+		if truncated {
+			result = result[:MaxTrainingsWithItems]
+			slog.Warn("training listing truncated", "user_id", userUUID.String(), "max_trainings", MaxTrainingsWithItems)
+		}
+		if err := attachTrainingItems(c.Context(), h.queries, result); err != nil {
+			slog.Error("failed to retrieve training items", "user_id", userUUID.String(), "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve trainings"})
+		}
+	}
+
+	// Set on the way out rather than where the cut is decided, so the header
+	// rides only on the body it describes. Setting it earlier would leave it on
+	// the 500 an item read failure answers with, where it would say a response
+	// carrying no library at all was a cut library.
+	if truncated {
+		c.Set(TrainingsTruncatedHeader, "true")
+	}
 	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+// attachTrainingItems puts the item tree, and the assessment definitions those
+// items reference, on every row of the list.
+//
+// It reads them for the whole list at once: two queries whatever the library
+// holds, rather than the two per training a caller following the list with a
+// detail read per row would have paid for.
+func attachTrainingItems(ctx context.Context, q *db.Queries, list []TrainingListItem) error {
+	if len(list) == 0 {
+		return nil
+	}
+
+	ids := make([]pgtype.UUID, 0, len(list))
+	for _, row := range list {
+		var id pgtype.UUID
+		if err := id.Scan(row.ID); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+
+	rows, err := q.GetTrainingItems(ctx, ids)
+	if err != nil {
+		return err
+	}
+
+	byTraining := make(map[string][]db.GetTrainingItemsRow, len(list))
+	for _, row := range rows {
+		key := row.TrainingID.String()
+		byTraining[key] = append(byTraining[key], row)
+	}
+
+	var zeroParent pgtype.UUID
+	trees := make([][]TrainingItemResponse, len(list))
+	// Each training's references are collected once and kept, rather than read
+	// off the items again when the snapshots are handed out: collecting them
+	// unmarshals every item's target and load JSON, and doing that twice per
+	// library is the sort of cost this endpoint exists to stop paying.
+	refIDs := make([][]pgtype.UUID, len(list))
+	allIDs := make([]pgtype.UUID, 0, len(rows))
+	for i, row := range list {
+		trees[i] = buildTrainingItemTree(byTraining[row.ID], zeroParent)
+		refIDs[i] = assessmentRefIDs(responseRefSources(trees[i]))
+		allIDs = append(allIDs, refIDs[i]...)
+	}
+
+	definitions, err := assessmentSnapshotsByID(ctx, q, allIDs)
+	if err != nil {
+		return err
+	}
+
+	nameAssessmentTrainings(list)
+
+	for i := range list {
+		list[i].Items = &trees[i]
+		list[i].ReferencedAssessments = namedAssessmentSnapshots(definitions, refIDs[i])
+	}
+	return nil
+}
+
+// nameAssessmentTrainings names the training each assessment row is run from,
+// which the cheap list leaves off its snapshot.
+//
+// It is load bearing rather than cosmetic: a client reads an assessment as one
+// Crimpy ships when it names no training, so a row answered without it would
+// report an athlete's own assessment as a builtin. The cheap list keeps the
+// shallow snapshot, because a caller reading it today must not see its shape
+// move. It costs nothing to fill: the join that put the assessment on the row
+// matched on this very id.
+//
+// unit_locked is the one field of the snapshot the list still leaves at its
+// zero value, and deliberately so. The query behind it matches an assessment id
+// inside opaque JSON with LIKE, which no index serves, so it reads
+// training_items through. Paying that on every library read is exactly the cost
+// this endpoint exists to remove, and nothing reads the flag off a list: it is
+// an editor concern, answered by the detail endpoint to the one screen that
+// asks.
+func nameAssessmentTrainings(list []TrainingListItem) {
+	for i := range list {
+		if list[i].Assessment == nil {
+			continue
+		}
+		trainingID := list[i].ID
+		list[i].Assessment.TrainingID = &trainingID
+	}
+}
+
+// assessmentSnapshotsByID freezes every named definition, keyed by id. It is
+// freezeAssessmentDefinitions for a caller resolving several trainings, which
+// wants one query rather than one per training.
+func assessmentSnapshotsByID(ctx context.Context, q *db.Queries, ids []pgtype.UUID) (map[string]AssessmentDefinitionSnapshot, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := q.GetAssessmentDefinitionsForPrescription(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]AssessmentDefinitionSnapshot, len(rows))
+	for _, row := range rows {
+		byID[row.ID.String()] = assessmentDefinitionToSnapshot(row)
+	}
+	return byID, nil
+}
+
+// namedAssessmentSnapshots picks the definitions one training references out of
+// the batch. A reference with no definition behind it is dropped, the way
+// freezeAssessmentDefinitions drops it: the query answers with the rows that
+// exist and says nothing about the ones that do not.
+func namedAssessmentSnapshots(byID map[string]AssessmentDefinitionSnapshot, ids []pgtype.UUID) []AssessmentDefinitionSnapshot {
+	if len(ids) == 0 {
+		return nil
+	}
+	snapshots := make([]AssessmentDefinitionSnapshot, 0, len(ids))
+	for _, id := range ids {
+		if snapshot, ok := byID[id.String()]; ok {
+			snapshots = append(snapshots, snapshot)
+		}
+	}
+	if len(snapshots) == 0 {
+		return nil
+	}
+	return snapshots
 }
 
 // GetCoachTraining godoc
@@ -1039,7 +1460,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 		return nil
 	}
 
-	rows, err := h.queries.GetTrainingItems(c.Context(), trainingUUID)
+	rows, err := h.queries.GetTrainingItems(c.Context(), []pgtype.UUID{trainingUUID})
 	if err != nil {
 		slog.Error("failed to retrieve training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training items"})
@@ -1059,7 +1480,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 
 // UpdateCoachTraining godoc
 // @Summary Update a training template
-// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted.
+// @Description Replace the training metadata and items tree. Only the owner can update. An item sent back with the id it was read under keeps that id, so the rep data, results and program overrides pointing at it survive the edit; an item sent without one is added, and a stored item the payload no longer carries is deleted. Each item's comment must be at most 2000 characters, its goal at most 200 and its protocol at most 2000.
 // @Tags Trainings
 // @Accept json
 // @Produce json
@@ -1070,6 +1491,7 @@ func (h *TrainingHandler) GetTraining(c fiber.Ctx) error {
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 403 {object} map[string]string "Access denied"
 // @Failure 404 {object} map[string]string "Training not found"
+// @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/trainings/{id} [put]
 func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 	existing, trainingUUID, ok := h.ownedTraining().require(c)
@@ -1094,6 +1516,21 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 
 	if err := validateTrainingItems(req.Items, 1, units); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Against the training's owner rather than the caller: they are the same
+	// person here, since the ownership check above already refused anyone else,
+	// and reading it off the row keeps that true if it ever stops being.
+	if err := validateExerciseRefs(c.Context(), h.queries, existing.UserID, req.Items); err != nil {
+		var bad invalidRequest
+		if errors.As(err, &bad) {
+			slog.Warn("refused a training payload's exercise reference",
+				"user_id", existing.UserID.String(), "training_id", trainingUUID.String(),
+				"reason", bad.Error())
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
+		}
+		slog.Error("failed to validate exercise references", "training_id", trainingUUID.String(), "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training"})
 	}
 
 	trainingType, err := normalizeTrainingType(req.TrainingType)
@@ -1139,6 +1576,10 @@ func (h *TrainingHandler) UpdateTraining(c fiber.Ctx) error {
 		var bad invalidRequest
 		if errors.As(err, &bad) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": bad.Error()})
+		}
+		if storeRejectedInput(err) {
+			slog.Warn("refusing training items the store cannot keep", "training_id", trainingUUID.String(), "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item holds something the store cannot keep"})
 		}
 		slog.Error("failed to sync training items", "training_id", trainingUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update training items"})

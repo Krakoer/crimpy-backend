@@ -60,7 +60,7 @@ INSERT INTO training_items (
   reps, reps_is_max, duration, rest_seconds,
   exercise_id,
   worktime_seconds, hand, granularity,
-  free_text, comment, load_is_max,
+  free_text, comment, goal, protocol, load_is_max,
   loads, left_loads, hand_positions, edge_sizes_mm,
   variable_targets,
   group_title
@@ -70,12 +70,12 @@ INSERT INTO training_items (
   $8, $9, $10, $11,
   $12,
   $13, $14, $15,
-  $16, $17, $18,
-  $19, $20, $21, $22,
-  $23,
-  $24
+  $16, $17, $18, $19, $20,
+  $21, $22, $23, $24,
+  $25,
+  $26
 )
-RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
+RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, goal, protocol, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
 `
 
 type CreateTrainingItemParams struct {
@@ -96,6 +96,8 @@ type CreateTrainingItemParams struct {
 	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
+	Goal             pgtype.Text
+	Protocol         pgtype.Text
 	LoadIsMax        bool
 	Loads            []byte
 	LeftLoads        []byte
@@ -124,6 +126,8 @@ func (q *Queries) CreateTrainingItem(ctx context.Context, arg CreateTrainingItem
 		arg.Granularity,
 		arg.FreeText,
 		arg.Comment,
+		arg.Goal,
+		arg.Protocol,
 		arg.LoadIsMax,
 		arg.Loads,
 		arg.LeftLoads,
@@ -152,6 +156,8 @@ func (q *Queries) CreateTrainingItem(ctx context.Context, arg CreateTrainingItem
 		&i.Granularity,
 		&i.FreeText,
 		&i.Comment,
+		&i.Goal,
+		&i.Protocol,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,
@@ -212,7 +218,7 @@ func (q *Queries) GetTraining(ctx context.Context, id pgtype.UUID) (Training, er
 }
 
 const getTrainingItemInTraining = `-- name: GetTrainingItemInTraining :one
-SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at FROM training_items WHERE id = $1 AND training_id = $2
+SELECT id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, goal, protocol, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at FROM training_items WHERE id = $1 AND training_id = $2
 `
 
 type GetTrainingItemInTrainingParams struct {
@@ -242,6 +248,8 @@ func (q *Queries) GetTrainingItemInTraining(ctx context.Context, arg GetTraining
 		&i.Granularity,
 		&i.FreeText,
 		&i.Comment,
+		&i.Goal,
+		&i.Protocol,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,
@@ -256,46 +264,70 @@ func (q *Queries) GetTrainingItemInTraining(ctx context.Context, arg GetTraining
 }
 
 const getTrainingItems = `-- name: GetTrainingItems :many
-SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at, exercises.name AS exercise_name
+SELECT training_items.id, training_items.training_id, training_items.parent_id, training_items.type, training_items.position, training_items.cycles, training_items.cycle_rest_seconds, training_items.interval_seconds, training_items.reps, training_items.reps_is_max, training_items.duration, training_items.rest_seconds, training_items.exercise_id, training_items.worktime_seconds, training_items.hand, training_items.granularity, training_items.free_text, training_items.comment, training_items.goal, training_items.protocol, training_items.loads, training_items.left_loads, training_items.hand_positions, training_items.edge_sizes_mm, training_items.load_is_max, training_items.variable_targets, training_items.group_title, training_items.created_at, training_items.updated_at,
+       exercises.name AS exercise_name,
+       exercises.description AS exercise_description,
+       exercises.comment AS exercise_comment,
+       exercises.video_link AS exercise_video_link
 FROM training_items
-LEFT JOIN exercises ON exercises.id = training_items.exercise_id
-WHERE training_items.training_id = $1
-ORDER BY training_items.position
+JOIN trainings ON trainings.id = training_items.training_id
+LEFT JOIN exercises
+  ON exercises.id = training_items.exercise_id
+ AND exercises.coach_id = trainings.user_id
+WHERE training_items.training_id = ANY($1::uuid[])
+ORDER BY training_items.training_id, training_items.position
 `
 
 type GetTrainingItemsRow struct {
-	ID               pgtype.UUID
-	TrainingID       pgtype.UUID
-	ParentID         pgtype.UUID
-	Type             string
-	Position         int32
-	Cycles           pgtype.Int4
-	CycleRestSeconds pgtype.Int4
-	IntervalSeconds  pgtype.Int4
-	Reps             pgtype.Int4
-	RepsIsMax        bool
-	Duration         pgtype.Int4
-	RestSeconds      pgtype.Int4
-	ExerciseID       pgtype.UUID
-	WorktimeSeconds  pgtype.Int4
-	Hand             pgtype.Text
-	Granularity      pgtype.Text
-	FreeText         pgtype.Text
-	Comment          pgtype.Text
-	Loads            []byte
-	LeftLoads        []byte
-	HandPositions    []byte
-	EdgeSizesMm      []byte
-	LoadIsMax        bool
-	VariableTargets  []byte
-	GroupTitle       pgtype.Text
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	ExerciseName     pgtype.Text
+	ID                  pgtype.UUID
+	TrainingID          pgtype.UUID
+	ParentID            pgtype.UUID
+	Type                string
+	Position            int32
+	Cycles              pgtype.Int4
+	CycleRestSeconds    pgtype.Int4
+	IntervalSeconds     pgtype.Int4
+	Reps                pgtype.Int4
+	RepsIsMax           bool
+	Duration            pgtype.Int4
+	RestSeconds         pgtype.Int4
+	ExerciseID          pgtype.UUID
+	WorktimeSeconds     pgtype.Int4
+	Hand                pgtype.Text
+	Granularity         pgtype.Text
+	FreeText            pgtype.Text
+	Comment             pgtype.Text
+	Goal                pgtype.Text
+	Protocol            pgtype.Text
+	Loads               []byte
+	LeftLoads           []byte
+	HandPositions       []byte
+	EdgeSizesMm         []byte
+	LoadIsMax           bool
+	VariableTargets     []byte
+	GroupTitle          pgtype.Text
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	ExerciseName        pgtype.Text
+	ExerciseDescription pgtype.Text
+	ExerciseComment     pgtype.Text
+	ExerciseVideoLink   pgtype.Text
 }
 
-func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) ([]GetTrainingItemsRow, error) {
-	rows, err := q.db.Query(ctx, getTrainingItems, trainingID)
+// The exercise columns travel with the item because the athlete cannot read the
+// exercise itself: every /api/coach/exercises route is coach only, so a video
+// the coach attached reaches them here or nowhere.
+//
+// The join is closed on the training's owner as well as on the id. Writes are
+// validated, so a legitimate reference always satisfies it; what this covers is
+// a row stored before they were, which would otherwise hand any reader the
+// name, notes and video of an exercise belonging to somebody else. An unowned
+// reference resolves to no exercise, exactly like an item that names none.
+//
+// Several trainings at a time, so a library read costs one query rather than
+// one per training. A caller after a single training passes an array of one.
+func (q *Queries) GetTrainingItems(ctx context.Context, trainingIds []pgtype.UUID) ([]GetTrainingItemsRow, error) {
+	rows, err := q.db.Query(ctx, getTrainingItems, trainingIds)
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +354,8 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 			&i.Granularity,
 			&i.FreeText,
 			&i.Comment,
+			&i.Goal,
+			&i.Protocol,
 			&i.Loads,
 			&i.LeftLoads,
 			&i.HandPositions,
@@ -332,6 +366,9 @@ func (q *Queries) GetTrainingItems(ctx context.Context, trainingID pgtype.UUID) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExerciseName,
+			&i.ExerciseDescription,
+			&i.ExerciseComment,
+			&i.ExerciseVideoLink,
 		); err != nil {
 			return nil, err
 		}
@@ -360,42 +397,57 @@ func (q *Queries) GetTrainingOwnedBy(ctx context.Context, arg GetTrainingOwnedBy
 }
 
 const getTrainings = `-- name: GetTrainings :many
-SELECT t.id, t.user_id, t.title, t.description, t.training_type, t.goal, t.comment, t.is_favorite, t.created_at, t.updated_at, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand
+SELECT t.id, t.user_id, t.title, t.description, t.training_type, t.goal, t.comment, t.is_favorite, t.created_at, t.updated_at, d.id AS assessment_id, d.label, d.prompt, d.unit, d.per_hand, d.bodyweight_relative
 FROM trainings t
 LEFT JOIN assessment_definitions d ON d.training_id = t.id
 WHERE t.user_id = $1
   AND ($2::bool IS NULL
        OR (d.id IS NOT NULL) = $2::bool)
-ORDER BY t.title
+ORDER BY t.title, t.id
+LIMIT $3::int
 `
 
 type GetTrainingsParams struct {
 	UserID       pgtype.UUID
 	IsAssessment pgtype.Bool
+	RowLimit     pgtype.Int4
 }
 
 type GetTrainingsRow struct {
-	ID           pgtype.UUID
-	UserID       pgtype.UUID
-	Title        string
-	Description  pgtype.Text
-	TrainingType string
-	Goal         pgtype.Text
-	Comment      pgtype.Text
-	IsFavorite   bool
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	AssessmentID pgtype.UUID
-	Label        pgtype.Text
-	Prompt       pgtype.Text
-	Unit         pgtype.Text
-	PerHand      pgtype.Bool
+	ID                 pgtype.UUID
+	UserID             pgtype.UUID
+	Title              string
+	Description        pgtype.Text
+	TrainingType       string
+	Goal               pgtype.Text
+	Comment            pgtype.Text
+	IsFavorite         bool
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	AssessmentID       pgtype.UUID
+	Label              pgtype.Text
+	Prompt             pgtype.Text
+	Unit               pgtype.Text
+	PerHand            pgtype.Bool
+	BodyweightRelative pgtype.Bool
 }
 
 // @is_assessment is null for the whole library, true for the assessments alone
 // and false for the trainings that are not one.
+//
+// A null row_limit means every row, which is what the cheap list asks for and
+// what this answered before the include=items ceiling existed. A caller that
+// sends a number gets at most that many trainings, not that many join rows:
+// assessment_definitions carries a unique index on training_id, so the LEFT
+// JOIN cannot fan a training out into several.
+//
+// The id breaks ties on title. Titles are not unique, and Postgres orders a tie
+// by whatever the heap hands it, which moves the moment a row in the tie group
+// is updated. Without the tiebreaker a limited read is not a stable prefix: a
+// training could leave the answer and another take its place with nothing about
+// the library having changed.
 func (q *Queries) GetTrainings(ctx context.Context, arg GetTrainingsParams) ([]GetTrainingsRow, error) {
-	rows, err := q.db.Query(ctx, getTrainings, arg.UserID, arg.IsAssessment)
+	rows, err := q.db.Query(ctx, getTrainings, arg.UserID, arg.IsAssessment, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -419,6 +471,7 @@ func (q *Queries) GetTrainings(ctx context.Context, arg GetTrainingsParams) ([]G
 			&i.Prompt,
 			&i.Unit,
 			&i.PerHand,
+			&i.BodyweightRelative,
 		); err != nil {
 			return nil, err
 		}
@@ -483,14 +536,16 @@ SET parent_id = $1, type = $2, position = $3,
     rest_seconds = $10,
     exercise_id = $11,
     worktime_seconds = $12, hand = $13, granularity = $14,
-    free_text = $15, comment = $16, load_is_max = $17,
-    loads = $18, left_loads = $19, hand_positions = $20,
-    edge_sizes_mm = $21,
-    variable_targets = $22,
-    group_title = $23,
+    free_text = $15, comment = $16, goal = $17,
+    protocol = $18,
+    load_is_max = $19,
+    loads = $20, left_loads = $21, hand_positions = $22,
+    edge_sizes_mm = $23,
+    variable_targets = $24,
+    group_title = $25,
     updated_at = now()
-WHERE id = $24 AND training_id = $25
-RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
+WHERE id = $26 AND training_id = $27
+RETURNING id, training_id, parent_id, type, position, cycles, cycle_rest_seconds, interval_seconds, reps, reps_is_max, duration, rest_seconds, exercise_id, worktime_seconds, hand, granularity, free_text, comment, goal, protocol, loads, left_loads, hand_positions, edge_sizes_mm, load_is_max, variable_targets, group_title, created_at, updated_at
 `
 
 type UpdateTrainingItemParams struct {
@@ -510,6 +565,8 @@ type UpdateTrainingItemParams struct {
 	Granularity      pgtype.Text
 	FreeText         pgtype.Text
 	Comment          pgtype.Text
+	Goal             pgtype.Text
+	Protocol         pgtype.Text
 	LoadIsMax        bool
 	Loads            []byte
 	LeftLoads        []byte
@@ -541,6 +598,8 @@ func (q *Queries) UpdateTrainingItem(ctx context.Context, arg UpdateTrainingItem
 		arg.Granularity,
 		arg.FreeText,
 		arg.Comment,
+		arg.Goal,
+		arg.Protocol,
 		arg.LoadIsMax,
 		arg.Loads,
 		arg.LeftLoads,
@@ -571,6 +630,8 @@ func (q *Queries) UpdateTrainingItem(ctx context.Context, arg UpdateTrainingItem
 		&i.Granularity,
 		&i.FreeText,
 		&i.Comment,
+		&i.Goal,
+		&i.Protocol,
 		&i.Loads,
 		&i.LeftLoads,
 		&i.HandPositions,
