@@ -25,9 +25,9 @@ func (q *Queries) CountAssessmentsForDefinition(ctx context.Context, assessmentI
 }
 
 const createAssessment = `-- name: CreateAssessment :one
-INSERT INTO assessments (user_id, assessment_id, right_value, left_value, session_id, grip_position)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, assessment_id, right_value, left_value, session_id, grip_position, updated_at
+INSERT INTO assessments (user_id, assessment_id, right_value, left_value, session_id, grip_position, origin)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, assessment_id, right_value, left_value, session_id, grip_position, origin, updated_at
 `
 
 type CreateAssessmentParams struct {
@@ -37,6 +37,7 @@ type CreateAssessmentParams struct {
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
+	Origin       string
 }
 
 func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentParams) (Assessment, error) {
@@ -47,6 +48,7 @@ func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentPara
 		arg.LeftValue,
 		arg.SessionID,
 		arg.GripPosition,
+		arg.Origin,
 	)
 	var i Assessment
 	err := row.Scan(
@@ -57,6 +59,7 @@ func (q *Queries) CreateAssessment(ctx context.Context, arg CreateAssessmentPara
 		&i.LeftValue,
 		&i.SessionID,
 		&i.GripPosition,
+		&i.Origin,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -72,7 +75,7 @@ func (q *Queries) DeleteAssessment(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getAssessment = `-- name: GetAssessment :one
-SELECT id, user_id, assessment_id, right_value, left_value, session_id, grip_position, updated_at FROM assessments WHERE id = $1
+SELECT id, user_id, assessment_id, right_value, left_value, session_id, grip_position, origin, updated_at FROM assessments WHERE id = $1
 `
 
 func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment, error) {
@@ -86,6 +89,7 @@ func (q *Queries) GetAssessment(ctx context.Context, id pgtype.UUID) (Assessment
 		&i.LeftValue,
 		&i.SessionID,
 		&i.GripPosition,
+		&i.Origin,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -129,7 +133,7 @@ func (q *Queries) GetResultBodyweight(ctx context.Context, arg GetResultBodyweig
 
 const getSessionAssessments = `-- name: GetSessionAssessments :many
 SELECT
-  a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at,
+  a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.origin, a.updated_at,
   d.label,
   d.unit,
   d.per_hand,
@@ -153,6 +157,7 @@ type GetSessionAssessmentsRow struct {
 	LeftValue            pgtype.Float4
 	SessionID            pgtype.UUID
 	GripPosition         pgtype.Int4
+	Origin               string
 	UpdatedAt            pgtype.Timestamptz
 	Label                string
 	Unit                 string
@@ -209,6 +214,7 @@ func (q *Queries) GetSessionAssessments(ctx context.Context, sessionID pgtype.UU
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
+			&i.Origin,
 			&i.UpdatedAt,
 			&i.Label,
 			&i.Unit,
@@ -392,7 +398,7 @@ func (q *Queries) GetUserAssessmentValuesAtDate(ctx context.Context, arg GetUser
 
 const getUserAssessments = `-- name: GetUserAssessments :many
 SELECT
-  a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.updated_at,
+  a.id, a.user_id, a.assessment_id, a.right_value, a.left_value, a.session_id, a.grip_position, a.origin, a.updated_at,
   s.date AS session_date,
   d.label,
   d.unit,
@@ -417,6 +423,7 @@ type GetUserAssessmentsRow struct {
 	LeftValue            pgtype.Float4
 	SessionID            pgtype.UUID
 	GripPosition         pgtype.Int4
+	Origin               string
 	UpdatedAt            pgtype.Timestamptz
 	SessionDate          pgtype.Timestamptz
 	Label                string
@@ -477,6 +484,7 @@ func (q *Queries) GetUserAssessments(ctx context.Context, userID pgtype.UUID) ([
 			&i.LeftValue,
 			&i.SessionID,
 			&i.GripPosition,
+			&i.Origin,
 			&i.UpdatedAt,
 			&i.SessionDate,
 			&i.Label,

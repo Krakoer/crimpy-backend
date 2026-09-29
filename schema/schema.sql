@@ -177,8 +177,16 @@ CREATE TABLE "assessments" (
   "left_value"    REAL,
   "session_id"    UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
   "grip_position" INTEGER     DEFAULT 0,
+  -- What produced the result: 'test' for a run of the assessment itself, and
+  -- 'training' for a pull measured during an ordinary training that the athlete
+  -- chose to keep because it beat the result on file. A coach reads the two
+  -- differently, so the result says which it is rather than leaving it to be
+  -- guessed from the session. Every result stored before the distinction
+  -- existed came from a test.
+  "origin"        TEXT        NOT NULL DEFAULT 'test',
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "assessments_origin_check" CHECK (origin IN ('test', 'training'))
 );
 
 

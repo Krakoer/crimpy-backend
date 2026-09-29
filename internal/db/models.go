@@ -16,6 +16,7 @@ type Assessment struct {
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
+	Origin       string
 	UpdatedAt    pgtype.Timestamptz
 }
 

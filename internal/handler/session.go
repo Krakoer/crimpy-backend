@@ -457,6 +457,8 @@ type AssessmentRequest struct {
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
+	// Read as on POST /api/assessments: a test when omitted.
+	Origin *string `json:"origin,omitempty" enums:"test,training"`
 }
 
 // UpdateSessionRequest is what an edit changes about a session. Every field is
@@ -923,7 +925,11 @@ type AssessmentResponse struct {
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
-	UpdatedAt    string   `json:"updated_at"`
+	// What produced the result: a test of the assessment, or a pull measured
+	// during a training that the athlete kept because it beat the result on
+	// file. Every result recorded before the distinction reads as a test.
+	Origin    string `json:"origin" enums:"test,training"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // assessmentResult is the shape every assessment read path produces: the result
@@ -956,6 +962,7 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 		PerHand:            r.PerHand,
 		BodyweightRelative: r.BodyweightRelative,
 		GripPosition:       optionalInt32(a.GripPosition),
+		Origin:             a.Origin,
 		UpdatedAt:          a.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	resp.BodyweightKg = measuredBodyweight(r.BodyweightKg)
@@ -995,6 +1002,7 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 					LeftValue:    r.LeftValue,
 					SessionID:    r.SessionID,
 					GripPosition: r.GripPosition,
+					Origin:       r.Origin,
 					UpdatedAt:    r.UpdatedAt,
 				},
 				Label:                r.Label,
@@ -1023,6 +1031,7 @@ func assessmentsToResponses(rows []db.GetSessionAssessmentsRow) []AssessmentResp
 				LeftValue:    r.LeftValue,
 				SessionID:    r.SessionID,
 				GripPosition: r.GripPosition,
+				Origin:       r.Origin,
 				UpdatedAt:    r.UpdatedAt,
 			},
 			Label:                r.Label,
@@ -1791,12 +1800,18 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	// Checked here for the same reason, so an assessment the athlete may not
 	// record against is refused before the session and its reps are inserted.
 	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
+	assessmentOrigins := make([]string, len(req.Assessments))
 	for i, a := range req.Assessments {
+		origin, ok := parseAssessmentOrigin(a.Origin)
+		if !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment origin"})
+		}
 		id, ok := requireRecordableAssessment(c, h.queries, a.AssessmentID, userUUID)
 		if !ok {
 			return nil
 		}
 		assessmentUUIDs[i] = id
+		assessmentOrigins[i] = origin
 	}
 
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
@@ -1887,6 +1902,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			LeftValue:    leftValue,
 			SessionID:    session.ID,
 			GripPosition: gripPosition,
+			Origin:       assessmentOrigins[i],
 		})
 		if err != nil {
 			slog.Error("failed to create assessment", "user_id", userID, "session_id", session.ID, "error", err)
