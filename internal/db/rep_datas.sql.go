@@ -106,3 +106,49 @@ func (q *Queries) GetSessionRepDatas(ctx context.Context, sessionID pgtype.UUID)
 	}
 	return items, nil
 }
+
+const getUserRepDatas = `-- name: GetUserRepDatas :many
+SELECT rep_datas.id, rep_datas.user_id, rep_datas.average_weight, rep_datas.session_id, rep_datas.is_rest, rep_datas.hand, rep_datas.duration, rep_datas.target_weight, rep_datas.index, rep_datas.grip_position, rep_datas.edge_size_mm, rep_datas.training_item_id, rep_datas.target_unmeasured, rep_datas.updated_at FROM rep_datas
+JOIN sessions ON sessions.id = rep_datas.session_id
+WHERE sessions.user_id = $1
+ORDER BY rep_datas.session_id, rep_datas.index
+`
+
+// Every rep of every session the user owns, for a client that reads the whole
+// history at once rather than one session at a time. Scoped by the session's
+// owner, not by the rep's own user column, so the rep of a session is exactly
+// what the detail of that session would answer.
+func (q *Queries) GetUserRepDatas(ctx context.Context, userID pgtype.UUID) ([]RepData, error) {
+	rows, err := q.db.Query(ctx, getUserRepDatas, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RepData
+	for rows.Next() {
+		var i RepData
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.AverageWeight,
+			&i.SessionID,
+			&i.IsRest,
+			&i.Hand,
+			&i.Duration,
+			&i.TargetWeight,
+			&i.Index,
+			&i.GripPosition,
+			&i.EdgeSizeMm,
+			&i.TrainingItemID,
+			&i.TargetUnmeasured,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
