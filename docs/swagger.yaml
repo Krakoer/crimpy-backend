@@ -261,6 +261,12 @@ definitions:
         type: string
       left_measured_at:
         type: string
+      left_origin:
+        description: What produced the left hand's value, read as RightOrigin is.
+        enum:
+        - test
+        - training
+        type: string
       left_value:
         type: number
       per_hand:
@@ -281,6 +287,15 @@ definitions:
           morning or months earlier. Absent exactly when the weight is.
         type: string
       right_measured_at:
+        type: string
+      right_origin:
+        description: |-
+          What produced the right hand's value: a test, or a pull kept from a
+          training. A comparison says so beside the value, since a kept pull is not
+          a retest. Absent exactly when the value is.
+        enum:
+        - test
+        - training
         type: string
       right_value:
         type: number

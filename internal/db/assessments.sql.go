@@ -242,6 +242,7 @@ WITH measured AS (
     COALESCE(a.grip_position, 0)::int AS grip_position,
     a.right_value,
     a.left_value,
+    a.origin,
     a.updated_at,
     s.date
   FROM assessments a
@@ -250,13 +251,13 @@ WITH measured AS (
 ),
 last_right AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
-    assessment_id, grip_position, right_value, date
+    assessment_id, grip_position, right_value, origin, date
   FROM measured WHERE right_value IS NOT NULL
   ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 ),
 last_left AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
-    assessment_id, grip_position, left_value, date
+    assessment_id, grip_position, left_value, origin, date
   FROM measured WHERE left_value IS NOT NULL
   ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 )
@@ -270,10 +271,12 @@ SELECT
   COALESCE(r.grip_position, l.grip_position)::int AS grip_position,
   r.right_value,
   r.date AS right_measured_at,
+  r.origin AS right_origin,
   COALESCE(rw.weight_kg, 0)::real AS right_bodyweight_kg,
   rw.measured_at::timestamptz AS right_bodyweight_measured_at,
   l.left_value,
   l.date AS left_measured_at,
+  l.origin AS left_origin,
   COALESCE(lw.weight_kg, 0)::real AS left_bodyweight_kg,
   lw.measured_at::timestamptz AS left_bodyweight_measured_at
 FROM last_right r
@@ -302,10 +305,12 @@ type GetUserAssessmentValuesAtDateRow struct {
 	GripPosition              int32
 	RightValue                pgtype.Float4
 	RightMeasuredAt           pgtype.Timestamptz
+	RightOrigin               pgtype.Text
 	RightBodyweightKg         float32
 	RightBodyweightMeasuredAt pgtype.Timestamptz
 	LeftValue                 pgtype.Float4
 	LeftMeasuredAt            pgtype.Timestamptz
+	LeftOrigin                pgtype.Text
 	LeftBodyweightKg          float32
 	LeftBodyweightMeasuredAt  pgtype.Timestamptz
 }
@@ -360,6 +365,10 @@ type GetUserAssessmentValuesAtDateRow struct {
 //
 // The definition is joined in, as the other read paths do, so a caller can name
 // and format the number without a second query.
+//
+// Each hand carries the origin of the result it was read from, so a comparison
+// can say when the value standing on a date is a pull kept from a training
+// rather than a test.
 func (q *Queries) GetUserAssessmentValuesAtDate(ctx context.Context, arg GetUserAssessmentValuesAtDateParams) ([]GetUserAssessmentValuesAtDateRow, error) {
 	rows, err := q.db.Query(ctx, getUserAssessmentValuesAtDate, arg.UserID, arg.AsOf)
 	if err != nil {
@@ -379,10 +388,12 @@ func (q *Queries) GetUserAssessmentValuesAtDate(ctx context.Context, arg GetUser
 			&i.GripPosition,
 			&i.RightValue,
 			&i.RightMeasuredAt,
+			&i.RightOrigin,
 			&i.RightBodyweightKg,
 			&i.RightBodyweightMeasuredAt,
 			&i.LeftValue,
 			&i.LeftMeasuredAt,
+			&i.LeftOrigin,
 			&i.LeftBodyweightKg,
 			&i.LeftBodyweightMeasuredAt,
 		); err != nil {

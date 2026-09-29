@@ -322,9 +322,13 @@ type AssessmentSnapshotItem struct {
 	// it is near the result it divides, and a weight on its own cannot say how
 	// near it was: the last weigh-in at or before a result can be the same
 	// morning or months earlier. Absent exactly when the weight is.
-	RightBodyweightMeasuredAt *string  `json:"right_bodyweight_measured_at,omitempty"`
-	LeftValue                 *float32 `json:"left_value,omitempty"`
-	LeftMeasuredAt            *string  `json:"left_measured_at,omitempty"`
+	RightBodyweightMeasuredAt *string `json:"right_bodyweight_measured_at,omitempty"`
+	// What produced the right hand's value: a test, or a pull kept from a
+	// training. A comparison says so beside the value, since a kept pull is not
+	// a retest. Absent exactly when the value is.
+	RightOrigin    *string  `json:"right_origin,omitempty" enums:"test,training"`
+	LeftValue      *float32 `json:"left_value,omitempty"`
+	LeftMeasuredAt *string  `json:"left_measured_at,omitempty"`
 	// The weight the left hand was pulled at, chosen and absent by the same rule
 	// as the right, and its own weigh-in: the two hands can come from sessions
 	// months apart, so neither answers for the other.
@@ -332,6 +336,8 @@ type AssessmentSnapshotItem struct {
 	// When that weigh-in was taken, read as RightBodyweightMeasuredAt is and
 	// absent exactly when the weight beside it is.
 	LeftBodyweightMeasuredAt *string `json:"left_bodyweight_measured_at,omitempty"`
+	// What produced the left hand's value, read as RightOrigin is.
+	LeftOrigin *string `json:"left_origin,omitempty" enums:"test,training"`
 }
 
 // AssessmentSnapshotResponse is what an athlete had measured as of a date. The
@@ -440,6 +446,9 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 		}
 		item.RightBodyweightKg = measuredBodyweight(row.RightBodyweightKg)
 		item.RightBodyweightMeasuredAt = bodyweightMeasuredAt(item.RightBodyweightKg, row.RightBodyweightMeasuredAt)
+		if row.RightOrigin.Valid {
+			item.RightOrigin = &row.RightOrigin.String
+		}
 		if row.LeftValue.Valid {
 			item.LeftValue = &row.LeftValue.Float32
 		}
@@ -449,6 +458,9 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 		}
 		item.LeftBodyweightKg = measuredBodyweight(row.LeftBodyweightKg)
 		item.LeftBodyweightMeasuredAt = bodyweightMeasuredAt(item.LeftBodyweightKg, row.LeftBodyweightMeasuredAt)
+		if row.LeftOrigin.Valid {
+			item.LeftOrigin = &row.LeftOrigin.String
+		}
 		response.Results = append(response.Results, item)
 	}
 

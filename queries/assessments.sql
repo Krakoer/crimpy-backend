@@ -191,6 +191,10 @@ ORDER BY 1;
 --
 -- The definition is joined in, as the other read paths do, so a caller can name
 -- and format the number without a second query.
+--
+-- Each hand carries the origin of the result it was read from, so a comparison
+-- can say when the value standing on a date is a pull kept from a training
+-- rather than a test.
 WITH measured AS (
   SELECT
     a.id,
@@ -198,6 +202,7 @@ WITH measured AS (
     COALESCE(a.grip_position, 0)::int AS grip_position,
     a.right_value,
     a.left_value,
+    a.origin,
     a.updated_at,
     s.date
   FROM assessments a
@@ -206,13 +211,13 @@ WITH measured AS (
 ),
 last_right AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
-    assessment_id, grip_position, right_value, date
+    assessment_id, grip_position, right_value, origin, date
   FROM measured WHERE right_value IS NOT NULL
   ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 ),
 last_left AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
-    assessment_id, grip_position, left_value, date
+    assessment_id, grip_position, left_value, origin, date
   FROM measured WHERE left_value IS NOT NULL
   ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 )
@@ -226,10 +231,12 @@ SELECT
   COALESCE(r.grip_position, l.grip_position)::int AS grip_position,
   r.right_value,
   r.date AS right_measured_at,
+  r.origin AS right_origin,
   COALESCE(rw.weight_kg, 0)::real AS right_bodyweight_kg,
   rw.measured_at::timestamptz AS right_bodyweight_measured_at,
   l.left_value,
   l.date AS left_measured_at,
+  l.origin AS left_origin,
   COALESCE(lw.weight_kg, 0)::real AS left_bodyweight_kg,
   lw.measured_at::timestamptz AS left_bodyweight_measured_at
 FROM last_right r

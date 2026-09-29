@@ -6572,6 +6572,14 @@ const docTemplate = `{
                 "left_measured_at": {
                     "type": "string"
                 },
+                "left_origin": {
+                    "description": "What produced the left hand's value, read as RightOrigin is.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
+                },
                 "left_value": {
                     "type": "number"
                 },
@@ -6588,6 +6596,14 @@ const docTemplate = `{
                 },
                 "right_measured_at": {
                     "type": "string"
+                },
+                "right_origin": {
+                    "description": "What produced the right hand's value: a test, or a pull kept from a\ntraining. A comparison says so beside the value, since a kept pull is not\na retest. Absent exactly when the value is.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
                 },
                 "right_value": {
                     "type": "number"

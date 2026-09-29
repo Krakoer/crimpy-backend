@@ -165,3 +165,75 @@ func TestCreateSession_InlineResultCarriesItsOrigin(t *testing.T) {
 		t.Fatalf("Expected 400 on an unknown inline origin, got %d: %v", status, body)
 	}
 }
+
+// A pull kept from a Critical Force test's hardest pull lives on an assessment
+// session, so the backend records provenance without policing which kind of
+// session a training origin may sit on.
+func TestCreateAssessment_TrainingOriginOnAnAssessmentSessionIsAccepted(t *testing.T) {
+	f := setupSnapshotFixture(t, "origin6")
+	sessionID := f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinCriticalForceID, 0, floatPtr(18), nil)
+
+	status, body := postJSON(t, f.app, "/api/assessments", f.userToken, map[string]interface{}{
+		"session_id":    sessionID,
+		"assessment_id": testutil.BuiltinMaxForceID,
+		"right_value":   30,
+		"origin":        "training",
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201 keeping a pull on an assessment session, got %d: %v", status, body)
+	}
+	for _, item := range listAssessments(t, f, "/api/assessments", f.userToken) {
+		if item["assessment_id"] == testutil.BuiltinMaxForceID && item["origin"] != "training" {
+			t.Errorf("Expected the kept pull to read back as from a training, got %v", item["origin"])
+		}
+	}
+}
+
+func TestCreateSession_InlineResultWithoutOriginIsATest(t *testing.T) {
+	f := setupSnapshotFixture(t, "origin7")
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(30), nil)
+
+	listed := findListedResult(t, listAssessments(t, f, "/api/assessments", f.userToken), "2026-03-02T10:00:00Z")
+	if listed["origin"] != "test" {
+		t.Errorf("Expected an inline result sent without an origin to read as a test, got %v", listed["origin"])
+	}
+}
+
+// The comparison reads results through the snapshot, which carries each hand
+// forward on its own. Each hand says where its value came from, so a coach
+// comparing two dates can tell a kept pull from a retest.
+func TestAssessmentSnapshot_CarriesEachHandsOrigin(t *testing.T) {
+	f := setupSnapshotFixture(t, "origin8")
+	f.recordAssessment(t, "2026-03-02T10:00:00Z", testutil.BuiltinMaxForceID, 0, floatPtr(40), floatPtr(38))
+	sessionID := f.recordTraining(t, "2026-03-09T10:00:00Z", f.userToken)
+	status, body := postJSON(t, f.app, "/api/assessments", f.userToken, map[string]interface{}{
+		"session_id":    sessionID,
+		"assessment_id": testutil.BuiltinMaxForceID,
+		"right_value":   42,
+		"grip_position": 0,
+		"origin":        "training",
+	})
+	if status != fiber.StatusCreated {
+		t.Fatalf("Expected 201, got %d: %v", status, body)
+	}
+
+	for url, token := range map[string]string{
+		"/api/assessments/at?date=2026-03-10":                                f.userToken,
+		"/api/coach/clients/" + f.userID + "/assessments/at?date=2026-03-10": f.coachToken,
+	} {
+		status, snap := f.snapshot(t, url, token)
+		if status != fiber.StatusOK {
+			t.Fatalf("Expected 200 from %s, got %d", url, status)
+		}
+		result := findResult(snapshotResults(t, snap), testutil.BuiltinMaxForceID, 0)
+		if result == nil {
+			t.Fatalf("Expected a Max Force in %s, got %v", url, snap)
+		}
+		if result["right_origin"] != "training" || result["right_value"] != float64(42) {
+			t.Errorf("%s: expected the kept right hand pull, got %v", url, result)
+		}
+		if result["left_origin"] != "test" || result["left_value"] != float64(38) {
+			t.Errorf("%s: expected the tested left hand carried forward, got %v", url, result)
+		}
+	}
+}
