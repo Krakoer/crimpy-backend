@@ -4283,7 +4283,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve all training sessions for the authenticated user, each with its rep count",
+                "description": "Retrieve all training sessions for the authenticated user, each with its rep count. With include=reps every row also carries rep_datas, the reps of that session in the order they were recorded, empty for a session that holds none. That is what lets a client read the whole history, the all-time totals of the athlete's profile among it, in one request rather than one detail per session. The samples and the prescription stay off the listing either way, and the listing is not capped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4294,6 +4294,17 @@ const docTemplate = `{
                     "Session"
                 ],
                 "summary": "Get all sessions",
+                "parameters": [
+                    {
+                        "enum": [
+                            "reps"
+                        ],
+                        "type": "string",
+                        "description": "Comma separated extras to put on each row. Only reps is understood, and anything else is refused",
+                        "name": "include",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "List of sessions",
@@ -4301,6 +4312,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/handler.SessionListItem"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameter",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -7688,6 +7708,13 @@ const docTemplate = `{
                 },
                 "rep_count": {
                     "type": "integer"
+                },
+                "rep_datas": {
+                    "description": "RepDatas is set only on a listing asked for with include=reps, and then\non every row, empty for a session that holds no reps.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.RepDataResponse"
+                    }
                 },
                 "rpe": {
                     "description": "RPE is how much recovery the session cost on the session RPE scale, absent\nwhile the athlete has not reported one. RPEFailed is the scale's ECHEC,\nand never true beside a number.",

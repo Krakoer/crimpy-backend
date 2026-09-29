@@ -1075,6 +1075,13 @@ definitions:
         type: string
       rep_count:
         type: integer
+      rep_datas:
+        description: |-
+          RepDatas is set only on a listing asked for with include=reps, and then
+          on every row, empty for a session that holds no reps.
+        items:
+          $ref: '#/definitions/handler.RepDataResponse'
+        type: array
       rpe:
         description: |-
           RPE is how much recovery the session cost on the session RPE scale, absent
@@ -4798,7 +4805,20 @@ paths:
       consumes:
       - application/json
       description: Retrieve all training sessions for the authenticated user, each
-        with its rep count
+        with its rep count. With include=reps every row also carries rep_datas, the
+        reps of that session in the order they were recorded, empty for a session
+        that holds none. That is what lets a client read the whole history, the all-time
+        totals of the athlete's profile among it, in one request rather than one detail
+        per session. The samples and the prescription stay off the listing either
+        way, and the listing is not capped.
+      parameters:
+      - description: Comma separated extras to put on each row. Only reps is understood,
+          and anything else is refused
+        enum:
+        - reps
+        in: query
+        name: include
+        type: string
       produces:
       - application/json
       responses:
@@ -4808,6 +4828,12 @@ paths:
             items:
               $ref: '#/definitions/handler.SessionListItem'
             type: array
+        "400":
+          description: Invalid query parameter
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:

@@ -544,6 +544,9 @@ type SessionResponse struct {
 type SessionListItem struct {
 	SessionResponse
 	RepCount int64 `json:"rep_count"`
+	// RepDatas is set only on a listing asked for with include=reps, and then
+	// on every row, empty for a session that holds no reps.
+	RepDatas []RepDataResponse `json:"rep_datas,omitzero"`
 }
 
 // sessionFields maps the columns every session shape shares. The list row and
@@ -1902,14 +1905,55 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(sessionToResponse(session))
 }
 
+// sessionRepsInclude is the only extra GET /api/sessions knows how to add to
+// its rows.
+const sessionRepsInclude = "reps"
+
+// parseSessionInclude reads the include parameter the way parseTrainingInclude
+// does: a comma separated list, an unknown name refused rather than ignored, so
+// a misspelt request is not handed a listing it would read as sessions that
+// hold no reps.
+func parseSessionInclude(raw string) (includeReps bool, ok bool) {
+	for _, name := range strings.Split(raw, ",") {
+		switch strings.TrimSpace(name) {
+		case "":
+		case sessionRepsInclude:
+			includeReps = true
+		default:
+			return false, false
+		}
+	}
+	return includeReps, true
+}
+
+// attachRepDatas hangs every rep onto the row of the session it belongs to,
+// giving every row a list of its own, empty when the session holds none, so a
+// row with no reps cannot be mistaken for one whose reps were left out.
+func attachRepDatas(items []SessionListItem, reps []db.RepData) {
+	bySession := make(map[string][]RepDataResponse, len(items))
+	for _, rep := range reps {
+		sessionID := rep.SessionID.String()
+		bySession[sessionID] = append(bySession[sessionID], repDataToResponse(rep))
+	}
+	for i := range items {
+		rows := bySession[items[i].ID]
+		if rows == nil {
+			rows = []RepDataResponse{}
+		}
+		items[i].RepDatas = rows
+	}
+}
+
 // GetSessions godoc
 // @Summary Get all sessions
-// @Description Retrieve all training sessions for the authenticated user, each with its rep count
+// @Description Retrieve all training sessions for the authenticated user, each with its rep count. With include=reps every row also carries rep_datas, the reps of that session in the order they were recorded, empty for a session that holds none. That is what lets a client read the whole history, the all-time totals of the athlete's profile among it, in one request rather than one detail per session. The samples and the prescription stay off the listing either way, and the listing is not capped.
 // @Tags Session
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param include query string false "Comma separated extras to put on each row. Only reps is understood, and anything else is refused" Enums(reps)
 // @Success 200 {array} SessionListItem "List of sessions"
+// @Failure 400 {object} map[string]string "Invalid query parameter"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions [get]
@@ -1924,13 +1968,31 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
+	includeReps, ok := parseSessionInclude(c.Query("include"))
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid include"})
+	}
+
 	sessions, err := h.queries.GetUserSessions(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve sessions", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
 	}
+	items := sessionRowsToListItems(sessions)
 
-	return c.JSON(sessionRowsToListItems(sessions))
+	if includeReps {
+		// Failing the whole listing rather than leaving the reps off: a row
+		// without them is what a session that holds none looks like on the
+		// cheap list, and a total read over it would state zeros as history.
+		reps, err := h.queries.GetUserRepDatas(c.Context(), userUUID)
+		if err != nil {
+			slog.Error("failed to retrieve session reps", "user_id", userID, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
+		}
+		attachRepDatas(items, reps)
+	}
+
+	return c.JSON(items)
 }
 
 // GetSession godoc
