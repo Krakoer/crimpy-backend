@@ -18,7 +18,9 @@ func listSessions(t *testing.T, app *fiber.App, token, query string) (int, []map
 		t.Fatalf("Request failed: %v", err)
 	}
 	var list []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&list)
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil && resp.StatusCode == fiber.StatusOK {
+		t.Fatalf("Expected a JSON array of sessions, could not decode it: %v", err)
+	}
 	return resp.StatusCode, list
 }
 
