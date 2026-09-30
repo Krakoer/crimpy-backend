@@ -17,6 +17,7 @@ type Assessment struct {
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
 	Origin       string
+	Details      []byte
 	UpdatedAt    pgtype.Timestamptz
 }
 

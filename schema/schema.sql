@@ -184,9 +184,19 @@ CREATE TABLE "assessments" (
   -- guessed from the session. Every result stored before the distinction
   -- existed came from a test.
   "origin"        TEXT        NOT NULL DEFAULT 'test',
+  -- What the test measured beyond the one number in the value columns, kept so
+  -- a reading other than the headline can be shown, and any definition of it
+  -- recomputed later. Its shape belongs to the assessment. A Critical Force
+  -- test stores W' (impulse above CF, kg.s), the end force of its last three
+  -- pulls and one entry per pull (window mean, peak, end force, impulse, late
+  -- off flag), while right_value or left_value stays the Critical Force itself.
+  -- NULL for every other assessment, and for every result recorded before it.
+  "details"       JSONB,
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY ("id"),
-  CONSTRAINT "assessments_origin_check" CHECK (origin IN ('test', 'training'))
+  CONSTRAINT "assessments_origin_check" CHECK (origin IN ('test', 'training')),
+  CONSTRAINT "assessments_details_object_check"
+    CHECK (details IS NULL OR jsonb_typeof(details) = 'object')
 );
 
 
