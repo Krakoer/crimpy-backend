@@ -182,10 +182,19 @@ func TestCreateAssessment_TrainingOriginOnAnAssessmentSessionIsAccepted(t *testi
 	if status != fiber.StatusCreated {
 		t.Fatalf("Expected 201 keeping a pull on an assessment session, got %d: %v", status, body)
 	}
+	// Looked up by assessment rather than by date, since the Critical Force
+	// the session measured shares its day. Missing is a failure, not a pass.
+	var kept map[string]interface{}
 	for _, item := range listAssessments(t, f, "/api/assessments", f.userToken) {
-		if item["assessment_id"] == testutil.BuiltinMaxForceID && item["origin"] != "training" {
-			t.Errorf("Expected the kept pull to read back as from a training, got %v", item["origin"])
+		if item["assessment_id"] == testutil.BuiltinMaxForceID {
+			kept = item
 		}
+	}
+	if kept == nil {
+		t.Fatalf("Expected the kept pull in the listing")
+	}
+	if kept["origin"] != "training" || kept["session_id"] != sessionID {
+		t.Errorf("Expected the kept pull on the assessment session, from a training, got %v", kept)
 	}
 }
 
