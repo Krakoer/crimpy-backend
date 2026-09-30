@@ -119,6 +119,15 @@ definitions:
         type: string
       left_value:
         type: number
+      origin:
+        description: |-
+          What produced the result: a test of the assessment, or a pull measured
+          during a training that the athlete kept because it beat the result on
+          file. Every result recorded before the distinction reads as a test.
+        enum:
+        - test
+        - training
+        type: string
       per_hand:
         type: boolean
       right_value:
@@ -150,6 +159,12 @@ definitions:
         type: integer
       left_value:
         type: number
+      origin:
+        description: 'Read as on POST /api/assessments: a test when omitted.'
+        enum:
+        - test
+        - training
+        type: string
       right_value:
         type: number
     type: object
@@ -190,6 +205,15 @@ definitions:
         type: string
       left_value:
         type: number
+      origin:
+        description: |-
+          What produced the result: a test of the assessment, or a pull measured
+          during a training that the athlete kept because it beat the result on
+          file. Every result recorded before the distinction reads as a test.
+        enum:
+        - test
+        - training
+        type: string
       per_hand:
         type: boolean
       right_value:
@@ -237,6 +261,12 @@ definitions:
         type: string
       left_measured_at:
         type: string
+      left_origin:
+        description: What produced the left hand's value, read as RightOrigin is.
+        enum:
+        - test
+        - training
+        type: string
       left_value:
         type: number
       per_hand:
@@ -257,6 +287,15 @@ definitions:
           morning or months earlier. Absent exactly when the weight is.
         type: string
       right_measured_at:
+        type: string
+      right_origin:
+        description: |-
+          What produced the right hand's value: a test, or a pull kept from a
+          training. A comparison says so beside the value, since a kept pull is not
+          a retest. Absent exactly when the value is.
+        enum:
+        - test
+        - training
         type: string
       right_value:
         type: number
@@ -432,6 +471,15 @@ definitions:
         type: integer
       left_value:
         type: number
+      origin:
+        description: |-
+          What produced the result: "test" for a run of the assessment itself, or
+          "training" for a pull measured during a training and kept by the athlete.
+          Omitted, it is a test, which is what every client sent before the field.
+        enum:
+        - test
+        - training
+        type: string
       right_value:
         type: number
       session_id:
@@ -2320,9 +2368,11 @@ paths:
       consumes:
       - application/json
       description: Create a new assessment result for the authenticated user, linked
-        to an existing session they own. The response carries the weigh-in the result
-        is divided by, the last one taken at or before the session, absent when the
-        athlete has none on file, which is the state right after a first recording.
+        to an existing session they own. The origin says whether the result comes
+        from a test of the assessment or from a pull measured during a training, and
+        defaults to test. The response carries the weigh-in the result is divided
+        by, the last one taken at or before the session, absent when the athlete has
+        none on file, which is the state right after a first recording.
       parameters:
       - description: Assessment details
         in: body

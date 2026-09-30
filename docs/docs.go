@@ -658,7 +658,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new assessment result for the authenticated user, linked to an existing session they own. The response carries the weigh-in the result is divided by, the last one taken at or before the session, absent when the athlete has none on file, which is the state right after a first recording.",
+                "description": "Create a new assessment result for the authenticated user, linked to an existing session they own. The origin says whether the result comes from a test of the assessment or from a pull measured during a training, and defaults to test. The response carries the weigh-in the result is divided by, the last one taken at or before the session, absent when the athlete has none on file, which is the state right after a first recording.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6433,6 +6433,14 @@ const docTemplate = `{
                 "left_value": {
                     "type": "number"
                 },
+                "origin": {
+                    "description": "What produced the result: a test of the assessment, or a pull measured\nduring a training that the athlete kept because it beat the result on\nfile. Every result recorded before the distinction reads as a test.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
+                },
                 "per_hand": {
                     "type": "boolean"
                 },
@@ -6477,6 +6485,14 @@ const docTemplate = `{
                 "left_value": {
                     "type": "number"
                 },
+                "origin": {
+                    "description": "Read as on POST /api/assessments: a test when omitted.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
+                },
                 "right_value": {
                     "type": "number"
                 }
@@ -6511,6 +6527,14 @@ const docTemplate = `{
                 },
                 "left_value": {
                     "type": "number"
+                },
+                "origin": {
+                    "description": "What produced the result: a test of the assessment, or a pull measured\nduring a training that the athlete kept because it beat the result on\nfile. Every result recorded before the distinction reads as a test.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
                 },
                 "per_hand": {
                     "type": "boolean"
@@ -6568,6 +6592,14 @@ const docTemplate = `{
                 "left_measured_at": {
                     "type": "string"
                 },
+                "left_origin": {
+                    "description": "What produced the left hand's value, read as RightOrigin is.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
+                },
                 "left_value": {
                     "type": "number"
                 },
@@ -6584,6 +6616,14 @@ const docTemplate = `{
                 },
                 "right_measured_at": {
                     "type": "string"
+                },
+                "right_origin": {
+                    "description": "What produced the right hand's value: a test, or a pull kept from a\ntraining. A comparison says so beside the value, since a kept pull is not\na retest. Absent exactly when the value is.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
                 },
                 "right_value": {
                     "type": "number"
@@ -6835,6 +6875,14 @@ const docTemplate = `{
                 },
                 "left_value": {
                     "type": "number"
+                },
+                "origin": {
+                    "description": "What produced the result: \"test\" for a run of the assessment itself, or\n\"training\" for a pull measured during a training and kept by the athlete.\nOmitted, it is a test, which is what every client sent before the field.",
+                    "type": "string",
+                    "enum": [
+                        "test",
+                        "training"
+                    ]
                 },
                 "right_value": {
                     "type": "number"
