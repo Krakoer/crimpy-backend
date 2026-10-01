@@ -662,6 +662,8 @@ func TestSessionHandler_CreateSession_FreezesAssessmentResultsPerGrip(t *testing
 	const halfCrimp, openHand = 0, 3
 	recordGripAssessment(t, app, userToken, testutil.BuiltinMaxForceID, halfCrimp, 45, 44, "2026-01-10T10:00:00Z")
 	recordGripAssessment(t, app, userToken, testutil.BuiltinMaxForceID, openHand, 30, -1, "2026-02-10T10:00:00Z")
+	// A result with no grip moves the values on any grip and no grip's own.
+	recordAssessment(t, app, userToken, testutil.BuiltinMaxForceID, 50, 46, "2026-03-10T10:00:00Z")
 
 	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, nil)
 	created := playSession(t, app, userToken, map[string]interface{}{
@@ -674,12 +676,12 @@ func TestSessionHandler_CreateSession_FreezesAssessmentResultsPerGrip(t *testing
 	}
 	frozen := assessments[0].(map[string]interface{})
 	// On any grip, each hand keeps its own last value.
-	if frozen["right_value"] != float64(30) || frozen["left_value"] != float64(44) {
+	if frozen["right_value"] != float64(50) || frozen["left_value"] != float64(46) {
 		t.Fatalf("Expected the latest per hand on any grip, got %v", frozen)
 	}
 	byGrip, ok := frozen["by_grip"].([]interface{})
 	if !ok || len(byGrip) != 2 {
-		t.Fatalf("Expected one entry per grip tested, got %v", frozen["by_grip"])
+		t.Fatalf("Expected one entry per grip tested, and none for the gripless result, got %v", frozen["by_grip"])
 	}
 	grips := map[float64]map[string]interface{}{}
 	for _, g := range byGrip {
