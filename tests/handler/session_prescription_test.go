@@ -623,3 +623,77 @@ func TestSessionHandler_CreateSession_SnapshotsWidenedOverrides(t *testing.T) {
 		t.Errorf("Expected the overridden worktime 10 in the snapshot, got %v", kept["worktime_seconds"])
 	}
 }
+
+// recordGripAssessment is recordAssessment for a result pulled on one grip,
+// on the right hand alone when left is negative.
+func recordGripAssessment(t *testing.T, app *fiber.App, userToken string, assessmentID string, grip int, right, left float64, date string) {
+	t.Helper()
+	result := map[string]interface{}{"assessment_id": assessmentID, "right_value": right, "grip_position": grip}
+	if left >= 0 {
+		result["left_value"] = left
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"name":          "Max hang test",
+		"notes":         "",
+		"activity":      0,
+		"origin":        "logged",
+		"duration":      300,
+		"is_assessment": true,
+		"date":          date,
+		"assessments":   []map[string]interface{}{result},
+	})
+	resp, err := app.Test(testutil.NewJSONRequestWithAuth(http.MethodPost, "/api/sessions", body, userToken))
+	if err != nil {
+		t.Fatalf("Failed to record assessment: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("Expected 201 recording assessment, got %d", resp.StatusCode)
+	}
+}
+
+// A percentage of a max resolves against the max of the grip the hang is hung
+// with (Krakoer/crimpy#182), so the snapshot keeps the last value of each grip
+// beside the last value on any grip, hand by hand.
+func TestSessionHandler_CreateSession_FreezesAssessmentResultsPerGrip(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	app, coachToken, userToken, userID, programID := setupFrozenSessionApp(t, "pregrip")
+	trainingID, _ := createTestCoachTrainingWithItems(t, coachToken, app)
+
+	const halfCrimp, openHand = 0, 3
+	recordGripAssessment(t, app, userToken, testutil.BuiltinMaxForceID, halfCrimp, 45, 44, "2026-01-10T10:00:00Z")
+	recordGripAssessment(t, app, userToken, testutil.BuiltinMaxForceID, openHand, 30, -1, "2026-02-10T10:00:00Z")
+
+	programSessionID := prescribeSession(t, app, coachToken, userID, programID, trainingID, nil)
+	created := playSession(t, app, userToken, map[string]interface{}{
+		"program_session_id": programSessionID,
+	})
+
+	assessments := prescriptionAssessments(t, sessionPrescription(t, created))
+	if len(assessments) != 1 {
+		t.Fatalf("Expected the Max Force frozen, got %v", assessments)
+	}
+	frozen := assessments[0].(map[string]interface{})
+	// On any grip, each hand keeps its own last value.
+	if frozen["right_value"] != float64(30) || frozen["left_value"] != float64(44) {
+		t.Fatalf("Expected the latest per hand on any grip, got %v", frozen)
+	}
+	byGrip, ok := frozen["by_grip"].([]interface{})
+	if !ok || len(byGrip) != 2 {
+		t.Fatalf("Expected one entry per grip tested, got %v", frozen["by_grip"])
+	}
+	grips := map[float64]map[string]interface{}{}
+	for _, g := range byGrip {
+		entry := g.(map[string]interface{})
+		grips[entry["grip_position"].(float64)] = entry
+	}
+	if hc := grips[halfCrimp]; hc["right_value"] != float64(45) || hc["left_value"] != float64(44) {
+		t.Errorf("Expected the half crimp max kept apart, got %v", hc)
+	}
+	oh := grips[openHand]
+	if oh["right_value"] != float64(30) {
+		t.Errorf("Expected the open hand right max, got %v", oh)
+	}
+	if _, measured := oh["left_value"]; measured {
+		t.Errorf("Expected no open hand left value, since it was never pulled, got %v", oh)
+	}
+}
