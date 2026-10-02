@@ -572,3 +572,70 @@ func (q *Queries) GetUserLatestAssessmentValues(ctx context.Context, userID pgty
 	}
 	return items, nil
 }
+
+const getUserLatestAssessmentValuesByGrip = `-- name: GetUserLatestAssessmentValuesByGrip :many
+WITH measured AS (
+  SELECT a.assessment_id, a.grip_position, a.right_value, a.left_value, s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = $1 AND a.grip_position IS NOT NULL
+),
+last_right AS (
+  SELECT DISTINCT ON (assessment_id, grip_position) assessment_id, grip_position, right_value
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (assessment_id, grip_position) assessment_id, grip_position, left_value
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+)
+SELECT
+  COALESCE(last_right.assessment_id, last_left.assessment_id)::uuid AS assessment_id,
+  COALESCE(last_right.grip_position, last_left.grip_position)::integer AS grip_position,
+  last_right.right_value,
+  last_left.left_value
+FROM last_right
+FULL OUTER JOIN last_left
+  ON last_left.assessment_id = last_right.assessment_id
+  AND last_left.grip_position = last_right.grip_position
+ORDER BY 1, 2
+`
+
+type GetUserLatestAssessmentValuesByGripRow struct {
+	AssessmentID pgtype.UUID
+	GripPosition int32
+	RightValue   pgtype.Float4
+	LeftValue    pgtype.Float4
+}
+
+// GetUserLatestAssessmentValues kept apart per grip: the last value measured
+// for each assessment, each grip and each hand. A percentage of a max is read
+// against the max of the grip the hang is hung with, so testing an open hand
+// after a half crimp does not move the half crimp loads. Results carrying no
+// grip only count in GetUserLatestAssessmentValues, which a grip the athlete
+// never tested falls back to.
+func (q *Queries) GetUserLatestAssessmentValuesByGrip(ctx context.Context, userID pgtype.UUID) ([]GetUserLatestAssessmentValuesByGripRow, error) {
+	rows, err := q.db.Query(ctx, getUserLatestAssessmentValuesByGrip, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUserLatestAssessmentValuesByGripRow
+	for rows.Next() {
+		var i GetUserLatestAssessmentValuesByGripRow
+		if err := rows.Scan(
+			&i.AssessmentID,
+			&i.GripPosition,
+			&i.RightValue,
+			&i.LeftValue,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

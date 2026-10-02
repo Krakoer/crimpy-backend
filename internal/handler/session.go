@@ -1104,6 +1104,19 @@ type AssessmentResultSnapshot struct {
 	AssessmentID string   `json:"assessment_id"`
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
+	// ByGrip is the same last value per hand, kept apart per grip the results
+	// were pulled on. A percentage load on a hang reads the entry for the hang's
+	// grip, hand by hand, and falls back to RightValue and LeftValue for a grip
+	// or a hand the athlete never measured it on. Absent on a snapshot frozen
+	// before it was recorded, which reads as no grip ever tested.
+	ByGrip []AssessmentGripResultSnapshot `json:"by_grip,omitempty"`
+}
+
+// AssessmentGripResultSnapshot is the last value per hand on one grip.
+type AssessmentGripResultSnapshot struct {
+	GripPosition int32    `json:"grip_position"`
+	RightValue   *float32 `json:"right_value,omitempty"`
+	LeftValue    *float32 `json:"left_value,omitempty"`
 }
 
 // AssessmentDefinitionSnapshot names an assessment a prescription references and
@@ -1171,7 +1184,20 @@ func lockedAssessmentUnits(ctx context.Context, q *db.Queries, ids []pgtype.UUID
 	return locked, nil
 }
 
-func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []AssessmentResultSnapshot {
+func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow, byGrip []db.GetUserLatestAssessmentValuesByGripRow) []AssessmentResultSnapshot {
+	grips := make(map[string][]AssessmentGripResultSnapshot, len(rows))
+	for _, g := range byGrip {
+		grip := AssessmentGripResultSnapshot{GripPosition: g.GripPosition}
+		if g.RightValue.Valid {
+			grip.RightValue = &g.RightValue.Float32
+		}
+		if g.LeftValue.Valid {
+			grip.LeftValue = &g.LeftValue.Float32
+		}
+		id := g.AssessmentID.String()
+		grips[id] = append(grips[id], grip)
+	}
+
 	results := make([]AssessmentResultSnapshot, 0, len(rows))
 	for _, r := range rows {
 		result := AssessmentResultSnapshot{AssessmentID: r.AssessmentID.String()}
@@ -1181,6 +1207,7 @@ func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []A
 		if r.LeftValue.Valid {
 			result.LeftValue = &r.LeftValue.Float32
 		}
+		result.ByGrip = grips[result.AssessmentID]
 		results = append(results, result)
 	}
 	return results
@@ -1224,7 +1251,11 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 	if err != nil {
 		return PrescriptionSnapshot{}, err
 	}
-	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
+	assessmentsByGrip, err := qtx.GetUserLatestAssessmentValuesByGrip(ctx, userID)
+	if err != nil {
+		return PrescriptionSnapshot{}, err
+	}
+	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments, assessmentsByGrip)
 
 	// What the device says it used wins over what is on file. The device can
 	// hold a measurement the server has not seen, because a run needs no

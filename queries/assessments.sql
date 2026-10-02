@@ -140,6 +140,40 @@ FROM last_right
 FULL OUTER JOIN last_left ON last_left.assessment_id = last_right.assessment_id
 ORDER BY 1;
 
+-- name: GetUserLatestAssessmentValuesByGrip :many
+-- GetUserLatestAssessmentValues kept apart per grip: the last value measured
+-- for each assessment, each grip and each hand. A percentage of a max is read
+-- against the max of the grip the hang is hung with, so testing an open hand
+-- after a half crimp does not move the half crimp loads. Results carrying no
+-- grip only count in GetUserLatestAssessmentValues, which a grip the athlete
+-- never tested falls back to.
+WITH measured AS (
+  SELECT a.assessment_id, a.grip_position, a.right_value, a.left_value, s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = @user_id AND a.grip_position IS NOT NULL
+),
+last_right AS (
+  SELECT DISTINCT ON (assessment_id, grip_position) assessment_id, grip_position, right_value
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (assessment_id, grip_position) assessment_id, grip_position, left_value
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+)
+SELECT
+  COALESCE(last_right.assessment_id, last_left.assessment_id)::uuid AS assessment_id,
+  COALESCE(last_right.grip_position, last_left.grip_position)::integer AS grip_position,
+  last_right.right_value,
+  last_left.left_value
+FROM last_right
+FULL OUTER JOIN last_left
+  ON last_left.assessment_id = last_right.assessment_id
+  AND last_left.grip_position = last_right.grip_position
+ORDER BY 1, 2;
+
 -- name: GetUserAssessmentValuesAtDate :many
 -- The athlete's assessment results as they stood on a given day: for each
 -- assessment, each grip and each hand, the last value measured at or before it.
