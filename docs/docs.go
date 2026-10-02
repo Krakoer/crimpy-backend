@@ -2438,7 +2438,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating or no recorded duration, since the effort is then simply not known. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, skipping any week whose own load is unknown, and chronic_weeks says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The minutes of each bucket are rounded from their own second totals, so the climbing and strength figures can differ from the total by a minute on sub minute sessions. The caller's clock comes from timezone, an IANA zone name, which is what makes a week boundary on the far side of a daylight saving change land where the athlete lived it. tz_offset_minutes is the fallback for a client that does not send a zone yet, and it cuts every week in the window with the one offset, so such a window is an hour out on the far side of a change. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.",
+                "description": "The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, each session counting in the week holding its training_day, the day the athlete's device filed it under, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating or no recorded duration, since the effort is then simply not known. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, skipping any week whose own load is unknown, and chronic_weeks says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The minutes of each bucket are rounded from their own second totals, so the climbing and strength figures can differ from the total by a minute on sub minute sessions. The caller's clock comes from timezone, an IANA zone name, which is what makes a week boundary on the far side of a daylight saving change land where the athlete lived it. tz_offset_minutes is the fallback for a client that does not send a zone yet, and it cuts every week in the window with the one offset, so such a window is an hour out on the far side of a change. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.",
                 "produces": [
                     "application/json"
                 ],
@@ -3534,7 +3534,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its own clock. Send timezone, an IANA zone name, and the week is cut on the caller's real calendar even where a daylight saving change falls inside it. tz_offset_minutes is the fallback for a client that does not send a zone yet.",
+                "description": "What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week, each counted by its training_day. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its own clock. Send timezone, an IANA zone name, and the week is cut on the caller's real calendar even where a daylight saving change falls inside it. tz_offset_minutes is the fallback for a client that does not send a zone yet.",
                 "produces": [
                     "application/json"
                 ],
@@ -4350,7 +4350,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped. A session may also carry the athlete's session RPE, how much recovery it cost: rpe is a value of the scale, 5 to 10, and rpe_failed is that scale's ECHEC, a session that could not be carried through. They are exclusive, and both are optional, since the value stays editable through the update endpoint long after the session.",
+                "description": "Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped. A session may also carry the athlete's session RPE, how much recovery it cost: rpe is a value of the scale, 5 to 10, and rpe_failed is that scale's ECHEC, a session that could not be carried through. They are exclusive, and both are optional, since the value stays editable through the update endpoint long after the session. training_day, YYYY-MM-DD, is the day the session counts for in the athlete's own calendar: the local date it started on, or the one before when it started before 04:00. Left out, it is derived from date minus four hours in UTC; sent, it must lie within one day either side of the UTC date of date, or it is refused.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4487,7 +4487,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. User must own the session unless they are an admin.",
+                "description": "Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. training_day travels with the date: a date sent without it re-derives the day from the new date minus four hours in UTC, and one sent on its own refiles the session, held to the same bounds against the stored date as on create. User must own the session unless they are an admin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7045,6 +7045,10 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "training_day": {
+                    "description": "TrainingDay is the day the session counts for in the athlete's own\ncalendar, written YYYY-MM-DD: the local date it started on, or the one\nbefore when it started before 04:00. Left out, it is derived from the\ndate in UTC, which is only right for an athlete living near UTC.",
+                    "type": "string"
+                },
                 "training_id": {
                     "type": "string"
                 }
@@ -7389,6 +7393,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "session_name": {
+                    "type": "string"
+                },
+                "session_training_day": {
+                    "description": "SessionTrainingDay is the day the session counts for in the athlete's\nown calendar, YYYY-MM-DD, which is what a row naming its day shows.",
                     "type": "string"
                 },
                 "user_firstname": {
@@ -7775,6 +7783,10 @@ const docTemplate = `{
                     "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
                     "type": "object"
                 },
+                "training_day": {
+                    "description": "TrainingDay is the day the session counts for in the athlete's own\ncalendar, YYYY-MM-DD. Anything that places a session on a day or in a\nweek reads this rather than cutting date in a zone of its own.",
+                    "type": "string"
+                },
                 "training_id": {
                     "type": "string"
                 },
@@ -7876,6 +7888,10 @@ const docTemplate = `{
                 "samples": {
                     "description": "Samples is the force curve the sensor recorded, carried on an assessment\nsession only. Absent everywhere else, and left out by the list endpoints\nfor the reason the prescription is.",
                     "type": "object"
+                },
+                "training_day": {
+                    "description": "TrainingDay is the day the session counts for in the athlete's own\ncalendar, YYYY-MM-DD. Anything that places a session on a day or in a\nweek reads this rather than cutting date in a zone of its own.",
+                    "type": "string"
                 },
                 "training_id": {
                     "type": "string"
@@ -8445,6 +8461,10 @@ const docTemplate = `{
                 },
                 "rpe_failed": {
                     "type": "boolean"
+                },
+                "training_day": {
+                    "description": "The day the session counts for, YYYY-MM-DD, sent beside a new date by a\nclient that knows the athlete's zone. A date sent without it re-derives\nthe day from the new date in UTC, so the two cannot drift apart. Sent on\nits own, it refiles the session and has to fit the stored date.",
+                    "type": "string"
                 }
             }
         },

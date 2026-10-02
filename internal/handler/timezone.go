@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	// The API image is built on bare alpine, which carries no zoneinfo, so
 	// time.LoadLocation below would fail there with nothing to read. Embedding
@@ -90,25 +89,12 @@ func parseCallerClock(c fiber.Ctx) (callerClock, error) {
 	return callerClock{zone: zone, name: name, offset: offset}, nil
 }
 
-// zoneName is the zone to hand a query that has to cut the same weeks, null
-// when the caller only sent an offset and the query must fall back on it.
-func (clock callerClock) zoneName() pgtype.Text {
-	return pgtype.Text{String: clock.name, Valid: clock.name != ""}
-}
-
-// offsetMinutes is the fallback the query cuts its weeks with when no zone was
-// sent. It is still passed alongside a zone, and ignored there, so the two
-// always travel together and neither side has to guess what the other used.
-func (clock callerClock) offsetMinutes() int32 {
-	return int32(clock.offset / time.Minute)
-}
-
 // loadCallerZone resolves an IANA zone name a caller sent.
 //
-// The name has to mean the same thing to Go and to Postgres, since the two cut
-// the same weeks from opposite ends of the request, so it is held to the shape
-// a zone name really has, Area/Location, with UTC the one exception a browser
-// reports. What that turns away, measured rather than assumed:
+// The name is held to the shape a zone name really has, Area/Location, with UTC
+// the one exception a browser reports, so the clock it names is the caller's
+// real calendar and not a fixed offset that only shares its spelling. What that
+// turns away, measured rather than assumed:
 //
 // A name with no slash is an abbreviation or a legacy alias, and Postgres reads
 // several of them off its abbreviation table as a fixed offset where Go reads
@@ -192,4 +178,12 @@ func (clock callerClock) mondayOfWeek(at time.Time) time.Time {
 // they are converted here rather than compared as the instants they came from.
 func calendarDate(at time.Time) time.Time {
 	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// mondayOfDate is the Monday of the week a bare date falls in, as a bare date.
+// For a day that is already a date, such as a session's training day, where
+// mondayOfWeek would first have to read an instant on somebody's clock.
+func mondayOfDate(day time.Time) time.Time {
+	date := calendarDate(day)
+	return date.AddDate(0, 0, -((int(date.Weekday()) + 6) % 7))
 }

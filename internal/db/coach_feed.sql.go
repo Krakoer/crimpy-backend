@@ -36,25 +36,25 @@ func (q *Queries) CountCoachPendingSessionFeedback(ctx context.Context, coachID 
 	return count, err
 }
 
-const countCoachSessionsInWindow = `-- name: CountCoachSessionsInWindow :one
+const countCoachSessionsInWeek = `-- name: CountCoachSessionsInWeek :one
 SELECT COUNT(*) FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 WHERE e.coach_id = $1
-  AND s.date >= $2
-  AND s.date < $3
+  AND s.training_day >= $2::date
+  AND s.training_day < $2::date + 7
 `
 
-type CountCoachSessionsInWindowParams struct {
-	CoachID     pgtype.UUID
-	WindowStart pgtype.Timestamptz
-	WindowEnd   pgtype.Timestamptz
+type CountCoachSessionsInWeekParams struct {
+	CoachID   pgtype.UUID
+	WeekStart pgtype.Date
 }
 
-// How many sessions the coach's athletes did in one window. The dashboard shows
-// it for the current week, whose bounds only the caller's own clock can place,
-// which is why the window arrives as two instants rather than a week.
-func (q *Queries) CountCoachSessionsInWindow(ctx context.Context, arg CountCoachSessionsInWindowParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCoachSessionsInWindow, arg.CoachID, arg.WindowStart, arg.WindowEnd)
+// How many sessions the coach's athletes did in one calendar week. The dashboard
+// shows it for the current week, whose Monday only the caller's own clock can
+// place. Each session counts in the week holding its training day rather than
+// wherever its instant falls on the coach's clock.
+func (q *Queries) CountCoachSessionsInWeek(ctx context.Context, arg CountCoachSessionsInWeekParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoachSessionsInWeek, arg.CoachID, arg.WeekStart)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -267,6 +267,7 @@ SELECT
   u.lastname   AS user_lastname,
   s.name       AS session_name,
   s.date       AS session_date,
+  s.training_day AS session_training_day,
   s.activity   AS activity,
   -- One of the lines the athlete wrote, lowest pass first, preferring the note
   -- on the session itself when there is one. A session raised by an item note
@@ -310,14 +311,15 @@ type GetCoachPendingSessionFeedbackParams struct {
 }
 
 type GetCoachPendingSessionFeedbackRow struct {
-	SessionID     pgtype.UUID
-	UserID        pgtype.UUID
-	UserFirstname string
-	UserLastname  string
-	SessionName   string
-	SessionDate   pgtype.Timestamptz
-	Activity      int32
-	Notes         string
+	SessionID          pgtype.UUID
+	UserID             pgtype.UUID
+	UserFirstname      string
+	UserLastname       string
+	SessionName        string
+	SessionDate        pgtype.Timestamptz
+	SessionTrainingDay pgtype.Date
+	Activity           int32
+	Notes              string
 }
 
 // The sessions whose notes the coach has not answered. The athlete wrote
@@ -345,6 +347,7 @@ func (q *Queries) GetCoachPendingSessionFeedback(ctx context.Context, arg GetCoa
 			&i.UserLastname,
 			&i.SessionName,
 			&i.SessionDate,
+			&i.SessionTrainingDay,
 			&i.Activity,
 			&i.Notes,
 		); err != nil {

@@ -4,13 +4,12 @@
 -- nothing are returned as zeros rather than skipped: dropping them shortens the
 -- rolling chronic mean, which then reads as if the rest week never happened.
 --
--- Weeks are cut on the coach's own Monday. Given their IANA zone name, the
--- session instant is read in that zone, so every boundary lands where the
--- athlete lived it even where a daylight saving change falls inside the window.
--- Without one, the caller's offset is added instead, which is exact only for a
--- window that holds no such change: it is the fallback for a client that does
--- not send a zone yet. Either way date_trunc runs on a bare timestamp, so it
--- answers the same whatever the server's TimeZone setting happens to be.
+-- Weeks are the coach's calendar weeks, Monday first, and a session falls in
+-- the one holding its training day: the day the athlete's device filed it
+-- under, so a hang begun at 00:30 on a Monday counts for the Sunday before, as
+-- it does in the app. Grouping is plain date arithmetic from the first Monday
+-- asked for, with no instant read in any zone, so it answers the same whatever
+-- the server's TimeZone setting happens to be.
 --
 -- Only the raw sums live here. The mean RPE, the acute and chronic loads and
 -- the ratios are derived by the handler, where the rules about an unrated
@@ -27,14 +26,8 @@ WITH grid AS (
 ),
 weekly AS (
   SELECT
-    (date_trunc(
-      'week',
-      CASE
-        WHEN sqlc.narg('tz_name')::text IS NOT NULL
-          THEN s.date AT TIME ZONE sqlc.narg('tz_name')::text
-        ELSE (s.date AT TIME ZONE 'UTC') + make_interval(mins => sqlc.arg('tz_offset_minutes')::integer)
-      END
-    ))::date AS week_start,
+    (sqlc.arg('first_week_start')::date
+      + 7 * ((s.training_day - sqlc.arg('first_week_start')::date) / 7)) AS week_start,
     COUNT(*)::integer AS session_count,
     COALESCE(SUM(s.duration), 0)::bigint AS total_seconds,
     -- activity 1 is climbing; 0 hangboard and 3 workout are the strength side.
@@ -51,8 +44,8 @@ weekly AS (
     COUNT(*) FILTER (WHERE s.rpe_failed)::integer AS failed_sessions
   FROM sessions s
   WHERE s.user_id = sqlc.arg('user_id')
-    AND s.date >= sqlc.arg('window_start')
-    AND s.date < sqlc.arg('window_end')
+    AND s.training_day >= sqlc.arg('first_week_start')::date
+    AND s.training_day < sqlc.arg('last_week_start')::date + 7
   GROUP BY 1
 )
 SELECT
@@ -68,13 +61,14 @@ FROM grid g
 LEFT JOIN weekly w ON w.week_start = g.week_start
 ORDER BY g.week_start;
 
--- name: GetCoacheeFirstSessionInstant :one
+-- name: GetCoacheeFirstTrainingDay :one
 -- When the athlete's recorded history starts, so the chronic load mean can
 -- average only weeks that are really part of it. Without this, an athlete who
 -- joined three weeks ago would have the silence before they signed up averaged
 -- in as rest, and their first weeks would read as a far bigger jump than they
--- were. Null when they have recorded nothing at all.
-SELECT MIN(date)::timestamptz AS first_session_at
+-- were. Read as a training day, the calendar the weeks above are cut on. Null
+-- when they have recorded nothing at all.
+SELECT MIN(training_day)::date AS first_training_day
 FROM sessions
 WHERE user_id = sqlc.arg('user_id');
 
