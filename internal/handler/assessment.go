@@ -215,6 +215,12 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		Details:      details,
 	})
 	if err != nil {
+		// Details Go reads as JSON but jsonb refuses: a retry would fail the
+		// same way, so the client is told rather than handed a 500.
+		if storeRejectedInput(err) {
+			slog.Warn("refusing assessment details the store cannot keep", "user_id", userID, "session_id", req.SessionID, "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Details hold something the store cannot keep"})
+		}
 		slog.Error("failed to create assessment", "user_id", userID, "session_id", req.SessionID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 	}

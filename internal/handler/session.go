@@ -1392,8 +1392,9 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 // storeRejectedInput says whether a write failed because of what the client
 // sent rather than because of anything the server did: a NUL, an unpaired
 // surrogate, invalid UTF-8, a number no numeric type holds. Go accepts all of
-// them as JSON and jsonb accepts none, and the only body on a session the server
-// does not encode itself is the prescription a client hands over.
+// them as JSON and jsonb accepts none, and the only bodies the server does not
+// encode itself are the prescription a client hands over with a session and the
+// details it hands over with an assessment result.
 //
 // Enumerating them before the insert cannot work, since Go's JSON is strictly
 // wider than jsonb's; asking the database what it refused is the one check that
@@ -1934,6 +1935,10 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			Details:      assessmentDetails[i],
 		})
 		if err != nil {
+			if storeRejectedInput(err) {
+				slog.Warn("refusing assessment details the store cannot keep", "user_id", userID, "session_id", session.ID, "error", err)
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Details hold something the store cannot keep"})
+			}
 			slog.Error("failed to create assessment", "user_id", userID, "session_id", session.ID, "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 		}

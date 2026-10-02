@@ -122,6 +122,39 @@ func TestCreateAssessment_RefusesDetailsThatAreNotAnObject(t *testing.T) {
 	}
 }
 
+// Details Go reads as JSON but jsonb refuses, a NUL in a string here, are the
+// client's to fix: a 500 would only invite a retry of the same body.
+func TestCreateAssessment_RefusesDetailsTheStoreCannotKeep(t *testing.T) {
+	f := setupSnapshotFixture(t, "details6")
+	sessionID := f.recordTraining(t, "2026-03-02T10:00:00Z", f.userToken)
+	nul := map[string]interface{}{"note": "a\x00b"}
+
+	status, body := postJSON(t, f.app, "/api/assessments", f.userToken, map[string]interface{}{
+		"session_id":    sessionID,
+		"assessment_id": testutil.BuiltinCriticalForceID,
+		"right_value":   18.5,
+		"details":       nul,
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 on details holding a NUL, got %d: %v", status, body)
+	}
+
+	status, body = postJSON(t, f.app, "/api/sessions", f.userToken, map[string]interface{}{
+		"name":          "Test critical force",
+		"notes":         "",
+		"date":          "2026-03-03T10:00:00Z",
+		"is_assessment": true,
+		"assessments": []map[string]interface{}{{
+			"assessment_id": testutil.BuiltinCriticalForceID,
+			"left_value":    17,
+			"details":       nul,
+		}},
+	})
+	if status != fiber.StatusBadRequest {
+		t.Errorf("Expected 400 on inline details holding a NUL, got %d: %v", status, body)
+	}
+}
+
 // Details do not open a way into another athlete's history: the session named
 // still has to be the caller's own.
 func TestCreateAssessment_DetailsOnAnotherUsersSessionIsForbidden(t *testing.T) {
