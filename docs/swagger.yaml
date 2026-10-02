@@ -111,6 +111,12 @@ definitions:
           rather than as an absolute load. Display only: the value beside it is the
           raw measurement, and the denominator is the two fields below.
         type: boolean
+      details:
+        description: |-
+          What the test measured beyond the value, as posted with the result: for a
+          Critical Force, its W', the end force of its last three pulls and one
+          entry per pull. Absent when the result has none.
+        type: object
       grip_position:
         type: integer
       id:
@@ -155,6 +161,9 @@ definitions:
     properties:
       assessment_id:
         type: string
+      details:
+        description: 'Read as on POST /api/assessments: none when omitted.'
+        type: object
       grip_position:
         type: integer
       left_value:
@@ -197,6 +206,12 @@ definitions:
           rather than as an absolute load. Display only: the value beside it is the
           raw measurement, and the denominator is the two fields below.
         type: boolean
+      details:
+        description: |-
+          What the test measured beyond the value, as posted with the result: for a
+          Critical Force, its W', the end force of its last three pulls and one
+          entry per pull. Absent when the result has none.
+        type: object
       grip_position:
         type: integer
       id:
@@ -259,6 +274,11 @@ definitions:
           When that weigh-in was taken, read as RightBodyweightMeasuredAt is and
           absent exactly when the weight beside it is.
         type: string
+      left_details:
+        description: |-
+          What the test behind the left hand's value measured beyond it, read as
+          RightDetails is.
+        type: object
       left_measured_at:
         type: string
       left_origin:
@@ -286,6 +306,12 @@ definitions:
           near it was: the last weigh-in at or before a result can be the same
           morning or months earlier. Absent exactly when the weight is.
         type: string
+      right_details:
+        description: |-
+          What the test behind the right hand's value measured beyond it, as that
+          result stored it: for a Critical Force, its W' and per pull numbers.
+          Absent when the result has none.
+        type: object
       right_measured_at:
         type: string
       right_origin:
@@ -467,6 +493,13 @@ definitions:
     properties:
       assessment_id:
         type: string
+      details:
+        description: |-
+          What the test measured beyond the value, as a JSON object whose shape
+          belongs to the assessment. A Critical Force test sends its W', the end
+          force of its last three pulls and one entry per pull. Omitted or null, the
+          result has none, which is what every client sent before the field.
+        type: object
       grip_position:
         type: integer
       left_value:
