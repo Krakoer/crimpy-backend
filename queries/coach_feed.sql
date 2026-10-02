@@ -172,12 +172,13 @@ WHERE p.coach_id = @coach_id
   )
 ORDER BY u.lastname, u.firstname, p.name;
 
--- How many sessions the coach's athletes did in one window. The dashboard shows
--- it for the current week, whose bounds only the caller's own clock can place,
--- which is why the window arrives as two instants rather than a week.
--- name: CountCoachSessionsInWindow :one
+-- How many sessions the coach's athletes did in one calendar week. The dashboard
+-- shows it for the current week, whose Monday only the caller's own clock can
+-- place. Each session counts in the week holding its training day rather than
+-- wherever its instant falls on the coach's clock.
+-- name: CountCoachSessionsInWeek :one
 SELECT COUNT(*) FROM sessions s
 JOIN coach_enrollments e ON e.user_id = s.user_id
 WHERE e.coach_id = @coach_id
-  AND s.date >= @window_start
-  AND s.date < @window_end;
+  AND s.training_day >= sqlc.arg('week_start')::date
+  AND s.training_day < sqlc.arg('week_start')::date + 7;

@@ -15,14 +15,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// insertSession files the session under the training day the app would send
+// for it, read on the location date carries: its date there, or the one before
+// when it falls before 04:00.
 func insertSession(t *testing.T, pool *pgxpool.Pool, userID, name, notes string, date time.Time, reply *string) string {
 	t.Helper()
+	dayTurn := date.Add(-4 * time.Hour)
+	trainingDay := time.Date(dayTurn.Year(), dayTurn.Month(), dayTurn.Day(), 0, 0, 0, 0, time.UTC)
 	var id string
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, coach_reply, coach_reply_at)
-		 VALUES ($1, $2, $3, $4, 1, 'logged', $5, CASE WHEN $5::text IS NULL THEN NULL ELSE now() END)
+		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, coach_reply, coach_reply_at, training_day)
+		 VALUES ($1, $2, $3, $4, 1, 'logged', $5, CASE WHEN $5::text IS NULL THEN NULL ELSE now() END, $6)
 		 RETURNING id`,
-		userID, name, notes, date, reply).Scan(&id)
+		userID, name, notes, date, reply, trainingDay).Scan(&id)
 	if err != nil {
 		t.Fatalf("Failed to insert session: %v", err)
 	}
@@ -424,7 +429,7 @@ func TestCoachTodo_ListsOnlyUnansweredFeedback(t *testing.T) {
 	enrollUserDirect(t, pool, coachID, userID)
 
 	answered := "keep the elbow in"
-	now := time.Now().UTC()
+	now := insideThisTrainingWeek(time.Now().UTC())
 	insertSession(t, pool, userID, "Waiting on you", "the last set was brutal", now, nil)
 	insertSession(t, pool, userID, "Already answered", "felt good", now, &answered)
 	insertSession(t, pool, userID, "Nothing to say", "", now, nil)
@@ -889,9 +894,10 @@ func TestCoachTodo_PrefersTheZoneOverTheOffset(t *testing.T) {
 	day := local.AddDate(0, 0, -daysSinceMonday)
 	thisMonday := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, paris)
 
-	// Half an hour into the coach's week, which a caller twelve hours west of
-	// them would not count as this week at all.
-	insertSession(t, pool, userID, "Opening the week", "", thisMonday.Add(30*time.Minute), nil)
+	// Half an hour into the coach's week, which opens when Monday's training
+	// day does at 04:00, and which a caller twelve hours west of them would not
+	// count as this week at all.
+	insertSession(t, pool, userID, "Opening the week", "", thisMonday.Add(4*time.Hour+30*time.Minute), nil)
 
 	req := testutil.NewRequestWithAuth(http.MethodGet, "/api/coach/todo?tz_offset_minutes=-720&timezone=Europe%2FParis", nil, coachToken)
 	resp, err := app.Test(req)
@@ -1002,5 +1008,42 @@ func TestCoachTodoSettings_RefusesANonCoachWrite(t *testing.T) {
 
 	if resp := putTodoSettings(t, app, userToken, 4, 21, 0); resp.StatusCode != fiber.StatusForbidden {
 		t.Errorf("Expected 403 writing TODO settings as a non coach, got %d", resp.StatusCode)
+	}
+}
+
+// insideThisTrainingWeek is now, unless now is so early on a Monday that its
+// training day is still the Sunday before: then a moment just after the day
+// turns, so a session placed there counts in the week being trained now.
+func insideThisTrainingWeek(now time.Time) time.Time {
+	if now.Weekday() != time.Monday || now.Hour() >= 4 {
+		return now
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), 4, 30, 0, 0, now.Location())
+}
+
+// A hang begun at 00:30 on a Monday is the Sunday evening's training, so the
+// week the dashboard counts it in is the one that Sunday closes, not the one
+// its instant falls in.
+func TestCoachTodo_CountsASessionInTheWeekOfItsTrainingDay(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	pool, queries := testutil.SetupTestDB(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	coachID, coachToken := testutil.CreateTestValidatedCoachUser(t, pool, queries, "todotrainingdaycoach@test.com")
+	userID, _ := testutil.CreateTestUser(t, queries, "todotrainingdayathlete@test.com")
+	enrollUserDirect(t, pool, coachID, userID)
+	app := testutil.SetupFiberApp(testutil.HandlerConfig{
+		CoachTodoHandler: handler.NewCoachTodoHandler(queries, pool),
+	})
+
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	day := now.AddDate(0, 0, -daysSinceMonday)
+	thisMonday := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+	insertSession(t, pool, userID, "Sunday night hang", "", thisMonday.Add(30*time.Minute), nil)
+
+	todo := getTodo(t, app, coachToken)
+	if got := todo["sessions_this_week"].(float64); got != 0 {
+		t.Fatalf("Expected the session counted in the week its training day closes, got %v this week", got)
 	}
 }

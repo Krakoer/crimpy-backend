@@ -134,6 +134,17 @@ CREATE TABLE "sessions" (
   -- every reader averaging or plotting RPE would have to know to drop it.
   "rpe_failed"          BOOLEAN     NOT NULL DEFAULT false,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The day the session counts for in the athlete's own calendar: the local
+  -- date it started on, or the one before when it started before 04:00, since
+  -- a hang begun at 00:30 is the evening before's training. "date" is a UTC
+  -- instant and cannot answer this, because only the athlete's device knows the
+  -- zone it was trained in. The app sends it; the API derives it from the
+  -- instant minus four hours in UTC for a client that does not, which is also
+  -- how the rows older than the column were filled. The default is that same
+  -- rule read at insert time, there only so a writer that predates the column
+  -- cannot fail on it. Everything that files a session under a day or a week
+  -- reads this rather than cutting "date" in some zone of its own.
+  "training_day"        DATE        NOT NULL DEFAULT (((now() AT TIME ZONE 'UTC') - interval '4 hours')::date),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
   CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged')),

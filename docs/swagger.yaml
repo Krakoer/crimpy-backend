@@ -614,6 +614,13 @@ definitions:
           Samples is the force curve the sensor recorded. Accepted on an assessment
           only: it is what a critical force or an MVC result means, and on any other
           session it would be bulk nothing reads.
+      training_day:
+        description: |-
+          TrainingDay is the day the session counts for in the athlete's own
+          calendar, written YYYY-MM-DD: the local date it started on, or the one
+          before when it started before 04:00. Left out, it is derived from the
+          date in UTC, which is only right for an athlete living near UTC.
+        type: string
       training_id:
         type: string
     type: object
@@ -1144,6 +1151,12 @@ definitions:
           session only. Absent everywhere else, and left out by the list endpoints
           for the reason the prescription is.
         type: object
+      training_day:
+        description: |-
+          TrainingDay is the day the session counts for in the athlete's own
+          calendar, YYYY-MM-DD. Anything that places a session on a day or in a
+          week reads this rather than cutting date in a zone of its own.
+        type: string
       training_id:
         type: string
       updated_at:
@@ -1260,6 +1273,12 @@ definitions:
           session only. Absent everywhere else, and left out by the list endpoints
           for the reason the prescription is.
         type: object
+      training_day:
+        description: |-
+          TrainingDay is the day the session counts for in the athlete's own
+          calendar, YYYY-MM-DD. Anything that places a session on a day or in a
+          week reads this rather than cutting date in a zone of its own.
+        type: string
       training_id:
         type: string
       updated_at:
@@ -1683,6 +1702,13 @@ definitions:
         type: integer
       rpe_failed:
         type: boolean
+      training_day:
+        description: |-
+          The day the session counts for, YYYY-MM-DD, sent beside a new date by a
+          client that knows the athlete's zone. A date sent without it re-derives
+          the day from the new date in UTC, so the two cannot drift apart. Sent on
+          its own, it refiles the session and has to fit the stored date.
+        type: string
     type: object
   handler.UpdateTagRequest:
     properties:
@@ -3607,29 +3633,30 @@ paths:
     get:
       description: 'The weekly training load series for a coachee enrolled with the
         authenticated coach, oldest week first and ending with the week being trained
-        now. Weeks are cut on Monday in the caller''s own time, and a week holding
-        no session is returned with zeros rather than skipped. Durations are reported
-        in minutes, summed from the seconds stored on each session. mean_rpe averages
-        only the sessions the athlete rated: an unrated session is left out rather
-        than counted as zero, and a session marked ECHEC is left out too and reported
-        separately as failed_sessions, because ECHEC is an outcome rather than a point
-        on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for
-        a week with no session at all and null for a week that holds sessions but
-        no rating or no recorded duration, since the effort is then simply not known.
-        chronic_load averages the acute load of this week and up to the two before
-        it, never reaching before the athlete''s first recorded session, skipping
-        any week whose own load is unknown, and chronic_weeks says how many weeks
-        it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and
-        load_change_percent are null wherever there is no baseline to divide by. The
-        minutes of each bucket are rounded from their own second totals, so the climbing
-        and strength figures can differ from the total by a minute on sub minute sessions.
-        The caller''s clock comes from timezone, an IANA zone name, which is what
-        makes a week boundary on the far side of a daylight saving change land where
-        the athlete lived it. tz_offset_minutes is the fallback for a client that
-        does not send a zone yet, and it cuts every week in the window with the one
-        offset, so such a window is an hour out on the far side of a change. The interpretation
-        bands the coach reads these against are guidance held by the portal, not a
-        judgement this endpoint makes.'
+        now. Weeks are cut on Monday in the caller''s own time, each session counting
+        in the week holding its training_day, the day the athlete''s device filed
+        it under, and a week holding no session is returned with zeros rather than
+        skipped. Durations are reported in minutes, summed from the seconds stored
+        on each session. mean_rpe averages only the sessions the athlete rated: an
+        unrated session is left out rather than counted as zero, and a session marked
+        ECHEC is left out too and reported separately as failed_sessions, because
+        ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is
+        mean_rpe times total_minutes, zero for a week with no session at all and null
+        for a week that holds sessions but no rating or no recorded duration, since
+        the effort is then simply not known. chronic_load averages the acute load
+        of this week and up to the two before it, never reaching before the athlete''s
+        first recorded session, skipping any week whose own load is unknown, and chronic_weeks
+        says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio
+        and load_change_percent are null wherever there is no baseline to divide by.
+        The minutes of each bucket are rounded from their own second totals, so the
+        climbing and strength figures can differ from the total by a minute on sub
+        minute sessions. The caller''s clock comes from timezone, an IANA zone name,
+        which is what makes a week boundary on the far side of a daylight saving change
+        land where the athlete lived it. tz_offset_minutes is the fallback for a client
+        that does not send a zone yet, and it cuts every week in the window with the
+        one offset, so such a window is an hour out on the far side of a change. The
+        interpretation bands the coach reads these against are guidance held by the
+        portal, not a judgement this endpoint makes.'
       parameters:
       - description: Client user ID
         in: path
@@ -4356,14 +4383,14 @@ paths:
         it on the session or against one of the items they were prescribed, capped
         at 50 with pending_feedback_total carrying the real count, and the programs
         whose current or next calendar week holds no session, plus how many sessions
-        their athletes did this week. Each empty week carries a scope, current for
-        the week being trained now and next for the one starting on the coming Monday.
-        The current ones are always listed; the next ones only once the weekly moment
-        the coach configured has passed in their own week, which is why the caller
-        sends its own clock. Send timezone, an IANA zone name, and the week is cut
-        on the caller''s real calendar even where a daylight saving change falls inside
-        it. tz_offset_minutes is the fallback for a client that does not send a zone
-        yet.'
+        their athletes did this week, each counted by its training_day. Each empty
+        week carries a scope, current for the week being trained now and next for
+        the one starting on the coming Monday. The current ones are always listed;
+        the next ones only once the weekly moment the coach configured has passed
+        in their own week, which is why the caller sends its own clock. Send timezone,
+        an IANA zone name, and the week is cut on the caller''s real calendar even
+        where a daylight saving change falls inside it. tz_offset_minutes is the fallback
+        for a client that does not send a zone yet.'
       parameters:
       - description: Caller's IANA zone name, for example Europe/Paris. Preferred
           over tz_offset_minutes
@@ -4937,7 +4964,11 @@ paths:
         the athlete''s session RPE, how much recovery it cost: rpe is a value of the
         scale, 5 to 10, and rpe_failed is that scale''s ECHEC, a session that could
         not be carried through. They are exclusive, and both are optional, since the
-        value stays editable through the update endpoint long after the session.'
+        value stays editable through the update endpoint long after the session. training_day,
+        YYYY-MM-DD, is the day the session counts for in the athlete''s own calendar:
+        the local date it started on, or the one before when it started before 04:00.
+        Left out, it is derived from date minus four hours in UTC; sent, it must lie
+        between two days before and one day after the UTC date of date, or it is refused.'
       parameters:
       - description: Session details
         in: body
@@ -5096,7 +5127,10 @@ paths:
         and keeps what is stored. The RPE pair counts as one field: sending neither
         rpe nor rpe_failed keeps the stored answer, and sending either replaces the
         whole answer, so rpe_failed false with no rpe beside it is how a rated session
-        is taken back to unrated. User must own the session unless they are an admin.'
+        is taken back to unrated. training_day travels with the date: a date sent
+        without it re-derives the day from the new date minus four hours in UTC, and
+        one sent on its own refiles the session, held to the same bounds against the
+        stored date as on create. User must own the session unless they are an admin.'
       parameters:
       - description: Session ID (UUID)
         in: path

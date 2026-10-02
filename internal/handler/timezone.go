@@ -193,3 +193,11 @@ func (clock callerClock) mondayOfWeek(at time.Time) time.Time {
 func calendarDate(at time.Time) time.Time {
 	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
 }
+
+// mondayOfDate is the Monday of the week a bare date falls in, as a bare date.
+// For a day that is already a date, such as a session's training day, where
+// mondayOfWeek would first have to read an instant on somebody's clock.
+func mondayOfDate(day time.Time) time.Time {
+	date := calendarDate(day)
+	return date.AddDate(0, 0, -((int(date.Weekday()) + 6) % 7))
+}
