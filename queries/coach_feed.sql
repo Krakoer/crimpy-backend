@@ -85,6 +85,7 @@ SELECT
   u.lastname   AS user_lastname,
   s.name       AS session_name,
   s.date       AS session_date,
+  s.training_day AS session_training_day,
   s.activity   AS activity,
   -- One of the lines the athlete wrote, lowest pass first, preferring the note
   -- on the session itself when there is one. A session raised by an item note

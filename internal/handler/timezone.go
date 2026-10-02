@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	// The API image is built on bare alpine, which carries no zoneinfo, so
 	// time.LoadLocation below would fail there with nothing to read. Embedding
@@ -90,25 +89,12 @@ func parseCallerClock(c fiber.Ctx) (callerClock, error) {
 	return callerClock{zone: zone, name: name, offset: offset}, nil
 }
 
-// zoneName is the zone to hand a query that has to cut the same weeks, null
-// when the caller only sent an offset and the query must fall back on it.
-func (clock callerClock) zoneName() pgtype.Text {
-	return pgtype.Text{String: clock.name, Valid: clock.name != ""}
-}
-
-// offsetMinutes is the fallback the query cuts its weeks with when no zone was
-// sent. It is still passed alongside a zone, and ignored there, so the two
-// always travel together and neither side has to guess what the other used.
-func (clock callerClock) offsetMinutes() int32 {
-	return int32(clock.offset / time.Minute)
-}
-
 // loadCallerZone resolves an IANA zone name a caller sent.
 //
-// The name has to mean the same thing to Go and to Postgres, since the two cut
-// the same weeks from opposite ends of the request, so it is held to the shape
-// a zone name really has, Area/Location, with UTC the one exception a browser
-// reports. What that turns away, measured rather than assumed:
+// The name is held to the shape a zone name really has, Area/Location, with UTC
+// the one exception a browser reports, so the clock it names is the caller's
+// real calendar and not a fixed offset that only shares its spelling. What that
+// turns away, measured rather than assumed:
 //
 // A name with no slash is an abbreviation or a legacy alias, and Postgres reads
 // several of them off its abbreviation table as a fixed offset where Go reads

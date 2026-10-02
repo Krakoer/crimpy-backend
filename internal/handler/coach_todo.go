@@ -58,8 +58,11 @@ type PendingFeedbackResponse struct {
 	UserLastname  string `json:"user_lastname"`
 	SessionName   string `json:"session_name"`
 	SessionDate   string `json:"session_date"`
-	Activity      int32  `json:"activity"`
-	Notes         string `json:"notes"`
+	// SessionTrainingDay is the day the session counts for in the athlete's
+	// own calendar, YYYY-MM-DD, which is what a row naming its day shows.
+	SessionTrainingDay string `json:"session_training_day"`
+	Activity           int32  `json:"activity"`
+	Notes              string `json:"notes"`
 }
 
 type EmptyProgramWeekResponse struct {
@@ -314,14 +317,15 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 
 	for _, row := range pending {
 		response.PendingFeedback = append(response.PendingFeedback, PendingFeedbackResponse{
-			SessionID:     row.SessionID.String(),
-			UserID:        row.UserID.String(),
-			UserFirstname: row.UserFirstname,
-			UserLastname:  row.UserLastname,
-			SessionName:   row.SessionName,
-			SessionDate:   row.SessionDate.Time.UTC().Format(time.RFC3339),
-			Activity:      row.Activity,
-			Notes:         row.Notes,
+			SessionID:          row.SessionID.String(),
+			UserID:             row.UserID.String(),
+			UserFirstname:      row.UserFirstname,
+			UserLastname:       row.UserLastname,
+			SessionName:        row.SessionName,
+			SessionDate:        row.SessionDate.Time.UTC().Format(time.RFC3339),
+			SessionTrainingDay: row.SessionTrainingDay.Time.Format(time.DateOnly),
+			Activity:           row.Activity,
+			Notes:              row.Notes,
 		})
 	}
 

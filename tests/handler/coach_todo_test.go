@@ -453,6 +453,10 @@ func TestCoachTodo_ListsOnlyUnansweredFeedback(t *testing.T) {
 	if item["session_name"] != "Waiting on you" {
 		t.Errorf("Expected the unanswered session, got %v", item["session_name"])
 	}
+	// The row names the day the session was filed under, not the instant's date.
+	if want := now.Add(-4 * time.Hour).Format(time.DateOnly); item["session_training_day"] != want {
+		t.Errorf("Expected session_training_day %s, got %v", want, item["session_training_day"])
+	}
 	if item["notes"] != "the last set was brutal" {
 		t.Errorf("Expected the athlete's notes on the item, got %v", item["notes"])
 	}

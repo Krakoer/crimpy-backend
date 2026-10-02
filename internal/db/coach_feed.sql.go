@@ -267,6 +267,7 @@ SELECT
   u.lastname   AS user_lastname,
   s.name       AS session_name,
   s.date       AS session_date,
+  s.training_day AS session_training_day,
   s.activity   AS activity,
   -- One of the lines the athlete wrote, lowest pass first, preferring the note
   -- on the session itself when there is one. A session raised by an item note
@@ -310,14 +311,15 @@ type GetCoachPendingSessionFeedbackParams struct {
 }
 
 type GetCoachPendingSessionFeedbackRow struct {
-	SessionID     pgtype.UUID
-	UserID        pgtype.UUID
-	UserFirstname string
-	UserLastname  string
-	SessionName   string
-	SessionDate   pgtype.Timestamptz
-	Activity      int32
-	Notes         string
+	SessionID          pgtype.UUID
+	UserID             pgtype.UUID
+	UserFirstname      string
+	UserLastname       string
+	SessionName        string
+	SessionDate        pgtype.Timestamptz
+	SessionTrainingDay pgtype.Date
+	Activity           int32
+	Notes              string
 }
 
 // The sessions whose notes the coach has not answered. The athlete wrote
@@ -345,6 +347,7 @@ func (q *Queries) GetCoachPendingSessionFeedback(ctx context.Context, arg GetCoa
 			&i.UserLastname,
 			&i.SessionName,
 			&i.SessionDate,
+			&i.SessionTrainingDay,
 			&i.Activity,
 			&i.Notes,
 		); err != nil {

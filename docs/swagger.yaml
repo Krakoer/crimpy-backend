@@ -851,6 +851,11 @@ definitions:
         type: string
       session_name:
         type: string
+      session_training_day:
+        description: |-
+          SessionTrainingDay is the day the session counts for in the athlete's
+          own calendar, YYYY-MM-DD, which is what a row naming its day shows.
+        type: string
       user_firstname:
         type: string
       user_id:
@@ -4968,7 +4973,7 @@ paths:
         YYYY-MM-DD, is the day the session counts for in the athlete''s own calendar:
         the local date it started on, or the one before when it started before 04:00.
         Left out, it is derived from date minus four hours in UTC; sent, it must lie
-        between two days before and one day after the UTC date of date, or it is refused.'
+        within one day either side of the UTC date of date, or it is refused.'
       parameters:
       - description: Session details
         in: body
