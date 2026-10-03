@@ -500,6 +500,8 @@ type AssessmentRequest struct {
 	GripPosition *int32   `json:"grip_position,omitempty"`
 	// Read as on POST /api/assessments: a test when omitted.
 	Origin *string `json:"origin,omitempty" enums:"test,training"`
+	// Read as on POST /api/assessments: none when omitted.
+	Details json.RawMessage `json:"details,omitempty" swaggertype:"object"`
 }
 
 // UpdateSessionRequest is what an edit changes about a session. Every field is
@@ -984,8 +986,12 @@ type AssessmentResponse struct {
 	// What produced the result: a test of the assessment, or a pull measured
 	// during a training that the athlete kept because it beat the result on
 	// file. Every result recorded before the distinction reads as a test.
-	Origin    string `json:"origin" enums:"test,training"`
-	UpdatedAt string `json:"updated_at"`
+	Origin string `json:"origin" enums:"test,training"`
+	// What the test measured beyond the value, as posted with the result: for a
+	// Critical Force, its W', the end force of its last three pulls and one
+	// entry per pull. Absent when the result has none.
+	Details   json.RawMessage `json:"details,omitempty" swaggertype:"object"`
+	UpdatedAt string          `json:"updated_at"`
 }
 
 // assessmentResult is the shape every assessment read path produces: the result
@@ -1019,6 +1025,7 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 		BodyweightRelative: r.BodyweightRelative,
 		GripPosition:       optionalInt32(a.GripPosition),
 		Origin:             a.Origin,
+		Details:            storedDetails(a.Details),
 		UpdatedAt:          a.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	resp.BodyweightKg = measuredBodyweight(r.BodyweightKg)
@@ -1034,6 +1041,16 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 		resp.LeftValue = &a.LeftValue.Float32
 	}
 	return resp
+}
+
+// storedDetails hands a result's stored details to a response as they were
+// posted, and nothing when there are none, so the field is left out rather
+// than sent as null.
+func storedDetails(details []byte) json.RawMessage {
+	if len(details) == 0 {
+		return nil
+	}
+	return json.RawMessage(details)
 }
 
 // AssessmentListItem is an assessment as the list endpoints return it: the
@@ -1059,6 +1076,7 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 					SessionID:    r.SessionID,
 					GripPosition: r.GripPosition,
 					Origin:       r.Origin,
+					Details:      r.Details,
 					UpdatedAt:    r.UpdatedAt,
 				},
 				Label:                r.Label,
@@ -1088,6 +1106,7 @@ func assessmentsToResponses(rows []db.GetSessionAssessmentsRow) []AssessmentResp
 				SessionID:    r.SessionID,
 				GripPosition: r.GripPosition,
 				Origin:       r.Origin,
+				Details:      r.Details,
 				UpdatedAt:    r.UpdatedAt,
 			},
 			Label:                r.Label,
@@ -1457,8 +1476,9 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 // storeRejectedInput says whether a write failed because of what the client
 // sent rather than because of anything the server did: a NUL, an unpaired
 // surrogate, invalid UTF-8, a number no numeric type holds. Go accepts all of
-// them as JSON and jsonb accepts none, and the only body on a session the server
-// does not encode itself is the prescription a client hands over.
+// them as JSON and jsonb accepts none, and the only bodies the server does not
+// encode itself are the prescription a client hands over with a session and the
+// details it hands over with an assessment result.
 //
 // Enumerating them before the insert cannot work, since Go's JSON is strictly
 // wider than jsonb's; asking the database what it refused is the one check that
@@ -1892,11 +1912,17 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	// record against is refused before the session and its reps are inserted.
 	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
 	assessmentOrigins := make([]string, len(req.Assessments))
+	assessmentDetails := make([][]byte, len(req.Assessments))
 	for i, a := range req.Assessments {
 		origin, ok := parseAssessmentOrigin(a.Origin)
 		if !ok {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment origin"})
 		}
+		details, ok := parseAssessmentDetails(a.Details)
+		if !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Assessment details must be a JSON object of at most 64 KiB"})
+		}
+		assessmentDetails[i] = details
 		id, ok := requireRecordableAssessment(c, h.queries, a.AssessmentID, userUUID)
 		if !ok {
 			return nil
@@ -1995,8 +2021,13 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			SessionID:    session.ID,
 			GripPosition: gripPosition,
 			Origin:       assessmentOrigins[i],
+			Details:      assessmentDetails[i],
 		})
 		if err != nil {
+			if storeRejectedInput(err) {
+				slog.Warn("refusing assessment details the store cannot keep", "user_id", userID, "session_id", session.ID, "error", err)
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Details hold something the store cannot keep"})
+			}
 			slog.Error("failed to create assessment", "user_id", userID, "session_id", session.ID, "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 		}

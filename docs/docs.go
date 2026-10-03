@@ -6421,6 +6421,10 @@ const docTemplate = `{
                     "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the denominator is the two fields below.",
                     "type": "boolean"
                 },
+                "details": {
+                    "description": "What the test measured beyond the value, as posted with the result: for a\nCritical Force, its W', the end force of its last three pulls and one\nentry per pull. Absent when the result has none.",
+                    "type": "object"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -6479,6 +6483,10 @@ const docTemplate = `{
                 "assessment_id": {
                     "type": "string"
                 },
+                "details": {
+                    "description": "Read as on POST /api/assessments: none when omitted.",
+                    "type": "object"
+                },
                 "grip_position": {
                     "type": "integer"
                 },
@@ -6515,6 +6523,10 @@ const docTemplate = `{
                 "bodyweight_relative": {
                     "description": "Whether the result reads as a ratio to the bodyweight it was pulled at\nrather than as an absolute load. Display only: the value beside it is the\nraw measurement, and the denominator is the two fields below.",
                     "type": "boolean"
+                },
+                "details": {
+                    "description": "What the test measured beyond the value, as posted with the result: for a\nCritical Force, its W', the end force of its last three pulls and one\nentry per pull. Absent when the result has none.",
+                    "type": "object"
                 },
                 "grip_position": {
                     "type": "integer"
@@ -6589,6 +6601,10 @@ const docTemplate = `{
                     "description": "When that weigh-in was taken, read as RightBodyweightMeasuredAt is and\nabsent exactly when the weight beside it is.",
                     "type": "string"
                 },
+                "left_details": {
+                    "description": "What the test behind the left hand's value measured beyond it, read as\nRightDetails is.",
+                    "type": "object"
+                },
                 "left_measured_at": {
                     "type": "string"
                 },
@@ -6613,6 +6629,10 @@ const docTemplate = `{
                 "right_bodyweight_measured_at": {
                     "description": "When that weigh-in was taken. A denominator is only worth dividing by while\nit is near the result it divides, and a weight on its own cannot say how\nnear it was: the last weigh-in at or before a result can be the same\nmorning or months earlier. Absent exactly when the weight is.",
                     "type": "string"
+                },
+                "right_details": {
+                    "description": "What the test behind the right hand's value measured beyond it, as that\nresult stored it: for a Critical Force, its W' and per pull numbers.\nAbsent when the result has none.",
+                    "type": "object"
                 },
                 "right_measured_at": {
                     "type": "string"
@@ -6869,6 +6889,10 @@ const docTemplate = `{
             "properties": {
                 "assessment_id": {
                     "type": "string"
+                },
+                "details": {
+                    "description": "What the test measured beyond the value, as a JSON object whose shape\nbelongs to the assessment. A Critical Force test sends its W', the end\nforce of its last three pulls and one entry per pull. Omitted or null, the\nresult has none, which is what every client sent before the field.",
+                    "type": "object"
                 },
                 "grip_position": {
                     "type": "integer"
