@@ -18,7 +18,7 @@ SET coach_reply = NULL,
     coach_reply_read_at = NULL,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at, training_day
 `
 
 type ClearSessionCoachReplyParams struct {
@@ -51,6 +51,7 @@ func (q *Queries) ClearSessionCoachReply(ctx context.Context, arg ClearSessionCo
 		&i.Rpe,
 		&i.RpeFailed,
 		&i.UpdatedAt,
+		&i.TrainingDay,
 	)
 	return i, err
 }
@@ -109,10 +110,11 @@ func (q *Queries) CountAccessibleTraining(ctx context.Context, arg CountAccessib
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, samples, duration, date, rpe, rpe_failed
+  program_session_id, prescription, samples, duration, date, rpe, rpe_failed,
+  training_day
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+) RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at, training_day
 `
 
 type CreateSessionParams struct {
@@ -130,6 +132,7 @@ type CreateSessionParams struct {
 	Date             pgtype.Timestamptz
 	Rpe              pgtype.Int4
 	RpeFailed        bool
+	TrainingDay      pgtype.Date
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
@@ -148,6 +151,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		arg.Date,
 		arg.Rpe,
 		arg.RpeFailed,
+		arg.TrainingDay,
 	)
 	var i Session
 	err := row.Scan(
@@ -170,6 +174,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.Rpe,
 		&i.RpeFailed,
 		&i.UpdatedAt,
+		&i.TrainingDay,
 	)
 	return i, err
 }
@@ -184,7 +189,7 @@ func (q *Queries) DeleteSession(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at FROM sessions WHERE id = $1
+SELECT id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at, training_day FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -210,6 +215,7 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 		&i.Rpe,
 		&i.RpeFailed,
 		&i.UpdatedAt,
+		&i.TrainingDay,
 	)
 	return i, err
 }
@@ -233,6 +239,7 @@ SELECT
   sessions.rpe,
   sessions.rpe_failed,
   sessions.updated_at,
+  sessions.training_day,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
 LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
@@ -259,6 +266,7 @@ type GetUserSessionsRow struct {
 	Rpe              pgtype.Int4
 	RpeFailed        bool
 	UpdatedAt        pgtype.Timestamptz
+	TrainingDay      pgtype.Date
 	RepCount         int64
 }
 
@@ -294,6 +302,7 @@ func (q *Queries) GetUserSessions(ctx context.Context, userID pgtype.UUID) ([]Ge
 			&i.Rpe,
 			&i.RpeFailed,
 			&i.UpdatedAt,
+			&i.TrainingDay,
 			&i.RepCount,
 		); err != nil {
 			return nil, err
@@ -310,7 +319,7 @@ const markSessionCoachReplyRead = `-- name: MarkSessionCoachReplyRead :one
 UPDATE sessions
 SET coach_reply_read_at = COALESCE(coach_reply_read_at, now())
 WHERE id = $1 AND coach_reply IS NOT NULL
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at, training_day
 `
 
 // Stamps the answer as seen. The first read wins, so reopening the session does
@@ -338,6 +347,7 @@ func (q *Queries) MarkSessionCoachReplyRead(ctx context.Context, id pgtype.UUID)
 		&i.Rpe,
 		&i.RpeFailed,
 		&i.UpdatedAt,
+		&i.TrainingDay,
 	)
 	return i, err
 }
@@ -349,7 +359,7 @@ SET coach_reply = $1,
     coach_reply_read_at = NULL,
     updated_at = now()
 WHERE id = $2 AND user_id = $3
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at, training_day
 `
 
 type SetSessionCoachReplyParams struct {
@@ -387,6 +397,7 @@ func (q *Queries) SetSessionCoachReply(ctx context.Context, arg SetSessionCoachR
 		&i.Rpe,
 		&i.RpeFailed,
 		&i.UpdatedAt,
+		&i.TrainingDay,
 	)
 	return i, err
 }
@@ -397,22 +408,24 @@ SET name = COALESCE($2, name),
     notes = COALESCE($3, notes),
     duration = COALESCE($4, duration),
     date = COALESCE($5, date),
-    rpe = CASE WHEN $6::boolean THEN $7::integer ELSE rpe END,
-    rpe_failed = CASE WHEN $6::boolean THEN $8::boolean ELSE rpe_failed END,
+    training_day = COALESCE($6, training_day),
+    rpe = CASE WHEN $7::boolean THEN $8::integer ELSE rpe END,
+    rpe_failed = CASE WHEN $7::boolean THEN $9::boolean ELSE rpe_failed END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at
+RETURNING id, user_id, name, notes, date, is_assessment, activity, origin, training_id, program_session_id, prescription, samples, duration, coach_reply, coach_reply_at, coach_reply_read_at, rpe, rpe_failed, updated_at, training_day
 `
 
 type UpdateSessionParams struct {
-	ID        pgtype.UUID
-	Name      pgtype.Text
-	Notes     pgtype.Text
-	Duration  pgtype.Int4
-	Date      pgtype.Timestamptz
-	RpeGiven  bool
-	Rpe       pgtype.Int4
-	RpeFailed bool
+	ID          pgtype.UUID
+	Name        pgtype.Text
+	Notes       pgtype.Text
+	Duration    pgtype.Int4
+	Date        pgtype.Timestamptz
+	TrainingDay pgtype.Date
+	RpeGiven    bool
+	Rpe         pgtype.Int4
+	RpeFailed   bool
 }
 
 // Every field a request leaves out is kept, so a client that sends only what it
@@ -432,6 +445,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		arg.Notes,
 		arg.Duration,
 		arg.Date,
+		arg.TrainingDay,
 		arg.RpeGiven,
 		arg.Rpe,
 		arg.RpeFailed,
@@ -457,6 +471,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		&i.Rpe,
 		&i.RpeFailed,
 		&i.UpdatedAt,
+		&i.TrainingDay,
 	)
 	return i, err
 }

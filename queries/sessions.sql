@@ -1,9 +1,10 @@
 -- name: CreateSession :one
 INSERT INTO sessions (
   user_id, name, notes, is_assessment, activity, origin, training_id,
-  program_session_id, prescription, samples, duration, date, rpe, rpe_failed
+  program_session_id, prescription, samples, duration, date, rpe, rpe_failed,
+  training_day
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 ) RETURNING *;
 
 -- name: GetSession :one
@@ -33,6 +34,7 @@ SELECT
   sessions.rpe,
   sessions.rpe_failed,
   sessions.updated_at,
+  sessions.training_day,
   COUNT(rep_datas.id) AS rep_count
 FROM sessions
 LEFT JOIN rep_datas ON rep_datas.session_id = sessions.id
@@ -56,6 +58,7 @@ SET name = COALESCE(sqlc.narg('name'), name),
     notes = COALESCE(sqlc.narg('notes'), notes),
     duration = COALESCE(sqlc.narg('duration'), duration),
     date = COALESCE(sqlc.narg('date'), date),
+    training_day = COALESCE(sqlc.narg('training_day'), training_day),
     rpe = CASE WHEN sqlc.arg('rpe_given')::boolean THEN sqlc.narg('rpe')::integer ELSE rpe END,
     rpe_failed = CASE WHEN sqlc.arg('rpe_given')::boolean THEN sqlc.arg('rpe_failed')::boolean ELSE rpe_failed END,
     updated_at = now()

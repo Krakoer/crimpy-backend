@@ -262,7 +262,7 @@ func parseTrainingLoadWeeks(raw string) (int, error) {
 
 // GetClientTrainingLoad godoc
 // @Summary Get a client's weekly training load
-// @Description The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating or no recorded duration, since the effort is then simply not known. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, skipping any week whose own load is unknown, and chronic_weeks says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The minutes of each bucket are rounded from their own second totals, so the climbing and strength figures can differ from the total by a minute on sub minute sessions. The caller's clock comes from timezone, an IANA zone name, which is what makes a week boundary on the far side of a daylight saving change land where the athlete lived it. tz_offset_minutes is the fallback for a client that does not send a zone yet, and it cuts every week in the window with the one offset, so such a window is an hour out on the far side of a change. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.
+// @Description The weekly training load series for a coachee enrolled with the authenticated coach, oldest week first and ending with the week being trained now. Weeks are cut on Monday in the caller's own time, each session counting in the week holding its training_day, the day the athlete's device filed it under, and a week holding no session is returned with zeros rather than skipped. Durations are reported in minutes, summed from the seconds stored on each session. mean_rpe averages only the sessions the athlete rated: an unrated session is left out rather than counted as zero, and a session marked ECHEC is left out too and reported separately as failed_sessions, because ECHEC is an outcome rather than a point on the 5 to 10 scale. acute_load is mean_rpe times total_minutes, zero for a week with no session at all and null for a week that holds sessions but no rating or no recorded duration, since the effort is then simply not known. chronic_load averages the acute load of this week and up to the two before it, never reaching before the athlete's first recorded session, skipping any week whose own load is unknown, and chronic_weeks says how many weeks it actually rested on, 0 meaning no baseline at all. acute_chronic_ratio and load_change_percent are null wherever there is no baseline to divide by. The minutes of each bucket are rounded from their own second totals, so the climbing and strength figures can differ from the total by a minute on sub minute sessions. The caller's clock comes from timezone, an IANA zone name, which is what makes a week boundary on the far side of a daylight saving change land where the athlete lived it. tz_offset_minutes is the fallback for a client that does not send a zone yet, and it cuts every week in the window with the one offset, so such a window is an hour out on the far side of a change. The interpretation bands the coach reads these against are guidance held by the portal, not a judgement this endpoint makes.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -299,35 +299,31 @@ func (h *CoachTrainingLoadHandler) GetClientTrainingLoad(c fiber.Ctx) error {
 	// Every Monday below is an instant on the caller's own clock, and the days
 	// are added before it is converted back, so a week holding a daylight
 	// saving change is still seven calendar days rather than an hour short. The
-	// same clock goes to the query, which has to cut the same weeks to group
-	// the sessions into them.
+	// query only needs their dates: it files each session under its training
+	// day, which is already a date in the athlete's own calendar.
 	lastMonday := clock.mondayOfWeek(time.Now())
 	firstShownMonday := lastMonday.AddDate(0, 0, -daysInWeek*(weeksWanted-1))
 	firstReadMonday := firstShownMonday.AddDate(0, 0, -daysInWeek*trainingLoadLeadInWeeks)
 
 	rows, err := h.queries.GetCoacheeWeeklyTrainingLoad(c.Context(), db.GetCoacheeWeeklyTrainingLoadParams{
-		FirstWeekStart:  pgtype.Date{Time: calendarDate(firstReadMonday), Valid: true},
-		LastWeekStart:   pgtype.Date{Time: calendarDate(lastMonday), Valid: true},
-		TzName:          clock.zoneName(),
-		TzOffsetMinutes: clock.offsetMinutes(),
-		UserID:          clientUUID,
-		WindowStart:     pgtype.Timestamptz{Time: firstReadMonday.UTC(), Valid: true},
-		WindowEnd:       pgtype.Timestamptz{Time: lastMonday.AddDate(0, 0, daysInWeek).UTC(), Valid: true},
+		FirstWeekStart: pgtype.Date{Time: calendarDate(firstReadMonday), Valid: true},
+		LastWeekStart:  pgtype.Date{Time: calendarDate(lastMonday), Valid: true},
+		UserID:         clientUUID,
 	})
 	if err != nil {
 		slog.Error("failed to retrieve weekly training load", "coach_id", coachUUID.String(), "client_id", clientUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training load"})
 	}
 
-	firstSession, err := h.queries.GetCoacheeFirstSessionInstant(c.Context(), clientUUID)
+	firstTrainingDay, err := h.queries.GetCoacheeFirstTrainingDay(c.Context(), clientUUID)
 	if err != nil {
-		slog.Error("failed to retrieve first session instant", "coach_id", coachUUID.String(), "client_id", clientUUID.String(), "error", err)
+		slog.Error("failed to retrieve first training day", "coach_id", coachUUID.String(), "client_id", clientUUID.String(), "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve training load"})
 	}
 
 	var firstHistoryWeek *time.Time
-	if firstSession.Valid {
-		monday := calendarDate(clock.mondayOfWeek(firstSession.Time))
+	if firstTrainingDay.Valid {
+		monday := mondayOfDate(firstTrainingDay.Time)
 		firstHistoryWeek = &monday
 	}
 

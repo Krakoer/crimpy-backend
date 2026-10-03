@@ -1,4 +1,4 @@
-h1:WX5Lt1HUje5/nfSqSV6iMI8pymMAMigm8csFg2gNvfg=
+h1:BcDsvbBos9yyiDDZLJ4kMJq2SaN4XgMohzuRuZD8HK8=
 20260413155946_initial.sql h1:6Qduu/EfmXP/dAVG7xjTw0bUHK3Q8Mv2oWTJDhDHwfM=
 20260415161139_remove_device_id.sql h1:UvPaIEldJnmtTUF1DNxZg5KZf8rfBiTIGyQBx9BhdC4=
 20260420212311_add_pinned_and_sensor_tables.sql h1:oaJbvaEAM+/XsY2kou0qPvWBywUT12/CCLRme7vm6TA=
@@ -67,4 +67,5 @@ h1:WX5Lt1HUje5/nfSqSV6iMI8pymMAMigm8csFg2gNvfg=
 20260925154245_add_password_reset.sql h1:5R3djuKEi/+N5twM5lit4lsV0LbkCDKSfATHdqy4Z7g=
 20260925182959_add_account_notice_sent_at.sql h1:hbfukWT1+3ASGhpcp64s8OuO5hyCDJG2Kl/2z8E8ZJM=
 20260929140658_add_assessment_origin.sql h1:OqvdPfqzTZmLQgFnus0ZKGNE0FBYSWLQfuBERlVw2Po=
-20260930104134_add_assessment_details.sql h1:5hVNrU66D7Djnge+XF+Ay6hrr/z3Rz4h1s/qH3NcFCU=
+20261002165058_add_session_training_day.sql h1:B9ujObFQ0n4TUNIgmKGT6ZBHA40MOdTqD5flA28jsj8=
+20261003000000_add_assessment_details.sql h1:KUW2f6U2fZFJ0k9DH5BhqoUh8Cbj4EKAn1E/Rr67wms=

@@ -223,6 +223,7 @@ type Session struct {
 	Rpe              pgtype.Int4
 	RpeFailed        bool
 	UpdatedAt        pgtype.Timestamptz
+	TrainingDay      pgtype.Date
 }
 
 type SessionItemResult struct {
