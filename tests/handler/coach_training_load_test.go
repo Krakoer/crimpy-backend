@@ -28,14 +28,18 @@ func loadTestMonday(weeksBack int) time.Time {
 	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// insertLoadSession writes one session at an instant given on the caller's
-// shifted clock, converting it back to the UTC the column stores.
+// insertLoadSession writes one session at an instant given on the athlete's
+// shifted clock, converting it back to the UTC the column stores, and files it
+// under the training day the app would send for it: the date on that clock,
+// or the one before when it falls before 04:00.
 func insertLoadSessionAt(t *testing.T, pool *pgxpool.Pool, userID string, localAt time.Time, offsetMinutes int, activity, durationSeconds int, rpe *int, failed bool) {
 	t.Helper()
+	dayTurn := localAt.Add(-4 * time.Hour)
+	trainingDay := time.Date(dayTurn.Year(), dayTurn.Month(), dayTurn.Day(), 0, 0, 0, 0, time.UTC)
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, duration, rpe, rpe_failed)
-		 VALUES ($1, 'Load session', '', $2, $3, 'logged', $4, $5, $6)`,
-		userID, localAt.Add(-time.Duration(offsetMinutes)*time.Minute), activity, durationSeconds, rpe, failed)
+		`INSERT INTO sessions (user_id, name, notes, date, activity, origin, duration, rpe, rpe_failed, training_day)
+		 VALUES ($1, 'Load session', '', $2, $3, 'logged', $4, $5, $6, $7)`,
+		userID, localAt.Add(-time.Duration(offsetMinutes)*time.Minute), activity, durationSeconds, rpe, failed, trainingDay)
 	if err != nil {
 		t.Fatalf("Failed to insert session: %v", err)
 	}
@@ -48,6 +52,7 @@ func insertLoadSession(t *testing.T, pool *pgxpool.Pool, userID string, localAt 
 
 // insertLoadSessionInstant writes one session at a real instant, rather than at
 // a wall clock time on a shifted clock, which is what a test about zones needs.
+// Its training day is read on the instant's own location.
 func insertLoadSessionInstant(t *testing.T, pool *pgxpool.Pool, userID string, at time.Time, activity, durationSeconds int, rpe *int) {
 	t.Helper()
 	insertLoadSessionAt(t, pool, userID, at, 0, activity, durationSeconds, rpe, false)
@@ -294,9 +299,9 @@ func TestTrainingLoadCutsTheWeekOnTheCallersMonday(t *testing.T) {
 	app, pool, _, _, userID, coachToken := setupTrainingLoadApp(t)
 	defer testutil.CleanupTestDB(t, pool)
 
-	// Monday 00:30 on the caller's clock, which is the Sunday before in UTC.
-	// It belongs to the week that Monday opens, not to the one it closes.
-	insertLoadSession(t, pool, userID, loadTestMonday(0).Add(30*time.Minute), 1, 3600, rpeOf(6), false)
+	// Monday 04:30 on the athlete's clock, which is still Monday in UTC too, but
+	// only 02:30 there. It belongs to the week that Monday opens.
+	insertLoadSession(t, pool, userID, loadTestMonday(0).Add(4*time.Hour+30*time.Minute), 1, 3600, rpeOf(6), false)
 
 	weeks := fetchTrainingLoad(t, app, coachToken, userID, 2)
 	if got := numberAt(t, weeks[0], "session_count"); got != 0 {
@@ -304,6 +309,23 @@ func TestTrainingLoadCutsTheWeekOnTheCallersMonday(t *testing.T) {
 	}
 	if got := numberAt(t, weeks[1], "session_count"); got != 1 {
 		t.Fatalf("Expected the session in the current week, got %v", got)
+	}
+}
+
+// A hang begun at 00:30 on a Monday is the Sunday evening's training: the app
+// files it under Sunday, so the week it counts for is the one Sunday closes.
+func TestTrainingLoadFilesAnAfterMidnightSessionUnderTheWeekItsTrainingDayCloses(t *testing.T) {
+	app, pool, _, _, userID, coachToken := setupTrainingLoadApp(t)
+	defer testutil.CleanupTestDB(t, pool)
+
+	insertLoadSession(t, pool, userID, loadTestMonday(0).Add(30*time.Minute), 1, 3600, rpeOf(6), false)
+
+	weeks := fetchTrainingLoad(t, app, coachToken, userID, 2)
+	if got := numberAt(t, weeks[0], "session_count"); got != 1 {
+		t.Fatalf("Expected the session in the week its training day closes, got %v", got)
+	}
+	if got := numberAt(t, weeks[1], "session_count"); got != 0 {
+		t.Fatalf("Expected nothing in the week its instant falls in, got %v", got)
 	}
 }
 
@@ -542,12 +564,13 @@ func TestTrainingLoadCutsWeeksAcrossADaylightSavingChange(t *testing.T) {
 			boundaries := []time.Time{afterSwitch, beforeSwitch}
 
 			// Each boundary is pinned from both sides: the last half hour of
-			// the week that closes and the first half hour of the week that
-			// opens. Both zones switch at 02:00 or 03:00 local, so neither wall
-			// clock time is one the change skips or repeats.
+			// the week that closes, which runs to Monday 04:00 since the
+			// training day turns then, and the first half hour of the week that
+			// opens. Both zones switch on a Sunday at 02:00 or 03:00 local, so
+			// neither wall clock time is one the change skips or repeats.
 			for _, monday := range boundaries {
-				insertLoadSessionInstant(t, pool, userID, monday.Add(-30*time.Minute), 1, 3600, rpeOf(7))
-				insertLoadSessionInstant(t, pool, userID, monday.Add(30*time.Minute), 1, 3600, rpeOf(7))
+				insertLoadSessionInstant(t, pool, userID, monday.Add(3*time.Hour+30*time.Minute), 1, 3600, rpeOf(7))
+				insertLoadSessionInstant(t, pool, userID, monday.Add(4*time.Hour+30*time.Minute), 1, 3600, rpeOf(7))
 			}
 
 			weeksWanted := switchBack + 3

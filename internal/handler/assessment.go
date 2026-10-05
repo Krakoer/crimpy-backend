@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"crimpy/backend/internal/db"
 	"crimpy/backend/internal/middleware"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -23,6 +25,57 @@ type CreateAssessmentRequest struct {
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
+	// What produced the result: "test" for a run of the assessment itself, or
+	// "training" for a pull measured during a training and kept by the athlete.
+	// Omitted, it is a test, which is what every client sent before the field.
+	Origin *string `json:"origin,omitempty" enums:"test,training"`
+	// What the test measured beyond the value, as a JSON object whose shape
+	// belongs to the assessment. A Critical Force test sends its W', the end
+	// force of its last three pulls and one entry per pull. Omitted or null, the
+	// result has none, which is what every client sent before the field.
+	Details json.RawMessage `json:"details,omitempty" swaggertype:"object"`
+}
+
+// maxAssessmentDetailsBytes caps the details a result may carry. A 24 pull
+// Critical Force test takes about 4 KiB; the cap leaves room for a longer
+// protocol while refusing a body that is not details at all.
+const maxAssessmentDetailsBytes = 64 << 10
+
+// parseAssessmentDetails reads the details a result was posted with. Absent or
+// null is no details. Anything that is not a JSON object, or that is over the
+// cap, is refused as bad input rather than left to the check constraint to fail
+// as a server error.
+func parseAssessmentDetails(raw json.RawMessage) ([]byte, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, true
+	}
+	if len(trimmed) > maxAssessmentDetailsBytes || trimmed[0] != '{' || !json.Valid(trimmed) {
+		return nil, false
+	}
+	return trimmed, true
+}
+
+// The origins a result may carry, as the assessments_origin_check constraint
+// spells them.
+const (
+	AssessmentOriginTest     = "test"
+	AssessmentOriginTraining = "training"
+)
+
+// parseAssessmentOrigin reads the origin a result was posted with, taking an
+// absent one as a test. The second value is false on anything else, which the
+// caller refuses as bad input rather than leaving to the check constraint to
+// fail as a server error.
+func parseAssessmentOrigin(raw *string) (string, bool) {
+	if raw == nil {
+		return AssessmentOriginTest, true
+	}
+	switch *raw {
+	case AssessmentOriginTest, AssessmentOriginTraining:
+		return *raw, true
+	}
+	return "", false
 }
 
 func NewAssessmentHandler(queries *db.Queries) *AssessmentHandler {
@@ -39,7 +92,7 @@ func (h *AssessmentHandler) ownedAssessment() ownedResource[db.Assessment] {
 
 // CreateAssessment godoc
 // @Summary Create an assessment linked to an existing session
-// @Description Create a new assessment result for the authenticated user, linked to an existing session they own. The response carries the weigh-in the result is divided by, the last one taken at or before the session, absent when the athlete has none on file, which is the state right after a first recording.
+// @Description Create a new assessment result for the authenticated user, linked to an existing session they own. The origin says whether the result comes from a test of the assessment or from a pull measured during a training, and defaults to test. The response carries the weigh-in the result is divided by, the last one taken at or before the session, absent when the athlete has none on file, which is the state right after a first recording.
 // @Tags Assessment
 // @Accept json
 // @Produce json
@@ -65,6 +118,16 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 
 	if req.SessionID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id is required"})
+	}
+
+	origin, ok := parseAssessmentOrigin(req.Origin)
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid origin"})
+	}
+
+	details, ok := parseAssessmentDetails(req.Details)
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "details must be a JSON object of at most 64 KiB"})
 	}
 
 	var sessionUUID pgtype.UUID
@@ -148,8 +211,16 @@ func (h *AssessmentHandler) CreateAssessment(c fiber.Ctx) error {
 		LeftValue:    leftValue,
 		SessionID:    session.ID,
 		GripPosition: gripPosition,
+		Origin:       origin,
+		Details:      details,
 	})
 	if err != nil {
+		// Details Go reads as JSON but jsonb refuses: a retry would fail the
+		// same way, so the client is told rather than handed a 500.
+		if storeRejectedInput(err) {
+			slog.Warn("refusing assessment details the store cannot keep", "user_id", userID, "session_id", req.SessionID, "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Details hold something the store cannot keep"})
+		}
 		slog.Error("failed to create assessment", "user_id", userID, "session_id", req.SessionID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 	}
@@ -290,9 +361,17 @@ type AssessmentSnapshotItem struct {
 	// it is near the result it divides, and a weight on its own cannot say how
 	// near it was: the last weigh-in at or before a result can be the same
 	// morning or months earlier. Absent exactly when the weight is.
-	RightBodyweightMeasuredAt *string  `json:"right_bodyweight_measured_at,omitempty"`
-	LeftValue                 *float32 `json:"left_value,omitempty"`
-	LeftMeasuredAt            *string  `json:"left_measured_at,omitempty"`
+	RightBodyweightMeasuredAt *string `json:"right_bodyweight_measured_at,omitempty"`
+	// What produced the right hand's value: a test, or a pull kept from a
+	// training. A comparison says so beside the value, since a kept pull is not
+	// a retest. Absent exactly when the value is.
+	RightOrigin *string `json:"right_origin,omitempty" enums:"test,training"`
+	// What the test behind the right hand's value measured beyond it, as that
+	// result stored it: for a Critical Force, its W' and per pull numbers.
+	// Absent when the result has none.
+	RightDetails   json.RawMessage `json:"right_details,omitempty" swaggertype:"object"`
+	LeftValue      *float32        `json:"left_value,omitempty"`
+	LeftMeasuredAt *string         `json:"left_measured_at,omitempty"`
 	// The weight the left hand was pulled at, chosen and absent by the same rule
 	// as the right, and its own weigh-in: the two hands can come from sessions
 	// months apart, so neither answers for the other.
@@ -300,6 +379,11 @@ type AssessmentSnapshotItem struct {
 	// When that weigh-in was taken, read as RightBodyweightMeasuredAt is and
 	// absent exactly when the weight beside it is.
 	LeftBodyweightMeasuredAt *string `json:"left_bodyweight_measured_at,omitempty"`
+	// What produced the left hand's value, read as RightOrigin is.
+	LeftOrigin *string `json:"left_origin,omitempty" enums:"test,training"`
+	// What the test behind the left hand's value measured beyond it, read as
+	// RightDetails is.
+	LeftDetails json.RawMessage `json:"left_details,omitempty" swaggertype:"object"`
 }
 
 // AssessmentSnapshotResponse is what an athlete had measured as of a date. The
@@ -408,6 +492,10 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 		}
 		item.RightBodyweightKg = measuredBodyweight(row.RightBodyweightKg)
 		item.RightBodyweightMeasuredAt = bodyweightMeasuredAt(item.RightBodyweightKg, row.RightBodyweightMeasuredAt)
+		if row.RightOrigin.Valid {
+			item.RightOrigin = &row.RightOrigin.String
+		}
+		item.RightDetails = storedDetails(row.RightDetails)
 		if row.LeftValue.Valid {
 			item.LeftValue = &row.LeftValue.Float32
 		}
@@ -417,6 +505,10 @@ func assessmentSnapshotAt(c fiber.Ctx, queries *db.Queries, userUUID pgtype.UUID
 		}
 		item.LeftBodyweightKg = measuredBodyweight(row.LeftBodyweightKg)
 		item.LeftBodyweightMeasuredAt = bodyweightMeasuredAt(item.LeftBodyweightKg, row.LeftBodyweightMeasuredAt)
+		if row.LeftOrigin.Valid {
+			item.LeftOrigin = &row.LeftOrigin.String
+		}
+		item.LeftDetails = storedDetails(row.LeftDetails)
 		response.Results = append(response.Results, item)
 	}
 

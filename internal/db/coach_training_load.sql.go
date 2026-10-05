@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getCoacheeFirstSessionInstant = `-- name: GetCoacheeFirstSessionInstant :one
-SELECT MIN(date)::timestamptz AS first_session_at
+const getCoacheeFirstTrainingDay = `-- name: GetCoacheeFirstTrainingDay :one
+SELECT MIN(training_day)::date AS first_training_day
 FROM sessions
 WHERE user_id = $1
 `
@@ -21,12 +21,13 @@ WHERE user_id = $1
 // average only weeks that are really part of it. Without this, an athlete who
 // joined three weeks ago would have the silence before they signed up averaged
 // in as rest, and their first weeks would read as a far bigger jump than they
-// were. Null when they have recorded nothing at all.
-func (q *Queries) GetCoacheeFirstSessionInstant(ctx context.Context, userID pgtype.UUID) (pgtype.Timestamptz, error) {
-	row := q.db.QueryRow(ctx, getCoacheeFirstSessionInstant, userID)
-	var first_session_at pgtype.Timestamptz
-	err := row.Scan(&first_session_at)
-	return first_session_at, err
+// were. Read as a training day, the calendar the weeks above are cut on. Null
+// when they have recorded nothing at all.
+func (q *Queries) GetCoacheeFirstTrainingDay(ctx context.Context, userID pgtype.UUID) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, getCoacheeFirstTrainingDay, userID)
+	var first_training_day pgtype.Date
+	err := row.Scan(&first_training_day)
+	return first_training_day, err
 }
 
 const getCoacheeProgramWeekNumbers = `-- name: GetCoacheeProgramWeekNumbers :many
@@ -106,14 +107,8 @@ WITH grid AS (
 ),
 weekly AS (
   SELECT
-    (date_trunc(
-      'week',
-      CASE
-        WHEN $3::text IS NOT NULL
-          THEN s.date AT TIME ZONE $3::text
-        ELSE (s.date AT TIME ZONE 'UTC') + make_interval(mins => $4::integer)
-      END
-    ))::date AS week_start,
+    ($1::date
+      + 7 * ((s.training_day - $1::date) / 7)) AS week_start,
     COUNT(*)::integer AS session_count,
     COALESCE(SUM(s.duration), 0)::bigint AS total_seconds,
     -- activity 1 is climbing; 0 hangboard and 3 workout are the strength side.
@@ -129,9 +124,9 @@ weekly AS (
     COALESCE(SUM(s.rpe), 0)::bigint AS rpe_sum,
     COUNT(*) FILTER (WHERE s.rpe_failed)::integer AS failed_sessions
   FROM sessions s
-  WHERE s.user_id = $5
-    AND s.date >= $6
-    AND s.date < $7
+  WHERE s.user_id = $3
+    AND s.training_day >= $1::date
+    AND s.training_day < $2::date + 7
   GROUP BY 1
 )
 SELECT
@@ -149,13 +144,9 @@ ORDER BY g.week_start
 `
 
 type GetCoacheeWeeklyTrainingLoadParams struct {
-	FirstWeekStart  pgtype.Date
-	LastWeekStart   pgtype.Date
-	TzName          pgtype.Text
-	TzOffsetMinutes int32
-	UserID          pgtype.UUID
-	WindowStart     pgtype.Timestamptz
-	WindowEnd       pgtype.Timestamptz
+	FirstWeekStart pgtype.Date
+	LastWeekStart  pgtype.Date
+	UserID         pgtype.UUID
 }
 
 type GetCoacheeWeeklyTrainingLoadRow struct {
@@ -174,13 +165,12 @@ type GetCoacheeWeeklyTrainingLoadRow struct {
 // nothing are returned as zeros rather than skipped: dropping them shortens the
 // rolling chronic mean, which then reads as if the rest week never happened.
 //
-// Weeks are cut on the coach's own Monday. Given their IANA zone name, the
-// session instant is read in that zone, so every boundary lands where the
-// athlete lived it even where a daylight saving change falls inside the window.
-// Without one, the caller's offset is added instead, which is exact only for a
-// window that holds no such change: it is the fallback for a client that does
-// not send a zone yet. Either way date_trunc runs on a bare timestamp, so it
-// answers the same whatever the server's TimeZone setting happens to be.
+// Weeks are the coach's calendar weeks, Monday first, and a session falls in
+// the one holding its training day: the day the athlete's device filed it
+// under, so a hang begun at 00:30 on a Monday counts for the Sunday before, as
+// it does in the app. Grouping is plain date arithmetic from the first Monday
+// asked for, with no instant read in any zone, so it answers the same whatever
+// the server's TimeZone setting happens to be.
 //
 // Only the raw sums live here. The mean RPE, the acute and chronic loads and
 // the ratios are derived by the handler, where the rules about an unrated
@@ -189,15 +179,7 @@ type GetCoacheeWeeklyTrainingLoadRow struct {
 // Durations are stored in seconds on every session and summed as seconds, so
 // the conversion to minutes and its rounding happen in exactly one place.
 func (q *Queries) GetCoacheeWeeklyTrainingLoad(ctx context.Context, arg GetCoacheeWeeklyTrainingLoadParams) ([]GetCoacheeWeeklyTrainingLoadRow, error) {
-	rows, err := q.db.Query(ctx, getCoacheeWeeklyTrainingLoad,
-		arg.FirstWeekStart,
-		arg.LastWeekStart,
-		arg.TzName,
-		arg.TzOffsetMinutes,
-		arg.UserID,
-		arg.WindowStart,
-		arg.WindowEnd,
-	)
+	rows, err := q.db.Query(ctx, getCoacheeWeeklyTrainingLoad, arg.FirstWeekStart, arg.LastWeekStart, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

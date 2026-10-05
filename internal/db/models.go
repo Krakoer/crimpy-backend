@@ -16,6 +16,8 @@ type Assessment struct {
 	LeftValue    pgtype.Float4
 	SessionID    pgtype.UUID
 	GripPosition pgtype.Int4
+	Origin       string
+	Details      []byte
 	UpdatedAt    pgtype.Timestamptz
 }
 
@@ -221,6 +223,7 @@ type Session struct {
 	Rpe              pgtype.Int4
 	RpeFailed        bool
 	UpdatedAt        pgtype.Timestamptz
+	TrainingDay      pgtype.Date
 }
 
 type SessionItemResult struct {

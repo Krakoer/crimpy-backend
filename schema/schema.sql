@@ -134,6 +134,17 @@ CREATE TABLE "sessions" (
   -- every reader averaging or plotting RPE would have to know to drop it.
   "rpe_failed"          BOOLEAN     NOT NULL DEFAULT false,
   "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The day the session counts for in the athlete's own calendar: the local
+  -- date it started on, or the one before when it started before 04:00, since
+  -- a hang begun at 00:30 is the evening before's training. "date" is a UTC
+  -- instant and cannot answer this, because only the athlete's device knows the
+  -- zone it was trained in. The app sends it; the API derives it from the
+  -- instant minus four hours in UTC for a client that does not, which is also
+  -- how the rows older than the column were filled. The default is that same
+  -- rule read at insert time, there only so a writer that predates the column
+  -- cannot fail on it. Everything that files a session under a day or a week
+  -- reads this rather than cutting "date" in some zone of its own.
+  "training_day"        DATE        NOT NULL DEFAULT (((now() AT TIME ZONE 'UTC') - interval '4 hours')::date),
   PRIMARY KEY ("id"),
   CONSTRAINT "sessions_activity_check" CHECK (activity BETWEEN 0 AND 4),
   CONSTRAINT "sessions_origin_check" CHECK (origin IN ('played', 'logged')),
@@ -177,8 +188,26 @@ CREATE TABLE "assessments" (
   "left_value"    REAL,
   "session_id"    UUID        NOT NULL REFERENCES "sessions"("id") ON DELETE CASCADE,
   "grip_position" INTEGER     DEFAULT 0,
+  -- What produced the result: 'test' for a run of the assessment itself, and
+  -- 'training' for a pull measured during an ordinary training that the athlete
+  -- chose to keep because it beat the result on file. A coach reads the two
+  -- differently, so the result says which it is rather than leaving it to be
+  -- guessed from the session. Every result stored before the distinction
+  -- existed came from a test.
+  "origin"        TEXT        NOT NULL DEFAULT 'test',
+  -- What the test measured beyond the one number in the value columns, kept so
+  -- a reading other than the headline can be shown, and any definition of it
+  -- recomputed later. Its shape belongs to the assessment. A Critical Force
+  -- test stores W' (impulse above CF, kg.s), the end force of its last three
+  -- pulls and one entry per pull (window mean, peak, end force, impulse, late
+  -- off flag), while right_value or left_value stays the Critical Force itself.
+  -- NULL for every other assessment, and for every result recorded before it.
+  "details"       JSONB,
   "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY ("id")
+  PRIMARY KEY ("id"),
+  CONSTRAINT "assessments_origin_check" CHECK (origin IN ('test', 'training')),
+  CONSTRAINT "assessments_details_object_check"
+    CHECK (details IS NULL OR jsonb_typeof(details) = 'object')
 );
 
 

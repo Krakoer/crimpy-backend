@@ -1,6 +1,6 @@
 -- name: CreateAssessment :one
-INSERT INTO assessments (user_id, assessment_id, right_value, left_value, session_id, grip_position)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO assessments (user_id, assessment_id, right_value, left_value, session_id, grip_position, origin, details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetAssessment :one
@@ -140,6 +140,40 @@ FROM last_right
 FULL OUTER JOIN last_left ON last_left.assessment_id = last_right.assessment_id
 ORDER BY 1;
 
+-- name: GetUserLatestAssessmentValuesByGrip :many
+-- GetUserLatestAssessmentValues kept apart per grip: the last value measured
+-- for each assessment, each grip and each hand. A percentage of a max is read
+-- against the max of the grip the hang is hung with, so testing an open hand
+-- after a half crimp does not move the half crimp loads. Results carrying no
+-- grip only count in GetUserLatestAssessmentValues, which a grip the athlete
+-- never tested falls back to.
+WITH measured AS (
+  SELECT a.assessment_id, a.grip_position, a.right_value, a.left_value, s.date
+  FROM assessments a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE a.user_id = @user_id AND a.grip_position IS NOT NULL
+),
+last_right AS (
+  SELECT DISTINCT ON (assessment_id, grip_position) assessment_id, grip_position, right_value
+  FROM measured WHERE right_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+),
+last_left AS (
+  SELECT DISTINCT ON (assessment_id, grip_position) assessment_id, grip_position, left_value
+  FROM measured WHERE left_value IS NOT NULL
+  ORDER BY assessment_id, grip_position, date DESC
+)
+SELECT
+  COALESCE(last_right.assessment_id, last_left.assessment_id)::uuid AS assessment_id,
+  COALESCE(last_right.grip_position, last_left.grip_position)::integer AS grip_position,
+  last_right.right_value,
+  last_left.left_value
+FROM last_right
+FULL OUTER JOIN last_left
+  ON last_left.assessment_id = last_right.assessment_id
+  AND last_left.grip_position = last_right.grip_position
+ORDER BY 1, 2;
+
 -- name: GetUserAssessmentValuesAtDate :many
 -- The athlete's assessment results as they stood on a given day: for each
 -- assessment, each grip and each hand, the last value measured at or before it.
@@ -191,6 +225,11 @@ ORDER BY 1;
 --
 -- The definition is joined in, as the other read paths do, so a caller can name
 -- and format the number without a second query.
+--
+-- Each hand carries the origin of the result it was read from, so a comparison
+-- can say when the value standing on a date is a pull kept from a training
+-- rather than a test, and its details, so a comparison can show what the test
+-- measured beyond the value (W' for a Critical Force).
 WITH measured AS (
   SELECT
     a.id,
@@ -198,6 +237,8 @@ WITH measured AS (
     COALESCE(a.grip_position, 0)::int AS grip_position,
     a.right_value,
     a.left_value,
+    a.origin,
+    a.details,
     a.updated_at,
     s.date
   FROM assessments a
@@ -206,13 +247,13 @@ WITH measured AS (
 ),
 last_right AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
-    assessment_id, grip_position, right_value, date
+    assessment_id, grip_position, right_value, origin, details, date
   FROM measured WHERE right_value IS NOT NULL
   ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 ),
 last_left AS (
   SELECT DISTINCT ON (assessment_id, grip_position)
-    assessment_id, grip_position, left_value, date
+    assessment_id, grip_position, left_value, origin, details, date
   FROM measured WHERE left_value IS NOT NULL
   ORDER BY assessment_id, grip_position, date DESC, updated_at DESC, id DESC
 )
@@ -226,10 +267,14 @@ SELECT
   COALESCE(r.grip_position, l.grip_position)::int AS grip_position,
   r.right_value,
   r.date AS right_measured_at,
+  r.origin AS right_origin,
+  r.details AS right_details,
   COALESCE(rw.weight_kg, 0)::real AS right_bodyweight_kg,
   rw.measured_at::timestamptz AS right_bodyweight_measured_at,
   l.left_value,
   l.date AS left_measured_at,
+  l.origin AS left_origin,
+  l.details AS left_details,
   COALESCE(lw.weight_kg, 0)::real AS left_bodyweight_kg,
   lw.measured_at::timestamptz AS left_bodyweight_measured_at
 FROM last_right r

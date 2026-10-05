@@ -104,6 +104,42 @@ func parseSessionDate(raw string) (time.Time, error) {
 	return t.UTC(), err
 }
 
+// trainingDayStartHour is the hour a training day turns over: a session begun
+// before it counts for the day before. The app applies it on the athlete's own
+// clock; the server, which has no zone for them, can only apply it in UTC.
+const trainingDayStartHour = 4
+
+// The earliest and latest a training day may sit from the UTC calendar date of
+// the instant it was started at. Every zone is between 12 hours behind UTC and
+// 14 ahead, so the local date is at most one day either side of the UTC one.
+// The day turning at 04:00 cannot reach further back: a local date already a
+// day behind UTC means a local evening, long past 04:00.
+const (
+	minTrainingDayOffsetDays = -1
+	maxTrainingDayOffsetDays = 1
+)
+
+// resolveTrainingDay is the day a session started at startedAt counts for: the
+// one the client sent, or, from a client that sends none, the instant less
+// trainingDayStartHour read in UTC, the same rule the backfill applied. A sent
+// day too far from the instant to be its date in any zone is refused, since it
+// would file the session under a day it was never trained on.
+func resolveTrainingDay(raw *string, startedAt time.Time) (pgtype.Date, error) {
+	if raw == nil {
+		derived := calendarDate(startedAt.UTC().Add(-trainingDayStartHour * time.Hour))
+		return pgtype.Date{Time: derived, Valid: true}, nil
+	}
+	day, err := time.Parse(time.DateOnly, *raw)
+	if err != nil {
+		return pgtype.Date{}, errors.New("training_day must be a date written YYYY-MM-DD")
+	}
+	offset := int(day.Sub(calendarDate(startedAt.UTC())).Hours() / 24)
+	if offset < minTrainingDayOffsetDays || offset > maxTrainingDayOffsetDays {
+		return pgtype.Date{}, errors.New("training_day must be the day the session started on, or the one before")
+	}
+	return pgtype.Date{Time: day, Valid: true}, nil
+}
+
 // optionalUUID converts an omitted or empty id into a null UUID, so a session
 // with no template links stores nulls rather than failing to parse.
 func optionalUUID(raw *string) (pgtype.UUID, error) {
@@ -179,9 +215,14 @@ func (h *SessionHandler) ownedSession() ownedResource[db.Session] {
 }
 
 type CreateSessionRequest struct {
-	Name             string              `json:"name"`
-	Notes            string              `json:"notes"`
-	Date             string              `json:"date,omitempty"`
+	Name  string `json:"name"`
+	Notes string `json:"notes"`
+	Date  string `json:"date,omitempty"`
+	// TrainingDay is the day the session counts for in the athlete's own
+	// calendar, written YYYY-MM-DD: the local date it started on, or the one
+	// before when it started before 04:00. Left out, it is derived from the
+	// date in UTC, which is only right for an athlete living near UTC.
+	TrainingDay      *string             `json:"training_day,omitempty"`
 	IsAssessment     bool                `json:"is_assessment"`
 	Activity         int32               `json:"activity"`
 	Origin           string              `json:"origin,omitempty"`
@@ -457,6 +498,10 @@ type AssessmentRequest struct {
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
+	// Read as on POST /api/assessments: a test when omitted.
+	Origin *string `json:"origin,omitempty" enums:"test,training"`
+	// Read as on POST /api/assessments: none when omitted.
+	Details json.RawMessage `json:"details,omitempty" swaggertype:"object"`
 }
 
 // UpdateSessionRequest is what an edit changes about a session. Every field is
@@ -476,6 +521,11 @@ type UpdateSessionRequest struct {
 	// pointer like the fields above, so this struct spells "not sent" one way
 	// rather than two.
 	Date *string `json:"date,omitempty"`
+	// The day the session counts for, YYYY-MM-DD, sent beside a new date by a
+	// client that knows the athlete's zone. A date sent without it re-derives
+	// the day from the new date in UTC, so the two cannot drift apart. Sent on
+	// its own, it refiles the session and has to fit the stored date.
+	TrainingDay *string `json:"training_day,omitempty"`
 	// The athlete's RPE answer, which this path exists to let them give after
 	// the fact: forgetting it at the end of a run is the normal case, and a
 	// played session keeps it editable even though nothing else on it is.
@@ -502,11 +552,15 @@ const maxCoachReplyLength = 4000
 // rather than the generated row, so reads speak the same snake_case the request
 // bodies do.
 type SessionResponse struct {
-	ID               string  `json:"id"`
-	UserID           string  `json:"user_id"`
-	Name             string  `json:"name"`
-	Notes            string  `json:"notes"`
-	Date             string  `json:"date"`
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
+	Notes  string `json:"notes"`
+	Date   string `json:"date"`
+	// TrainingDay is the day the session counts for in the athlete's own
+	// calendar, YYYY-MM-DD. Anything that places a session on a day or in a
+	// week reads this rather than cutting date in a zone of its own.
+	TrainingDay      string  `json:"training_day"`
 	IsAssessment     bool    `json:"is_assessment"`
 	Activity         int32   `json:"activity"`
 	Origin           string  `json:"origin"`
@@ -544,6 +598,9 @@ type SessionResponse struct {
 type SessionListItem struct {
 	SessionResponse
 	RepCount int64 `json:"rep_count"`
+	// RepDatas is set only on a listing asked for with include=reps, and then
+	// on every row, empty for a session that holds no reps.
+	RepDatas []RepDataResponse `json:"rep_datas,omitzero"`
 }
 
 // sessionFields maps the columns every session shape shares. The list row and
@@ -569,6 +626,7 @@ type sessionFields struct {
 	Rpe              pgtype.Int4
 	RpeFailed        bool
 	UpdatedAt        pgtype.Timestamptz
+	TrainingDay      pgtype.Date
 }
 
 func optionalUUIDString(id pgtype.UUID) *string {
@@ -630,6 +688,7 @@ func (f sessionFields) toResponse() SessionResponse {
 		Name:             f.Name,
 		Notes:            f.Notes,
 		Date:             f.Date.Time.UTC().Format(time.RFC3339),
+		TrainingDay:      f.TrainingDay.Time.Format(time.DateOnly),
 		IsAssessment:     f.IsAssessment,
 		Activity:         f.Activity,
 		Origin:           f.Origin,
@@ -678,6 +737,7 @@ func sessionRowToListItem(r db.GetUserSessionsRow) SessionListItem {
 			Rpe:              r.Rpe,
 			RpeFailed:        r.RpeFailed,
 			UpdatedAt:        r.UpdatedAt,
+			TrainingDay:      r.TrainingDay,
 		}.toResponse(),
 		RepCount: r.RepCount,
 	}
@@ -923,7 +983,15 @@ type AssessmentResponse struct {
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
 	GripPosition *int32   `json:"grip_position,omitempty"`
-	UpdatedAt    string   `json:"updated_at"`
+	// What produced the result: a test of the assessment, or a pull measured
+	// during a training that the athlete kept because it beat the result on
+	// file. Every result recorded before the distinction reads as a test.
+	Origin string `json:"origin" enums:"test,training"`
+	// What the test measured beyond the value, as posted with the result: for a
+	// Critical Force, its W', the end force of its last three pulls and one
+	// entry per pull. Absent when the result has none.
+	Details   json.RawMessage `json:"details,omitempty" swaggertype:"object"`
+	UpdatedAt string          `json:"updated_at"`
 }
 
 // assessmentResult is the shape every assessment read path produces: the result
@@ -956,6 +1024,8 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 		PerHand:            r.PerHand,
 		BodyweightRelative: r.BodyweightRelative,
 		GripPosition:       optionalInt32(a.GripPosition),
+		Origin:             a.Origin,
+		Details:            storedDetails(a.Details),
 		UpdatedAt:          a.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 	resp.BodyweightKg = measuredBodyweight(r.BodyweightKg)
@@ -971,6 +1041,16 @@ func assessmentToResponse(r assessmentResult) AssessmentResponse {
 		resp.LeftValue = &a.LeftValue.Float32
 	}
 	return resp
+}
+
+// storedDetails hands a result's stored details to a response as they were
+// posted, and nothing when there are none, so the field is left out rather
+// than sent as null.
+func storedDetails(details []byte) json.RawMessage {
+	if len(details) == 0 {
+		return nil
+	}
+	return json.RawMessage(details)
 }
 
 // AssessmentListItem is an assessment as the list endpoints return it: the
@@ -995,6 +1075,8 @@ func assessmentRowsToListItems(rows []db.GetUserAssessmentsRow) []AssessmentList
 					LeftValue:    r.LeftValue,
 					SessionID:    r.SessionID,
 					GripPosition: r.GripPosition,
+					Origin:       r.Origin,
+					Details:      r.Details,
 					UpdatedAt:    r.UpdatedAt,
 				},
 				Label:                r.Label,
@@ -1023,6 +1105,8 @@ func assessmentsToResponses(rows []db.GetSessionAssessmentsRow) []AssessmentResp
 				LeftValue:    r.LeftValue,
 				SessionID:    r.SessionID,
 				GripPosition: r.GripPosition,
+				Origin:       r.Origin,
+				Details:      r.Details,
 				UpdatedAt:    r.UpdatedAt,
 			},
 			Label:                r.Label,
@@ -1092,6 +1176,19 @@ type AssessmentResultSnapshot struct {
 	AssessmentID string   `json:"assessment_id"`
 	RightValue   *float32 `json:"right_value,omitempty"`
 	LeftValue    *float32 `json:"left_value,omitempty"`
+	// ByGrip is the same last value per hand, kept apart per grip the results
+	// were pulled on. A percentage load on a hang reads the entry for the hang's
+	// grip, hand by hand, and falls back to RightValue and LeftValue for a grip
+	// or a hand the athlete never measured it on. Absent on a snapshot frozen
+	// before it was recorded, which reads as no grip ever tested.
+	ByGrip []AssessmentGripResultSnapshot `json:"by_grip,omitempty"`
+}
+
+// AssessmentGripResultSnapshot is the last value per hand on one grip.
+type AssessmentGripResultSnapshot struct {
+	GripPosition int32    `json:"grip_position"`
+	RightValue   *float32 `json:"right_value,omitempty"`
+	LeftValue    *float32 `json:"left_value,omitempty"`
 }
 
 // AssessmentDefinitionSnapshot names an assessment a prescription references and
@@ -1159,7 +1256,20 @@ func lockedAssessmentUnits(ctx context.Context, q *db.Queries, ids []pgtype.UUID
 	return locked, nil
 }
 
-func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []AssessmentResultSnapshot {
+func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow, byGrip []db.GetUserLatestAssessmentValuesByGripRow) []AssessmentResultSnapshot {
+	grips := make(map[string][]AssessmentGripResultSnapshot, len(rows))
+	for _, g := range byGrip {
+		grip := AssessmentGripResultSnapshot{GripPosition: g.GripPosition}
+		if g.RightValue.Valid {
+			grip.RightValue = &g.RightValue.Float32
+		}
+		if g.LeftValue.Valid {
+			grip.LeftValue = &g.LeftValue.Float32
+		}
+		id := g.AssessmentID.String()
+		grips[id] = append(grips[id], grip)
+	}
+
 	results := make([]AssessmentResultSnapshot, 0, len(rows))
 	for _, r := range rows {
 		result := AssessmentResultSnapshot{AssessmentID: r.AssessmentID.String()}
@@ -1169,6 +1279,7 @@ func assessmentResultsToSnapshot(rows []db.GetUserLatestAssessmentValuesRow) []A
 		if r.LeftValue.Valid {
 			result.LeftValue = &r.LeftValue.Float32
 		}
+		result.ByGrip = grips[result.AssessmentID]
 		results = append(results, result)
 	}
 	return results
@@ -1212,7 +1323,11 @@ func buildPrescriptionSnapshot(ctx context.Context, qtx *db.Queries, userID, tra
 	if err != nil {
 		return PrescriptionSnapshot{}, err
 	}
-	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments)
+	assessmentsByGrip, err := qtx.GetUserLatestAssessmentValuesByGrip(ctx, userID)
+	if err != nil {
+		return PrescriptionSnapshot{}, err
+	}
+	snapshot.ResolvedAgainst.Assessments = assessmentResultsToSnapshot(assessments, assessmentsByGrip)
 
 	// What the device says it used wins over what is on file. The device can
 	// hold a measurement the server has not seen, because a run needs no
@@ -1361,8 +1476,9 @@ func resolveRepItemLinks(reps []RepDataRequest, prescribedItemIDs map[string]str
 // storeRejectedInput says whether a write failed because of what the client
 // sent rather than because of anything the server did: a NUL, an unpaired
 // surrogate, invalid UTF-8, a number no numeric type holds. Go accepts all of
-// them as JSON and jsonb accepts none, and the only body on a session the server
-// does not encode itself is the prescription a client hands over.
+// them as JSON and jsonb accepts none, and the only bodies the server does not
+// encode itself are the prescription a client hands over with a session and the
+// details it hands over with an assessment result.
 //
 // Enumerating them before the insert cannot work, since Go's JSON is strictly
 // wider than jsonb's; asking the database what it refused is the one check that
@@ -1574,7 +1690,7 @@ func mergeItemOverrides(items []TrainingItemResponse, byItem map[string]json.Raw
 
 // CreateSession godoc
 // @Summary Create a new session
-// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped. A session may also carry the athlete's session RPE, how much recovery it cost: rpe is a value of the scale, 5 to 10, and rpe_failed is that scale's ECHEC, a session that could not be carried through. They are exclusive, and both are optional, since the value stays editable through the update endpoint long after the session.
+// @Description Create a new training session for the authenticated user with optional rep data and assessments. A session run from a prescription freezes it onto the session, with the program session overrides merged in, so later edits of the training cannot rewrite it. An override the training item no longer takes, because the training was edited after the week was prescribed, is dropped rather than merged, so what is frozen is never a shape the write paths refuse. When a program_session_id is sent, that row decides the training, and a training_id disagreeing with it is refused. A logged session may carry the link as well, so a coach slot with nothing to step through can be completed by hand; only a played one locks the coach's week. A run of a training the server cannot read, one Crimpy generates on the device, sends its own prescription instead, and the reps and the item reports name its items the same way; sending one alongside a training_id or a program_session_id is refused, since the server freezes its own copy from those. Such a prescription is held to 256 KB, must prescribe at least one item, and must name every item it holds with an id of at most 200 characters that no other item of it repeats. A rep may name the prescription item it was played from through training_item_id, which must be one of the items the session was prescribed. A rep whose step prescribed a load the run failed to measure sends target_unmeasured, so a client can tell it from a rep no target was ever expected for. That flag is what the clients grade on: such a rep is recorded with no target, and one sent with both is stored as it arrives and still read as unmeasured. A run may also send item_results, what the athlete reported about the items they were prescribed: the reps an AMRAP turned out to be, the rounds an emom was carried through, and for any step at all the load, the duration and the note nothing else records. Each names one of the prescribed items and an occurrence telling repeated passes apart, then whichever of reps, cycles, load_kg, duration_seconds and note it has something to say about; a field left out is stored as absent rather than as a zero. One result answers one pass, so two naming the same pass are refused, and one reporting nothing at all is dropped. A session may also carry the athlete's session RPE, how much recovery it cost: rpe is a value of the scale, 5 to 10, and rpe_failed is that scale's ECHEC, a session that could not be carried through. They are exclusive, and both are optional, since the value stays editable through the update endpoint long after the session. training_day, YYYY-MM-DD, is the day the session counts for in the athlete's own calendar: the local date it started on, or the one before when it started before 04:00. Left out, it is derived from date minus four hours in UTC; sent, it must lie within one day either side of the UTC date of date, or it is refused.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1659,6 +1775,10 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date format"})
 		}
 		sessionDate = pgtype.Timestamptz{Time: t, Valid: true}
+	}
+	trainingDay, err := resolveTrainingDay(req.TrainingDay, sessionDate.Time)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	tx, err := h.pool.Begin(c.Context())
@@ -1791,12 +1911,24 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	// Checked here for the same reason, so an assessment the athlete may not
 	// record against is refused before the session and its reps are inserted.
 	assessmentUUIDs := make([]pgtype.UUID, len(req.Assessments))
+	assessmentOrigins := make([]string, len(req.Assessments))
+	assessmentDetails := make([][]byte, len(req.Assessments))
 	for i, a := range req.Assessments {
+		origin, ok := parseAssessmentOrigin(a.Origin)
+		if !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid assessment origin"})
+		}
+		details, ok := parseAssessmentDetails(a.Details)
+		if !ok {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Assessment details must be a JSON object of at most 64 KiB"})
+		}
+		assessmentDetails[i] = details
 		id, ok := requireRecordableAssessment(c, h.queries, a.AssessmentID, userUUID)
 		if !ok {
 			return nil
 		}
 		assessmentUUIDs[i] = id
+		assessmentOrigins[i] = origin
 	}
 
 	session, err := qtx.CreateSession(c.Context(), db.CreateSessionParams{
@@ -1814,6 +1946,7 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 		Duration:         req.Duration,
 		Rpe:              rpe.value,
 		RpeFailed:        rpe.failed,
+		TrainingDay:      trainingDay,
 	})
 	if err != nil {
 		// A retry of the same body would fail the same way, so the client is
@@ -1887,8 +2020,14 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 			LeftValue:    leftValue,
 			SessionID:    session.ID,
 			GripPosition: gripPosition,
+			Origin:       assessmentOrigins[i],
+			Details:      assessmentDetails[i],
 		})
 		if err != nil {
+			if storeRejectedInput(err) {
+				slog.Warn("refusing assessment details the store cannot keep", "user_id", userID, "session_id", session.ID, "error", err)
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Details hold something the store cannot keep"})
+			}
 			slog.Error("failed to create assessment", "user_id", userID, "session_id", session.ID, "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create assessment"})
 		}
@@ -1902,14 +2041,55 @@ func (h *SessionHandler) CreateSession(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(sessionToResponse(session))
 }
 
+// sessionRepsInclude is the only extra GET /api/sessions knows how to add to
+// its rows.
+const sessionRepsInclude = "reps"
+
+// parseSessionInclude reads the include parameter the way parseTrainingInclude
+// does: a comma separated list, an unknown name refused rather than ignored, so
+// a misspelt request is not handed a listing it would read as sessions that
+// hold no reps.
+func parseSessionInclude(raw string) (includeReps bool, ok bool) {
+	for _, name := range strings.Split(raw, ",") {
+		switch strings.TrimSpace(name) {
+		case "":
+		case sessionRepsInclude:
+			includeReps = true
+		default:
+			return false, false
+		}
+	}
+	return includeReps, true
+}
+
+// attachRepDatas hangs every rep onto the row of the session it belongs to,
+// giving every row a list of its own, empty when the session holds none, so a
+// row with no reps cannot be mistaken for one whose reps were left out.
+func attachRepDatas(items []SessionListItem, reps []db.RepData) {
+	bySession := make(map[string][]RepDataResponse, len(items))
+	for _, rep := range reps {
+		sessionID := rep.SessionID.String()
+		bySession[sessionID] = append(bySession[sessionID], repDataToResponse(rep))
+	}
+	for i := range items {
+		rows := bySession[items[i].ID]
+		if rows == nil {
+			rows = []RepDataResponse{}
+		}
+		items[i].RepDatas = rows
+	}
+}
+
 // GetSessions godoc
 // @Summary Get all sessions
-// @Description Retrieve all training sessions for the authenticated user, each with its rep count
+// @Description Retrieve all training sessions for the authenticated user, each with its rep count. With include=reps every row also carries rep_datas, the reps of that session in the order they were recorded, empty for a session that holds none. That is what lets a client read the whole history, the all-time totals of the athlete's profile among it, in one request rather than one detail per session. The samples and the prescription stay off the listing either way, and the listing is not capped.
 // @Tags Session
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param include query string false "Comma separated extras to put on each row. Only reps is understood, and anything else is refused" Enums(reps)
 // @Success 200 {array} SessionListItem "List of sessions"
+// @Failure 400 {object} map[string]string "Invalid query parameter"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions [get]
@@ -1924,13 +2104,31 @@ func (h *SessionHandler) GetSessions(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Invalid user ID"})
 	}
 
+	includeReps, ok := parseSessionInclude(c.Query("include"))
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid include"})
+	}
+
 	sessions, err := h.queries.GetUserSessions(c.Context(), userUUID)
 	if err != nil {
 		slog.Error("failed to retrieve sessions", "user_id", userID, "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
 	}
+	items := sessionRowsToListItems(sessions)
 
-	return c.JSON(sessionRowsToListItems(sessions))
+	if includeReps {
+		// Failing the whole listing rather than leaving the reps off: a row
+		// without them is what a session that holds none looks like on the
+		// cheap list, and a total read over it would state zeros as history.
+		reps, err := h.queries.GetUserRepDatas(c.Context(), userUUID)
+		if err != nil {
+			slog.Error("failed to retrieve session reps", "user_id", userID, "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve sessions"})
+		}
+		attachRepDatas(items, reps)
+	}
+
+	return c.JSON(items)
 }
 
 // GetSession godoc
@@ -1959,7 +2157,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 
 // UpdateSession godoc
 // @Summary Update a session
-// @Description Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. User must own the session unless they are an admin.
+// @Description Update a session's name, notes, duration, date and RPE. Every field is optional and every field left out keeps the value already stored, so a request may carry only what it means to change. A name sent as an empty string and a negative duration are refused rather than stored, the way the create path refuses them; not sending them at all is a different statement and keeps what is stored. The RPE pair counts as one field: sending neither rpe nor rpe_failed keeps the stored answer, and sending either replaces the whole answer, so rpe_failed false with no rpe beside it is how a rated session is taken back to unrated. training_day travels with the date: a date sent without it re-derives the day from the new date minus four hours in UTC, and one sent on its own refiles the session, held to the same bounds against the stored date as on create. User must own the session unless they are an admin.
 // @Tags Session
 // @Accept json
 // @Produce json
@@ -1973,7 +2171,7 @@ func (h *SessionHandler) GetSession(c fiber.Ctx) error {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/sessions/{id} [put]
 func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
-	_, sessionUUID, ok := h.ownedSession().require(c)
+	stored, sessionUUID, ok := h.ownedSession().require(c)
 	if !ok {
 		return nil
 	}
@@ -2010,15 +2208,30 @@ func (h *SessionHandler) UpdateSession(c fiber.Ctx) error {
 		date = pgtype.Timestamptz{Time: t, Valid: true}
 	}
 
+	// Only a request that moves the session or refiles it touches its day; one
+	// that does neither leaves the stored day alone, through the null below.
+	var trainingDay pgtype.Date
+	if req.Date != nil || req.TrainingDay != nil {
+		startedAt := stored.Date.Time
+		if date.Valid {
+			startedAt = date.Time
+		}
+		trainingDay, err = resolveTrainingDay(req.TrainingDay, startedAt)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+	}
+
 	updated, err := h.queries.UpdateSession(c.Context(), db.UpdateSessionParams{
-		ID:        sessionUUID,
-		Name:      toPgText(req.Name),
-		Notes:     toPgText(req.Notes),
-		Duration:  toPgInt4(req.Duration),
-		Date:      date,
-		RpeGiven:  rpeGiven,
-		Rpe:       rpe.value,
-		RpeFailed: rpe.failed,
+		ID:          sessionUUID,
+		Name:        toPgText(req.Name),
+		Notes:       toPgText(req.Notes),
+		Duration:    toPgInt4(req.Duration),
+		Date:        date,
+		TrainingDay: trainingDay,
+		RpeGiven:    rpeGiven,
+		Rpe:         rpe.value,
+		RpeFailed:   rpe.failed,
 	})
 	if err != nil {
 		slog.Error("failed to update session", "session_id", sessionUUID.String(), "error", err)

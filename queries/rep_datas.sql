@@ -6,3 +6,13 @@ RETURNING *;
 
 -- name: GetSessionRepDatas :many
 SELECT * FROM rep_datas WHERE session_id = $1 ORDER BY index;
+
+-- name: GetUserRepDatas :many
+-- Every rep of every session the user owns, for a client that reads the whole
+-- history at once rather than one session at a time. Scoped by the session's
+-- owner, not by the rep's own user column, so the rep of a session is exactly
+-- what the detail of that session would answer.
+SELECT rep_datas.* FROM rep_datas
+JOIN sessions ON sessions.id = rep_datas.session_id
+WHERE sessions.user_id = $1
+ORDER BY rep_datas.session_id, rep_datas.index;

@@ -58,8 +58,11 @@ type PendingFeedbackResponse struct {
 	UserLastname  string `json:"user_lastname"`
 	SessionName   string `json:"session_name"`
 	SessionDate   string `json:"session_date"`
-	Activity      int32  `json:"activity"`
-	Notes         string `json:"notes"`
+	// SessionTrainingDay is the day the session counts for in the athlete's
+	// own calendar, YYYY-MM-DD, which is what a row naming its day shows.
+	SessionTrainingDay string `json:"session_training_day"`
+	Activity           int32  `json:"activity"`
+	Notes              string `json:"notes"`
 }
 
 type EmptyProgramWeekResponse struct {
@@ -233,7 +236,7 @@ func feedRowToResponse(row db.GetCoachFeedRow) FeedEventResponse {
 
 // GetCoachTodo godoc
 // @Summary Get my coaching TODO list
-// @Description What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its own clock. Send timezone, an IANA zone name, and the week is cut on the caller's real calendar even where a daylight saving change falls inside it. tz_offset_minutes is the fallback for a client that does not send a zone yet.
+// @Description What the authenticated coach still owes their coachees: the sessions the athlete wrote something about and has had no answer to, whether they wrote it on the session or against one of the items they were prescribed, capped at 50 with pending_feedback_total carrying the real count, and the programs whose current or next calendar week holds no session, plus how many sessions their athletes did this week, each counted by its training_day. Each empty week carries a scope, current for the week being trained now and next for the one starting on the coming Monday. The current ones are always listed; the next ones only once the weekly moment the coach configured has passed in their own week, which is why the caller sends its own clock. Send timezone, an IANA zone name, and the week is cut on the caller's real calendar even where a daylight saving change falls inside it. tz_offset_minutes is the fallback for a client that does not send a zone yet.
 // @Tags Coaching
 // @Produce json
 // @Security BearerAuth
@@ -287,14 +290,11 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve TODO list"})
 	}
 
-	// The Mondays are instants on the caller's clock already, so the window the
-	// stored UTC rows are counted in is just the pair of them. Adding the days
-	// before converting is what keeps a week holding a daylight saving change
-	// seven calendar days long rather than an hour short or an hour over.
-	sessionsThisWeek, err := h.queries.CountCoachSessionsInWindow(c.Context(), db.CountCoachSessionsInWindowParams{
-		CoachID:     coachUUID,
-		WindowStart: pgtype.Timestamptz{Time: thisMonday.UTC(), Valid: true},
-		WindowEnd:   pgtype.Timestamptz{Time: nextMonday.UTC(), Valid: true},
+	// The week is the caller's calendar week, and each session counts in it by
+	// its training day, the date the athlete's own device filed it under.
+	sessionsThisWeek, err := h.queries.CountCoachSessionsInWeek(c.Context(), db.CountCoachSessionsInWeekParams{
+		CoachID:   coachUUID,
+		WeekStart: pgtype.Date{Time: calendarDate(thisMonday), Valid: true},
 	})
 	if err != nil {
 		slog.Error("failed to count sessions this week", "coach_id", coachUUID.String(), "error", err)
@@ -317,14 +317,15 @@ func (h *CoachTodoHandler) GetCoachTodo(c fiber.Ctx) error {
 
 	for _, row := range pending {
 		response.PendingFeedback = append(response.PendingFeedback, PendingFeedbackResponse{
-			SessionID:     row.SessionID.String(),
-			UserID:        row.UserID.String(),
-			UserFirstname: row.UserFirstname,
-			UserLastname:  row.UserLastname,
-			SessionName:   row.SessionName,
-			SessionDate:   row.SessionDate.Time.UTC().Format(time.RFC3339),
-			Activity:      row.Activity,
-			Notes:         row.Notes,
+			SessionID:          row.SessionID.String(),
+			UserID:             row.UserID.String(),
+			UserFirstname:      row.UserFirstname,
+			UserLastname:       row.UserLastname,
+			SessionName:        row.SessionName,
+			SessionDate:        row.SessionDate.Time.UTC().Format(time.RFC3339),
+			SessionTrainingDay: row.SessionTrainingDay.Time.Format(time.DateOnly),
+			Activity:           row.Activity,
+			Notes:              row.Notes,
 		})
 	}
 
